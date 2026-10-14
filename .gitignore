@@ -1,0 +1,7 @@
+bin/
+obj/
+out/
+*.user
+/com.rgreat.seapower.alternativeweaponscontrol.cfg
+/AlternativeWeaponsControl.trace.txt
+/LogOutput.txt
