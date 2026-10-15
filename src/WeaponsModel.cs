@@ -448,23 +448,8 @@ namespace AlternativeWeaponsControl
             }
             else
             {
+                // off: only the player's switch (grey) - the Standing Orders stay as they are
                 foreach (var p in pairs) SetOff(w, p.Key.Index, p.Value, true);
-                // an order whose every pair is now off says No itself, and its pairs follow it again
-                for (int i = 0; i < Items.Length; i++)
-                {
-                    if (!ItemApplies(unit, i) || !ItemValue(unit, i)) continue;
-                    bool any = false, allOff = true;
-                    foreach (var l in ls)
-                        foreach (var d in Domains)
-                        {
-                            if (!Covers(i, l, d)) continue;
-                            any = true;
-                            if (Effective(unit, w, l, d)) { allOff = false; break; }
-                        }
-                    if (!any || !allOff) continue;
-                    SetItem(unit, i, false);
-                    foreach (var l in ls) foreach (var d in Domains) if (Covers(i, l, d)) SetOff(w, l.Index, d, false);
-                }
             }
             for (int i = 0; i < Items.Length; i++) w.Snap[i] = ItemValue(unit, i);
             w.SnapInit = true;
@@ -475,13 +460,13 @@ namespace AlternativeWeaponsControl
         {
             int di = Array.IndexOf(Domains, d);
             var st = State(unit, l, d);
-            if (st == Chip.On) return DomainNames[di] + ": automatic against " + DomainLong[di] + ". Click: off for this launcher.";
-            if (st == Chip.Off) return DomainNames[di] + ": off for this launcher. Click: automatic again.";
+            if (st == Chip.On) return DomainNames[di] + ": automatic against " + DomainLong[di] + ".\nClick: off for this launcher.";
+            if (st == Chip.Off) return DomainNames[di] + ": off for this launcher.\nClick: automatic again.";
             var b = new List<int>();
             DocAllowed(unit, l, d, b);
             var sb = new StringBuilder(DomainNames[di] + ": off by Standing Orders - ");
             for (int i = 0; i < b.Count; i++) sb.Append(i > 0 ? ", " : "").Append(ItemLabels[b[i]]).Append(": No");
-            sb.Append(". Click: allow for this launcher (the unit's order becomes Yes, the other launchers it covers turn off).");
+            sb.Append(".\nClick: allow for this launcher (the unit's order becomes Yes, the other launchers it covers turn off).");
             return sb.ToString();
         }
 
@@ -491,15 +476,19 @@ namespace AlternativeWeaponsControl
 
         static void UnitSavePostfix(object __instance, object ini, string sectionName)
         {
+            if (ini == null) return;
             try
             {
                 UnitW w;
-                if (ini == null || !UnitsW.TryGetValue(__instance, out w) || w.Off.Count == 0) return;
-                var sb = new StringBuilder();
-                foreach (var kv in w.Off) sb.Append(sb.Length > 0 ? "," : "").Append(kv.Key).Append(':').Append(kv.Value);
-                R.Call(ini, "writeValue", sectionName, SaveKey, sb.ToString());
+                if (UnitsW.TryGetValue(__instance, out w) && w.Off.Count > 0)
+                {
+                    var sb = new StringBuilder();
+                    foreach (var kv in w.Off) sb.Append(sb.Length > 0 ? "," : "").Append(kv.Key).Append(':').Append(kv.Value);
+                    R.Call(ini, "writeValue", sectionName, SaveKey, sb.ToString());
+                }
             }
             catch (Exception e) { Trace("weapons save: " + e.Message); }
+            SavePins(__instance, ini, sectionName);
         }
 
         static void UnitLoadPostfix(object __instance, object ini, string sectionName)
@@ -507,6 +496,7 @@ namespace AlternativeWeaponsControl
             try
             {
                 if (ini == null) return;
+                LoadPins(__instance, ini, sectionName);
                 var s = R.Call(ini, "readValue", sectionName, SaveKey, "", false) as string;
                 if (string.IsNullOrEmpty(s)) return;
                 var w = W(__instance);

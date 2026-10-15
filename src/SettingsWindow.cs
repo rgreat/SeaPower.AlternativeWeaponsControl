@@ -12,7 +12,8 @@ namespace AlternativeWeaponsControl
     /// Model's (same look: title bar to drag, ✕, groups of rows, a help pane with the setting under the mouse, Cancel / Apply / OK),
     /// without profiles.
     ///  - Works on a copy: nothing changes until Apply or OK; then the .cfg is saved.
-    ///  - A yellow dot marks a value that differs from its default; ↺ puts the default back; Defaults puts all of them back.
+    ///  - A yellow dot marks a value changed and not applied yet (as in ADM: differs from the saved one); ↺ puts the default in;
+    ///    Cancel drops what was not applied (the saved values come back).
     /// Noesis elements are built in code; buttons, text and check boxes get the game's own styles.
     /// While a text box has the keyboard, the game's hot keys are off (InputHandler.typingActive, as the game's own text boxes do).
     /// </summary>
@@ -39,7 +40,7 @@ namespace AlternativeWeaponsControl
 
         static SettingsWindow()
         {
-            Add("Weapons tab", "UI/ClickVolume", "Click volume", "0..1 · 0 = no sound", Kind.Number, 0.1f, 0f, 1f);
+            Add("Weapons tab", "UI/ClickVolume", "Click sound volume", "0..1 · 0 = no sound", Kind.Number, 0.1f, 0f, 1f);
             Add("Fire control", "FireControl/GunOneDirector", "Guns take one director", "", Kind.Bool, 0, 0, 0, "game: off");
             Add("Fire control", "FireControl/GunChannelLimit", "Guns without a free channel: local control", "", Kind.Bool, 0, 0, 0, "game: off");
             Add("Diagnostics", "General/Debug", "Debug trace", "", Kind.Bool, 0, 0, 0);
@@ -171,6 +172,8 @@ namespace AlternativeWeaponsControl
 
         static bool Same(string a, string b)
         {
+            bool p, q;
+            if (bool.TryParse((a ?? "").Trim(), out p) && bool.TryParse((b ?? "").Trim(), out q)) return p == q;
             float x, y;
             if (TryNum(a, out x) && TryNum(b, out y)) return Math.Abs(x - y) < 1e-5f;
             return string.Equals((a ?? "").Trim(), (b ?? "").Trim(), StringComparison.OrdinalIgnoreCase);
@@ -221,10 +224,10 @@ namespace AlternativeWeaponsControl
             return b;
         }
 
-        const float PixW = 780f, PixH = 560f;   // screen pixels at the first opening
-        static float _winW = PixW, _winH = PixH;
+        // size in UI units (the game's UI scale applies): everything fits at once; kept while the game runs, at most the screen less 40 px
+        const float WinW = 820f, WinH = 580f;
+        static float _winW = WinW, _winH = WinH;
         static int _place;
-        static bool _sizedOnce;
 
         static void BuildWindow()
         {
@@ -263,16 +266,76 @@ namespace AlternativeWeaponsControl
             foot.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             foot.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1f, GridUnitType.Star) });
             foot.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            foot.Children.Add(Btn("Defaults", () => { foreach (var f in Fields) _work[f.Key] = Default(f); Show(); }));
             _status = Text("", CDim, 11f); _status.HorizontalAlignment = HorizontalAlignment.Right; _status.Margin = new Thickness(0f, 0f, 10f, 0f);
             Grid.SetColumn(_status, 1); foot.Children.Add(_status);
             var right = new StackPanel { Orientation = Orientation.Horizontal };
-            right.Children.Add(Btn("Cancel", Close, 70f));
+            right.Children.Add(Btn("Cancel", () => { Load(); Close(); }, 70f));   // the saved values back: edits not applied are dropped
             right.Children.Add(Btn("Apply", () => Commit(false), 70f));
             var ok = Btn("OK", () => Commit(true), 70f); ok.Margin = new Thickness(0f);
             right.Children.Add(ok);
             Grid.SetColumn(right, 2); foot.Children.Add(right);
             Grid.SetRow(foot, 3); layout.Children.Add(foot);
+
+            AddResizeHandles();
+        }
+
+        /// <summary>
+        /// Resizing by the window's edges (5 px strips) and corners (16 px; the bottom right one shows the grip lines), as in
+        /// Alternative Damage Model: 560..1600 x 420..1400, the settings area takes the change. Dragging the left or top side keeps
+        /// the opposite side in place. The size is kept while the game runs.
+        /// </summary>
+        static void AddResizeHandles()
+        {
+            for (int sy = -1; sy <= 1; sy++)
+                for (int sx = -1; sx <= 1; sx++)
+                    if (sx != 0 || sy != 0) _root.Children.Add(ResizeHandle(sx, sy));
+        }
+
+        /// <param name="sx">-1 left, 1 right, 0 neither</param>
+        /// <param name="sy">-1 top, 1 bottom, 0 neither</param>
+        static FrameworkElement ResizeHandle(int sx, int sy)
+        {
+            const float Edge = 5f, Corner = 16f;
+            bool corner = sx != 0 && sy != 0;
+            var h = new Border { Background = B(Color.FromArgb(0, 0, 0, 0)),
+                                 HorizontalAlignment = sx < 0 ? HorizontalAlignment.Left : sx > 0 ? HorizontalAlignment.Right : HorizontalAlignment.Stretch,
+                                 VerticalAlignment = sy < 0 ? VerticalAlignment.Top : sy > 0 ? VerticalAlignment.Bottom : VerticalAlignment.Stretch };
+            if (sx != 0) h.Width = corner ? Corner : Edge;
+            if (sy != 0) h.Height = corner ? Corner : Edge;
+            if (sx == 0) h.Margin = new Thickness(Corner, 0f, Corner, 0f);        // the corners belong to the corner handles
+            else if (sy == 0) h.Margin = new Thickness(0f, Corner, 0f, Corner);
+            if (sx > 0 && sy > 0)
+            {
+                h.Margin = new Thickness(0f, 0f, 1f, 1f);
+                h.Child = new Path { Data = new StreamGeometry("M15,4 L4,15 M15,8 L8,15 M15,12 L12,15"), Stroke = B(CDim), StrokeThickness = 1f };
+                try { ToolTipService.SetToolTip(h, "Drag to resize"); } catch { }
+            }
+            try { h.Cursor = corner ? (sx == sy ? Cursors.SizeNWSE : Cursors.SizeNESW) : sx != 0 ? Cursors.SizeWE : Cursors.SizeNS; } catch { }
+            bool down = false; Point start = new Point(); float w0 = 0f, h0 = 0f;
+            h.MouseLeftButtonDown += (o, e) =>
+            {
+                down = true; start = e.GetPosition(_top); w0 = _winW; h0 = _winH;
+                h.CaptureMouse(); e.Handled = true;
+            };
+            h.MouseMove += (o, e) =>
+            {
+                if (!down || _root == null) return;
+                var p = e.GetPosition(_top);
+                float w = sx == 0 ? _winW : Math.Max(560f, Math.Min(1600f, w0 + sx * (p.X - start.X)));
+                float hh = sy == 0 ? _winH : Math.Max(420f, Math.Min(1400f, h0 + sy * (p.Y - start.Y)));
+                float dw = w - _winW, dh = hh - _winH;
+                if (Math.Abs(dw) < 0.5f && Math.Abs(dh) < 0.5f) return;
+                _winW = w; _winH = hh;
+                _root.Width = w; _root.Height = hh;
+                if (_move == null) return;
+                // a window centred in a Grid grows both ways; one placed by its top left corner grows right / down:
+                // move it so that only the dragged side moves
+                bool centred = _host is Grid;
+                if (sx != 0) _move.X += centred ? sx * dw / 2f : (sx < 0 ? -dw : 0f);
+                if (sy != 0) _move.Y += centred ? sy * dh / 2f : (sy < 0 ? -dh : 0f);
+            };
+            h.MouseLeftButtonUp += (o, e) => { if (!down) return; down = false; h.ReleaseMouseCapture(); e.Handled = true; };
+            return h;
         }
 
         static Path Cross(float size)
@@ -300,7 +363,7 @@ namespace AlternativeWeaponsControl
             handle.MouseLeftButtonUp += (o, e) => { if (!down) return; down = false; handle.ReleaseMouseCapture(); e.Handled = true; };
         }
 
-        // The game scales its UI: the size is set in screen pixels (at most the screen less 40) and the window is centred on the screen.
+        // The game scales its UI: the size (UI units) is cut to the screen less 40 px and the window is centred on the screen.
         static void OnLayout(object sender, Noesis.EventArgs e)
         {
             if (_root == null || _place >= 2) return;
@@ -313,7 +376,6 @@ namespace AlternativeWeaponsControl
                 float sw = UnityEngine.Screen.width, sh = UnityEngine.Screen.height;
                 if (_place == 0)
                 {
-                    if (!_sizedOnce) { _winW = PixW / k; _winH = PixH / k; _sizedOnce = true; }
                     _root.Width = Math.Min(_winW, (sw - 40f) / k);
                     _root.Height = Math.Min(_winH, (sh - 40f) / k);
                     _place = 1;
@@ -347,8 +409,8 @@ namespace AlternativeWeaponsControl
         {
             if (_status == null) return;
             bool any = false;
-            foreach (var f in Fields) if (!Same(Get(f), Default(f))) { any = true; break; }
-            _status.Text = any ? "● differs from the default   ↺ = back to it" : "";
+            foreach (var f in Fields) if (!Same(Get(f), Saved(f))) { any = true; break; }
+            _status.Text = any ? "● changed, not applied yet   ↺ = back to the default" : "";
         }
 
         static TextBlock GroupTitle(string s)
@@ -359,7 +421,7 @@ namespace AlternativeWeaponsControl
         static FrameworkElement Row(Field f)
         {
             var g = new Grid { Background = B(Color.FromArgb(0, 0, 0, 0)) };
-            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(300f) });
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(330f) });
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1f, GridUnitType.Star) });
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110f) });
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(30f) });
@@ -371,7 +433,7 @@ namespace AlternativeWeaponsControl
             lab.Children.Add(Text(f.Label, CText));
             g.Children.Add(lab);
 
-            Action mark = () => { dot.Visibility = Same(Get(f), Default(f)) ? Visibility.Hidden : Visibility.Visible; UpdateStatus(); };
+            Action mark = () => { dot.Visibility = Same(Get(f), Saved(f)) ? Visibility.Hidden : Visibility.Visible; UpdateStatus(); };
             Action refresh;
             var editor = f.Kind == Kind.Bool ? BoolEditor(f, mark, out refresh) : NumberEditor(f, mark, out refresh);
             Grid.SetColumn(editor, 1);

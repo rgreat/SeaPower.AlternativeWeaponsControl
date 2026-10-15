@@ -1,19 +1,17 @@
 # Alternative Weapons Control
 
-A mod for Sea Power.
+Adds a new **Weapons** tab in the Unit Status window of your ships and submarines.
 
 ## Features
 
 ### Weapons tab in Unit Status
 
-A second tab in the Unit Status window of your ships and submarines:
-
 1. **All launchers at a glance**, by kind (SAM, anti-ship, land attack, ASW, guns, CIWS), launchers of the same system in one row (×N), opened to every launcher and every type of ammunition.
-   - State of each launcher and its current target (Track N, with the name once identified).
-   - Ammunition left / at the start, coloured by what is left.
-   - Fire-control channels of the directors: targets tracked and guided weapons in flight at a time.
-   - Links to the reference of every launcher and weapon.
-2. **Fire orders** for a group, an ammunition or one launcher: pick the target on the map, salvo and launch options, cease fire, reload. A launcher given its own target fires at it, waits while it is busy or no fire-control channel is free, and does not take other launchers off their targets.
+   State of each launcher and its current target (Track N, with the name once identified).
+   Ammunition left / at the start, coloured by what is left.
+   Fire-control channels of the directors: targets tracked and guided weapons in flight at a time; point at them for each director, with a link to its reference.
+   Links to the reference of every launcher and weapon.
+2. **Fire orders** for a group, an ammunition or one launcher: pick the target on the map, salvo and launch options, cease fire, reload. A launcher given its own target fires at it, waits while it is busy or no fire-control channel is free, and does not take other launchers off their targets. Kept in saved games.
 3. **Automatic use** per launcher and target domain (aircraft, missiles, surface ships, submarines, land): switch off what the AI may use by itself - e.g. keep the long-range SAMs for aircraft and leave missiles to the short-range ones. Merged with the unit's Standing Orders; kept in saved games. Manual fire is never restricted.
 4. **Weapons status** (Free / Tight / Hold) and "On Tight: engage hostile aircraft" at the top of the tab.
 5. A legend behind the (i) next to the tab's name.
@@ -25,10 +23,9 @@ A second tab in the Unit Status window of your ships and submarines:
 
 ## Compatibility
 
-- Supports Sea Power version 0.8.4 and later.
+- Supports Sea Power version 0.8.3 - 0.8.5.
 - Requires Anchor Chain.
 - Can be switched on/off in the game's Mods menu.
-- Works together with Smart Windows and Alternative Damage Model.
 
 ## Install
 

@@ -142,6 +142,7 @@ namespace AlternativeWeaponsControl
         {
             if (!_patchTried) TryPatch();
             WatchConfigFile();
+            try { FixTargetsStep(); } catch (Exception e) { Trace("target fix: " + e.Message); }
             if (!Enabled) return;
             try { StatusViewsStep(UnityEngine.Time.unscaledTime); } catch (Exception e) { Trace("status views: " + e); }
         }
@@ -381,6 +382,8 @@ namespace AlternativeWeaponsControl
         // mod puts a host of its own next to them (same panel, grid cell, margins) and shows it while the tab is selected.
 
         static readonly List<WeakReference> StatusViews = new List<WeakReference>();   // SeapowerUI.UnitStatusView
+        static readonly object HostTag = new object();
+        static readonly ConditionalWeakTable<Noesis.Border, object> Hosts = new ConditionalWeakTable<Noesis.Border, object>();   // the mod's host Borders
 
         sealed class ViewState
         {
@@ -409,7 +412,7 @@ namespace AlternativeWeaponsControl
                 if (status == null || !StTabs.TryGetValue(status, out mt)) continue;
                 var vs = ViewStates.GetOrCreateValue(o);
                 try { HeaderStep(usv, mt, vs, now); } catch (Exception e) { Trace("tab header: " + e.Message); }
-                if (!vs.Failed) HostStep(usv, status, mt, vs, now);
+                if (!vs.Failed) { try { HostStep(usv, status, mt, vs, now); } catch (Exception e) { Trace("tab host: " + e); } }
             }
         }
 
@@ -421,7 +424,15 @@ namespace AlternativeWeaponsControl
             if (host == null || Noesis.VisualTreeHelper.GetParent(host) == null)
             {
                 if (!selected || view == null) return;
-                if (Noesis.VisualTreeHelper.GetParent(view) != null) return;   // the game shows it
+                var vp0 = Noesis.VisualTreeHelper.GetParent(view);
+                if (vp0 != null)
+                {
+                    // still in the host of a closed Unit Status window (reopened: a new view, the same tab content): take it out
+                    var ob = vp0 as Noesis.Border;
+                    object mark;
+                    if (ob != null && Hosts.TryGetValue(ob, out mark)) ob.Child = null;
+                    else return;   // the game shows it
+                }
                 host = MakeHost(vs, usv, status);
                 if (host == null) { if (++vs.Tries > 120) vs.Failed = true; return; }
                 vs.Host = host;
@@ -481,6 +492,7 @@ namespace AlternativeWeaponsControl
             Noesis.Grid.SetColumn(host, Noesis.Grid.GetColumn(refEl));
             Noesis.Grid.SetRowSpan(host, Noesis.Grid.GetRowSpan(refEl));
             Noesis.Grid.SetColumnSpan(host, Noesis.Grid.GetColumnSpan(refEl));
+            Hosts.Add(host, HostTag);
             int at = panel.Children.IndexOf(refEl as Noesis.UIElement);
             panel.Children.Insert(at < 0 ? panel.Children.Count : at + 1, host);
             return host;

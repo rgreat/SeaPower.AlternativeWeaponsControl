@@ -142,12 +142,171 @@ namespace AlternativeWeaponsControl
 
         public static bool IsPinnedTo(object task, object ws) { return ReferenceEquals(PinOf(task), ws); }
 
+        // The launcher a player's engage task is tied to, in the mission save. The game saves the unit's engage tasks as
+        // sections <unit>EngageTask1..N - first the task of every system executing one (a task several guns took is written
+        // once per gun), then the unit's list - and loads them all back into the list in that order (ObjectBase.Save /
+        // LoadStateFromFile, EngageTask.CreateFromFile). The unit section gets "N:launcher index,..." (N = that section's
+        // number); the tasks loaded from those sections are tied again. (Older saves: "UID:index" under the old key.)
+        const string PinsKey = "AlternativeWeaponsControl_PinTasks", PinsKeyOld = "AlternativeWeaponsControl_Pins";
+
+        static void SavePins(object unit, object ini, string sectionName)
+        {
+            try
+            {
+                var wss = R.F(R.F(unit, "_obp"), "_weaponSystems") as IList;
+                if (wss == null) return;
+                var sb = new System.Text.StringBuilder();
+                int k = 0;
+                Action<object> add = t =>
+                {
+                    k++;
+                    var ws = PinOf(t);
+                    int idx = ws == null ? -1 : wss.IndexOf(ws);
+                    if (idx >= 0) sb.Append(sb.Length > 0 ? "," : "").Append(k).Append(':').Append(idx);
+                };
+                foreach (var ws in wss)
+                {
+                    var tt = R.F(ws, "_takenEngageTask");
+                    if (ws != null && R.B(R.F(ws, "_executingEngageTask")) && tt != null) add(tt);
+                }
+                var tasks = R.F(unit, "_currentEngageTasks") as IList;
+                if (tasks != null) foreach (var t in tasks) add(t);
+                if (sb.Length > 0) R.Call(ini, "writeValue", sectionName, PinsKey, sb.ToString());
+            }
+            catch (Exception e) { Trace("weapons pins save: " + e.Message); }
+        }
+
+        /// <summary>The tasks loaded from the unit's EngageTask sections, in section order (the last N of its list).</summary>
+        static List<object> LoadedTasks(object unit, object ini, string sectionName, out int sections)
+        {
+            sections = 0;
+            while (R.B(R.Call(ini, "doesSectionExist", sectionName + "EngageTask" + (sections + 1)))) sections++;
+            var res = new List<object>();
+            var tasks = R.F(unit, "_currentEngageTasks") as IList;
+            if (tasks == null || sections == 0 || tasks.Count < sections) return res;
+            for (int i = tasks.Count - sections; i < tasks.Count; i++) res.Add(tasks[i]);
+            return res;
+        }
+
+        static void LoadPins(object unit, object ini, string sectionName)
+        {
+            try
+            {
+                int sections;
+                var loaded = LoadedTasks(unit, ini, sectionName, out sections);
+                var wss = R.F(R.F(unit, "_obp"), "_weaponSystems") as IList;
+                if (wss == null || loaded.Count == 0) return;
+                FixTargets(unit, ini, sectionName, loaded);
+                var s = R.Call(ini, "readValue", sectionName, PinsKey, "", false) as string;
+                bool old = string.IsNullOrEmpty(s);
+                if (old) s = R.Call(ini, "readValue", sectionName, PinsKeyOld, "", false) as string;
+                if (string.IsNullOrEmpty(s)) return;
+                int n = 0;
+                foreach (var part in s.Split(','))
+                {
+                    var kv = part.Split(':');
+                    int key, idx;
+                    if (kv.Length != 2 || !int.TryParse(kv[0], out key) || !int.TryParse(kv[1], out idx) || idx < 0 || idx >= wss.Count) continue;
+                    object t = null;
+                    if (!old) { if (key >= 1 && key <= loaded.Count) t = loaded[key - 1]; }
+                    else foreach (var x in loaded) if (x != null && PinOf(x) == null && R.I(R.F(x, "_uid")) == key) { t = x; break; }
+                    if (t == null) continue;
+                    Pin(t, wss[idx], unit);
+                    n++;
+                }
+                if ((object)Active != null && n > 0) Active.Verbose("weapons: " + n + " launcher target(s) loaded for " + R.S(R.Call(unit, "getUIDAndName")));
+            }
+            catch (Exception e) { Trace("weapons pins load: " + e.Message); }
+        }
+
+        static void Pin(object t, object ws, object unit)
+        {
+            PinBox had;
+            if (Pins.TryGetValue(t, out had)) Pins.Remove(t);
+            Pins.Add(t, new PinBox { Ws = ws });
+            var ammo = R.S(R.F(t, "_ammoId"));
+            PinRecs.RemoveAll(r => ReferenceEquals(r.Task, t));
+            PinRecs.Add(new PinRec { Task = t, Unit = unit, Ws = ws, Ammo = ammo, Target = R.F(t, "_targetObject"), Loaded0 = Loaded(ws, new List<string> { ammo }) });
+        }
+
+        // The game loads a unit's engage tasks while it creates the units one by one: a target created after the unit is not
+        // found yet (SceneCreator.FindObjectById), and the task is made for a position (0,0,0) instead - the target is lost.
+        // The tasks whose saved target was not found are made again with it once it exists (the first frames of the mission).
+        sealed class TargetFix { public object Unit, Task; public int TargetId; public float Until; }
+        static readonly List<TargetFix> TargetFixes = new List<TargetFix>();
+
+        static void FixTargets(object unit, object ini, string sectionName, List<object> loaded)
+        {
+            for (int k = 0; k < loaded.Count; k++)
+            {
+                var t = loaded[k];
+                if (t == null || R.F(t, "_targetObject") != null) continue;
+                var sec = sectionName + "EngageTask" + (k + 1);
+                int id = -1;
+                try { id = (int)R.Call(ini, "readValue", sec, "Target", -1, false); id = (int)R.Call(ini, "readValue", sec, "TargetObject", id, false); } catch { }
+                if (id <= 0) continue;
+                TargetFixes.Add(new TargetFix { Unit = unit, Task = t, TargetId = id, Until = UnityEngine.Time.realtimeSinceStartup + 300f });
+            }
+        }
+
+        static object _sceneCreator;
+
+        static object FindObjectById(int id)
+        {
+            try
+            {
+                if (_sceneCreator == null || _sceneCreator.Equals(null))
+                {
+                    var a = _tObjectBase.Assembly;
+                    var sg = a.GetType("SeaPower.Singleton`1").MakeGenericType(a.GetType("SeaPower.SceneCreator"));
+                    _sceneCreator = sg.GetProperty("Instance", BindingFlags.Static | BindingFlags.Public).GetValue(null, null);
+                }
+                var o = R.Call(_sceneCreator, "FindObjectById", id);
+                return o == null || o.Equals(null) ? null : o;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>Each frame while some loaded task waits for its target: once the target exists, the task is made again for it
+        /// (same ammunition, salvo, priority, flags, UID and creation time) in the same place of the unit's list; its launcher pin moves on.</summary>
+        public static void FixTargetsStep()
+        {
+            if (TargetFixes.Count == 0) return;
+            float now = UnityEngine.Time.realtimeSinceStartup;
+            for (int i = TargetFixes.Count - 1; i >= 0; i--)
+            {
+                var f = TargetFixes[i];
+                try
+                {
+                    if (now > f.Until || f.Unit == null || f.Unit.Equals(null)) { TargetFixes.RemoveAt(i); continue; }
+                    var tasks = R.F(f.Unit, "_currentEngageTasks") as IList;
+                    int at = tasks == null ? -1 : tasks.IndexOf(f.Task);
+                    if (at < 0) { TargetFixes.RemoveAt(i); continue; }   // done / dropped meanwhile
+                    var target = FindObjectById(f.TargetId);
+                    if (target == null) continue;
+                    var t = f.Task;
+                    var nt = Activator.CreateInstance(t.GetType(), R.F(t, "_ammoId"), target, f.Unit, R.I(R.F(t, "_shotsToFire")), R.I(R.F(t, "_priority")),
+                                                      R.B(R.F(t, "_isAutoAttack")), R.B(R.F(t, "_isFormationAttack")));
+                    R.SetF(nt, "_uid", R.F(t, "_uid"));
+                    R.SetF(nt, "_creationTime", R.F(t, "_creationTime"));
+                    tasks[at] = nt;
+                    var ws = PinOf(t);
+                    if (ws != null) Pin(nt, ws, f.Unit);
+                    PinRecs.RemoveAll(r => ReferenceEquals(r.Task, t));
+                    TargetFixes.RemoveAt(i);
+                    Trace("loaded task " + R.I(R.F(nt, "_uid")) + " of " + R.S(R.Call(f.Unit, "getUIDAndName")) + ": target " + f.TargetId + " found");
+                }
+                catch (Exception e) { TargetFixes.RemoveAt(i); Trace("weapons target fix: " + e.Message); }
+            }
+        }
+
         // what a mount was doing before the distribution: the game hands a new task to EVERY gun with the ammunition (and CIWS,
         // linked launchers), overwriting their engagement; for a task tied to another launcher it is put back afterwards
         static readonly string[] EngageFields = { "_takenEngageTask", "_executingEngageTask", "_engageTaskPriority", "_ammoForEngage", "_isTargetObjectRequired",
                                                   "_alignmentUID", "_engageStartTime", "_engageDelay", "_targetObject", "_currentTargetPoint", "_targetPosition",
                                                   "_isAutoEngaging", "_ignoreIfUndetected", "_autoEngageTask", "_offsetVector" };
         [ThreadStatic] static Dictionary<object, object[]> _before;
+        [ThreadStatic] static List<object> _pinnedIn;   // the unit's tasks tied to a launcher, at the start of the distribution
 
         static void HetEnter(object __instance)
         {
@@ -159,9 +318,9 @@ namespace AlternativeWeaponsControl
             {
                 var tasks = R.F(__instance, "_currentEngageTasks") as IList;
                 if (tasks == null) return;
-                bool pinned = false;
-                foreach (var t in tasks) if (t != null && PinOf(t) != null) { pinned = true; break; }
-                if (!pinned) return;
+                if (_pinnedIn == null) _pinnedIn = new List<object>(); else _pinnedIn.Clear();
+                foreach (var t in tasks) if (t != null && PinOf(t) != null) _pinnedIn.Add(t);
+                if (_pinnedIn.Count == 0) return;
                 var all = R.F(R.F(__instance, "_obp"), "_weaponSystems") as IList;
                 if (all == null) return;
                 if (_before == null) _before = new Dictionary<object, object[]>();
@@ -204,6 +363,26 @@ namespace AlternativeWeaponsControl
                     }
             }
             catch (Exception e) { Trace("weapons pin tasks: " + e.Message); }
+            // several tied tasks handed out at once (a loaded save: all of them in the list): the game gives each gun task to
+            // EVERY gun with the ammunition, so a gun that took its own task gets the next one over it and drops it here - and a
+            // taken task has left the list: such a task goes back to the list and is handed out again next time
+            try
+            {
+                if (_pinnedIn != null && _pinnedIn.Count > 0)
+                {
+                    var tasks = R.F(__instance, "_currentEngageTasks") as IList;
+                    foreach (var t in _pinnedIn)
+                    {
+                        var ws = PinOf(t);
+                        if (tasks == null || ws == null || tasks.Contains(t)) continue;
+                        if (R.B(R.F(ws, "_executingEngageTask")) && ReferenceEquals(R.F(ws, "_takenEngageTask"), t)) continue;
+                        tasks.Add(t);
+                        Trace("tied task " + R.I(R.F(t, "_uid")) + " lost in the distribution: back to the list");
+                    }
+                }
+            }
+            catch (Exception e) { Trace("weapons pin requeue: " + e.Message); }
+            if (_pinnedIn != null) _pinnedIn.Clear();
             if (_before != null) _before.Clear();
             UpdatePins(__instance);
             try
