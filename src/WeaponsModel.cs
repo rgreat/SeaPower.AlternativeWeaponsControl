@@ -129,14 +129,14 @@ namespace AlternativeWeaponsControl
         public const int DAir = 1, DMsl = 2, DSur = 4, DSub = 8, DLnd = 16, DAll = 31;
         public static readonly int[] Domains = { DAir, DMsl, DSur, DSub, DLnd };
         public static readonly string[] DomainNames = { "AIR", "MSL", "SUR", "SUB", "LND" };
-        public static readonly string[] DomainLong = { "aircraft and helicopters", "missiles and other weapons in flight", "surface ships", "submarines", "land targets" };
+        public static readonly string[] DomainLong = { "aircraft and helicopters", "missiles, torpedoes and other weapons", "surface ships", "submarines", "land targets" };
 
         // Standing Orders items mapped onto launcher domains
         const string ItAuto = "AutoAttackSurface", ItSam = "ShipsAutoUseSAMsAgainstSurfaceTargets", ItAsm = "ShipsAutoUseAntiShipMissilesAgainstSurfaceTargets";
         static readonly string[] Items = { ItAuto, ItSam, ItAsm };
         static readonly string[] ItemLabels = { "Auto attack surface", "Ships auto-use SAMs against surface targets", "Ships auto-use anti-ship missiles against surface targets" };
 
-        static Type _tObjectBase, _tVessel, _tSubmarine, _tLandUnit, _tTorpedo, _tWeaponBase, _tCiws, _tWeaponStatus;
+        static Type _tObjectBase, _tVessel, _tSubmarine, _tLandUnit, _tTorpedo, _tWeaponBase, _tCiws, _tWeaponStatus, _tLauncher, _tAircraft, _tHelicopter;
 
         static void InitWeaponTypes(Assembly asm)
         {
@@ -148,6 +148,9 @@ namespace AlternativeWeaponsControl
             _tTorpedo = asm.GetType("SeaPower.Torpedo");
             _tWeaponBase = asm.GetType("SeaPower.WeaponBase");
             _tCiws = asm.GetType("SeaPower.WeaponSystemCIWS");
+            _tLauncher = asm.GetType("SeaPower.WeaponSystemLauncher");
+            _tAircraft = asm.GetType("SeaPower.Aircraft");
+            _tHelicopter = asm.GetType("SeaPower.Helicopter");
             _tWeaponStatus = _tObjectBase == null ? null : _tObjectBase.GetNestedType("WeaponStatus");
         }
 
@@ -157,7 +160,7 @@ namespace AlternativeWeaponsControl
             if (t == null) return 0;
             try
             {
-                if (R.Is(t, _tWeaponBase)) return R.Is(t, _tTorpedo) ? DSub : DMsl;
+                if (R.Is(t, _tWeaponBase)) return DMsl;   // missiles and torpedoes
                 if (R.B(R.P(t, "IsAirUnit"))) return DAir;
                 if (R.Is(t, _tLandUnit)) return DLnd;
                 if (R.Is(t, _tSubmarine)) return R.B(R.Call(t, "isSubmerged")) ? DSub : DSur;
@@ -182,7 +185,7 @@ namespace AlternativeWeaponsControl
             public int[] AmmoDom;        // per Ammo entry
         }
 
-        public static readonly string[] SectionNames = { "SAM", "ANTI-SHIP", "LAND ATTACK", "ASW", "GUNS", "CIWS", "OTHER" };
+        public static readonly string[] SectionNames = { "SAM", "ANTI-SHIP", "LAND ATTACK", "ASW", "GUNS", "CIWS", "OTHER", "STORES" };
 
         static int AmmoDomains(object ap)
         {
@@ -198,7 +201,7 @@ namespace AlternativeWeaponsControl
             if (R.B(R.F(ap, "_hasSecondaryTargetType"))) t(R.S(R.F(ap, "_secondaryTargetType")));
             var la = R.F(ap, "_landAttack") as ICollection;
             if (la != null && la.Count > 0) d |= DLnd;
-            if (R.B(R.F(ap, "_antiTorpedo"))) d |= DSub;
+            if (R.B(R.F(ap, "_antiTorpedo"))) d |= DMsl;   // torpedoes as targets: MSL (weapons)
             return d;
         }
 
@@ -216,12 +219,13 @@ namespace AlternativeWeaponsControl
             var obp = R.F(unit, "_obp");
             var list = R.F(obp, "_weaponSystems") as IList;
             if (list == null) return res;
+            bool air = R.Is(unit, _tAircraft) || R.Is(unit, _tHelicopter);
             for (int i = 0; i < list.Count; i++)
             {
                 var ws = list[i];
                 if (ws == null) continue;
                 var wt = R.S(R.F(ws, "_weaponType"));
-                if (wt == null || wt == "UNKNOWN" || wt == "Chaff" || wt == "Noisemaker" || wt == "Hardpoint") continue;
+                if (wt == null || wt == "UNKNOWN" || wt == "Chaff" || wt == "Noisemaker" || (wt == "Hardpoint" && !air)) continue;
                 var l = new Launcher { Ws = ws, Index = i, Name = R.S(R.Rv(R.P(ws, "DisplayName"))) ?? R.S(R.F(ws, "_systemName")) ?? "?" };
                 var names = R.F(ws, "_associatedAmmunitionNames") as IList;
                 var doms = new List<int>();
@@ -235,8 +239,9 @@ namespace AlternativeWeaponsControl
                         try { ammo = R.Call(unit, "getAmmunitionByName", id); } catch { }
                         var ap = R.F(ammo, "_ap");
                         if (ap == null) continue;
-                        l.Ammo.Add(id);
                         int d = AmmoDomains(ap);
+                        if (wt == "Hardpoint" && d == 0) continue;   // drop tanks, sonobuoys, ...
+                        l.Ammo.Add(id);
                         doms.Add(d);
                         l.Domains |= d;
                         if (IsSam(ap)) l.HasSam = true;
@@ -245,13 +250,16 @@ namespace AlternativeWeaponsControl
                     }
                 l.AmmoDom = doms.ToArray();
                 if (l.Domains == 0) continue;
-                if (wt == "CIWS") l.Section = 5;
+                if (wt == "Hardpoint") l.Section = 7;   // all the stores of an aircraft: one group, a Fire per ammunition
+                else if (wt == "CIWS") l.Section = 5;
                 else if (wt == "Gun") l.Section = 4;
                 else
                 {
                     var type = R.S(R.F(first, "_type"));
                     var tt = R.S(R.F(first, "_targetType"));
-                    if (tt == "ASW" || type == "Torpedo" || type == "RBU" || type == "ASROC") l.Section = 3;
+                    // ASW: anti-submarine weapons only - a torpedo that cannot attack submarines is anti-ship
+                    if (tt == "ASW" || type == "RBU" || type == "ASROC" || (type == "Torpedo" && (l.Domains & DSub) != 0)) l.Section = 3;
+                    else if (type == "Torpedo" && (l.Domains & DSur) != 0) l.Section = 1;
                     else if (tt == "AAW") l.Section = 0;
                     else if (tt == "ASuW") l.Section = 1;
                     else if ((l.Domains & DLnd) != 0) l.Section = 2;
@@ -260,28 +268,96 @@ namespace AlternativeWeaponsControl
                 l.Kind = SectionNames[l.Section];
                 res.Add(l);
             }
-            // where the mounts are: fore / aft of the middle, port / starboard (relative to the widest mount)
+            // where the mounts are: fore / aft of the middle, port / starboard (relative to the widest mount). Mounts that sit in one
+            // point (the torpedo tubes of a submarine: all at the hull's origin) are told apart by their preferred firing arc
             try
             {
                 var ut = ((Component)unit).transform;
                 var pos = new Vector3[res.Count];
                 float maxX = 0f;
+                var wpos = new Vector3[res.Count];
                 for (int i = 0; i < res.Count; i++)
                 {
-                    var go = R.F(res[i].Ws, "_mountObject") as GameObject;
+                    // the first container's own object (a submarine's tubes share one mount: the tube's place is the container's), else the mount
+                    GameObject go = null;
+                    try { var cs = R.F(res[i].Ws, "_containers") as System.Collections.IList; if (cs != null && cs.Count > 0) go = R.F(cs[0], "_gunObject") as GameObject; } catch { }
+                    if (go == null) go = R.F(res[i].Ws, "_mountObject") as GameObject;
                     pos[i] = go == null ? new Vector3(float.NaN, 0f, 0f) : ut.InverseTransformPoint(go.transform.position);
-                    if (!float.IsNaN(pos[i].x)) maxX = Mathf.Max(maxX, Mathf.Abs(pos[i].x));
+                    wpos[i] = go == null ? Vector3.zero : go.transform.position;
+                    if (float.IsNaN(pos[i].x)) continue;
+                    maxX = Mathf.Max(maxX, Mathf.Abs(pos[i].x));
                 }
+                // mounts of one kind that stand within ~2 m of each other (0.03 world unit; 1 unit = 67 m) are in one point: a submarine's tubes
+                var together = new bool[res.Count];
                 for (int i = 0; i < res.Count; i++)
                 {
-                    if (float.IsNaN(pos[i].x)) continue;
-                    var s = pos[i].z >= 0f ? "fore" : "aft";
-                    if (maxX > 0f && Mathf.Abs(pos[i].x) > maxX * 0.25f) s += pos[i].x < 0f ? " port" : " starboard";
-                    res[i].Loc = s;
+                    int n = 0; Vector3 lo = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue), hi = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+                    for (int j = 0; j < res.Count; j++)
+                        if (res[j].Name == res[i].Name && !float.IsNaN(pos[j].x)) { n++; lo = Vector3.Min(lo, wpos[j]); hi = Vector3.Max(hi, wpos[j]); }
+                    together[i] = n > 1 && (hi - lo).magnitude < 0.03f;
+                }
+                // the label = the longitudinal part (fore / aft) + the lateral one (port / starboard)
+                var lon = new string[res.Count]; var lat = new string[res.Count];
+                for (int i = 0; i < res.Count; i++)
+                {
+                    if (!together[i] && !float.IsNaN(pos[i].x))
+                    {
+                        lon[i] = pos[i].z >= 0f ? Loc.T("loc.fore") : Loc.T("loc.aft");
+                        if (maxX > 0f && Mathf.Abs(pos[i].x) > Mathf.Max(maxX * 0.25f, 0.02f)) lat[i] = pos[i].x < 0f ? Loc.T("loc.port") : Loc.T("loc.starboard");
+                    }
+                    else
+                    {
+                        float c;
+                        if (ArcCentre(res[i].Ws, out c))
+                        {
+                            if (Mathf.Abs(c) >= 135f) lon[i] = Loc.T("loc.aft");
+                            else if (Mathf.Abs(c) <= 45f) lon[i] = Loc.T("loc.fore");
+                            else lat[i] = c < 0f ? Loc.T("loc.port") : Loc.T("loc.starboard");
+                        }
+                    }
+                }
+                // a part that is the same for all of a kind says nothing: "Fore port / Fore starboard" -> "Port / Starboard"
+                for (int i = 0; i < res.Count; i++)
+                {
+                    bool lonVar = false, latVar = false;
+                    for (int j = 0; j < res.Count; j++)
+                    {
+                        if (res[j].Name != res[i].Name) continue;
+                        if (lon[j] != lon[i]) lonVar = true;
+                        if (lat[j] != lat[i]) latVar = true;
+                    }
+                    string l1 = lon[i], l2 = lat[i];
+                    if (latVar && !lonVar && l2 != null) l1 = null;            // only the side tells them apart
+                    else if (lonVar && !latVar && l1 != null) l2 = null;       // only fore / aft tells them apart
+                    string s = l1 == null ? l2 : l2 == null ? l1 : l1 + " " + l2;
+                    if (s != null) res[i].Loc = s;
                 }
             }
             catch { }
             return res;
+        }
+
+        /// <summary>The centre of the launcher's first preferred firing arc, degrees from the bow (-180..180; 0 = ahead, 180 = astern); false when it has none.</summary>
+        static bool ArcCentre(object ws, out float centre)
+        {
+            centre = 0f;
+            try
+            {
+                var arcs = R.F(R.F(ws, "_vwp"), "_preferredArcs") as System.Collections.IList;
+                if (arcs == null) return false;
+                foreach (var o in arcs)
+                {
+                    var v = (Vector2)o;
+                    if (v == Vector2.zero) continue;
+                    float c = v.x <= v.y ? (v.x + v.y) / 2f : (v.x + v.y + 360f) / 2f;   // an arc through the stern: 90..-90
+                    while (c > 180f) c -= 360f;
+                    while (c < -180f) c += 360f;
+                    centre = c;
+                    return true;
+                }
+            }
+            catch { }
+            return false;
         }
 
         // ------------------------------------------------------------------ per-unit switches
@@ -291,11 +367,24 @@ namespace AlternativeWeaponsControl
             public readonly Dictionary<int, int> Off = new Dictionary<int, int>();   // launcher index -> domains the player turned off
             public readonly bool[] Snap = new bool[Items.Length];                    // Standing Orders values last seen
             public bool SnapInit;
+            public int FreeAirSet = -1;                                             // On Free: engage approaching fast unidentified aircraft: -1 = the default of the side, 0 / 1 = the player's choice
             public List<Launcher> Cache;                                            // launchers (for the AI hooks)
             public readonly Dictionary<object, int> IndexOf = new Dictionary<object, int>();
         }
 
         static readonly ConditionalWeakTable<object, UnitW> UnitsW = new ConditionalWeakTable<object, UnitW>();
+
+        /// <summary>On Free: engage approaching fast unidentified aircraft: the player's choice for the unit, else on for the enemy's AI ships, off for the others.</summary>
+        public static bool FreeAirOn(object unit)
+        {
+            UnitW w;
+            if (UnitsW.TryGetValue(unit, out w) && w.FreeAirSet >= 0) return w.FreeAirSet == 1;
+            var tf = R.V(unit, "_taskforce");
+            var side = R.P(tf, "Side");
+            var a = Active;
+            bool enemy = side != null && side.ToString() == "Enemy";
+            return a == null ? enemy : enemy ? a._freeAirEnemy.Value : a._freeAirOwn.Value;
+        }
 
         public static UnitW W(object unit) { return UnitsW.GetOrCreateValue(unit); }
 
@@ -456,23 +545,24 @@ namespace AlternativeWeaponsControl
         }
 
         /// <summary>Tooltip text of a chip.</summary>
-        public static string ChipTip(object unit, Launcher l, int d)
+        public static string ChipTip(object unit, Launcher l, int d, string whom = null)
         {
             int di = Array.IndexOf(Domains, d);
             var st = State(unit, l, d);
-            if (st == Chip.On) return DomainNames[di] + ": automatic against " + DomainLong[di] + ".\nClick: off for this launcher.";
-            if (st == Chip.Off) return DomainNames[di] + ": off for this launcher.\nClick: automatic again.";
+            if (whom == null) whom = Loc.T("chip.thisLauncher");
+            if (st == Chip.On) return Loc.F("chip.on", Loc.T("dom." + di), Loc.T("domLong." + di), whom);
+            if (st == Chip.Off) return Loc.F("chip.off", Loc.T("dom." + di), whom);
             var b = new List<int>();
             DocAllowed(unit, l, d, b);
-            var sb = new StringBuilder(DomainNames[di] + ": off by Standing Orders - ");
-            for (int i = 0; i < b.Count; i++) sb.Append(i > 0 ? ", " : "").Append(ItemLabels[b[i]]).Append(": No");
-            sb.Append(".\nClick: allow for this launcher (the unit's order becomes Yes, the other launchers it covers turn off).");
+            var sb = new StringBuilder(Loc.F("chip.order", Loc.T("dom." + di)));
+            for (int i = 0; i < b.Count; i++) sb.Append(i > 0 ? ", " : "").Append(Loc.F("chip.orderNo", ItemLabels[b[i]]));
+            sb.Append(Loc.F("chip.orderEnd", whom));
             return sb.ToString();
         }
 
         // ------------------------------------------------------------------ the mission save
 
-        const string SaveKey = "AlternativeWeaponsControl_WeaponAuto";
+        const string SaveKey = "AlternativeWeaponsControl_WeaponAuto", FreeAirKey = "AlternativeWeaponsControl_FreeUnknownAir";
 
         static void UnitSavePostfix(object __instance, object ini, string sectionName)
         {
@@ -480,6 +570,7 @@ namespace AlternativeWeaponsControl
             try
             {
                 UnitW w;
+                if (UnitsW.TryGetValue(__instance, out w) && w.FreeAirSet >= 0) R.Call(ini, "writeValue", sectionName, FreeAirKey, w.FreeAirSet.ToString());
                 if (UnitsW.TryGetValue(__instance, out w) && w.Off.Count > 0)
                 {
                     var sb = new StringBuilder();
@@ -497,6 +588,7 @@ namespace AlternativeWeaponsControl
             {
                 if (ini == null) return;
                 LoadPins(__instance, ini, sectionName);
+                { var fa = R.Call(ini, "readValue", sectionName, FreeAirKey, "", false) as string; if (fa == "1" || fa == "0") W(__instance).FreeAirSet = fa == "1" ? 1 : 0; }
                 var s = R.Call(ini, "readValue", sectionName, SaveKey, "", false) as string;
                 if (string.IsNullOrEmpty(s)) return;
                 var w = W(__instance);

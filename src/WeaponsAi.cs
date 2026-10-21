@@ -39,6 +39,7 @@ namespace AlternativeWeaponsControl
             patch(ai == null ? null : ai.GetMethod("OnUpdate", inst, null, Type.EmptyTypes, null), "AiEnter", null, "AiLeave");
             patch(ai == null ? null : ai.GetMethod("OnFixedUpdate", inst, null, Type.EmptyTypes, null), "AiEnter", null, "AiLeave");
             patch(_tObjectBase == null ? null : _tObjectBase.GetMethod("HandleEngageTasks", inst, null, Type.EmptyTypes, null), "HetEnter", null, "HetLeave");
+            patch(ai == null ? null : ai.GetMethod("GetPossibleTargetsList", inst, null, Type.EmptyTypes, null), null, "FreeAirPostfix", null);
             var sel = asm.GetType("SeaPower.WeaponSelector");
             MethodInfo gw = null;
             if (sel != null) foreach (var m in sel.GetMethods(BindingFlags.Static | BindingFlags.Public)) if (m.Name == "GetWeaponSystemsForAmmunition" && m.GetParameters().Length == 4) gw = m;
@@ -66,6 +67,10 @@ namespace AlternativeWeaponsControl
             var apg = gun == null ? null : gun.GetMethod("activatePreLaunchGuidance", inst | BindingFlags.DeclaredOnly);
             if (apg != null) harmony.Patch(apg, prefix: Hm("GunGuidePrefix"), postfix: Hm("GunGuidePostfix")); else Trace("WeaponSystemGun.activatePreLaunchGuidance not found: GunOneDirector does nothing");
             if (gfc != null) harmony.Patch(gfc, postfix: Hm("GunFcPostfix")); else Trace("WeaponSystemGun.GetFireControlSensor not found: GunChannelLimit does nothing");
+            var aut = asm.GetType("SeaPower.AlignUnitToTarget");
+            var gva = aut == null ? null : aut.GetMethod("GetValidHeadingArcs", inst, null, Type.EmptyTypes, null);
+            _tVesselAi = asm.GetType("SeaPower.Vessel");
+            if (gva != null) harmony.Patch(gva, postfix: Hm("ChasePostfix")); else Trace("AlignUnitToTarget.GetValidHeadingArcs not found: NoRbuSurfaceChase / NoAirChase do nothing");
             if (n < 8) Logger.LogWarning("Weapons tab: " + (8 - n) + " AI / save hook(s) not found (game updated?); the launcher switches may not be applied or saved.");
             Trace("patched weapons AI / save hooks: " + n);
         }
@@ -460,6 +465,41 @@ namespace AlternativeWeaponsControl
         // took the gun's target (WeaponSystemGun.activatePreLaunchGuidance -> TryToAddTarget, once per engagement). With the
         // option: only a director holding the target counts; else the gun tries to get a channel (every call, so it picks one
         // up when it frees) and, failing, aims on local control (null: Globals._gunLocalControlGainRate, darkness factor).
+        // ------------------------------------------------------------------ ships running after targets
+        // A ship engaging a target out of its weapon's range turns to it and goes full ahead (AlignUnitToTarget.GetValidHeadingArcs:
+        // _goingIntoFiringRange, a 4 degree arc at the target; Vessel.UpdateAlignmentSteering: rudder, telegraph 5). With the
+        // options a ship does not do that for a surface target of ASW mortars (RBU) or for an air target (aircraft, helicopters,
+        // missiles): no arc from that alignment, so the ship keeps its course. Turning away from a target too close and turning
+        // a launcher's arc onto a target in range stay as in the game. All vessels (the enemy's too).
+        static Type _tVesselAi;
+
+        static void ChasePostfix(object __instance, ref object __result)
+        {
+            try
+            {
+                var a = Active;
+                if (a == null || !Enabled || __result == null) return;
+                bool rbu = a._noRbuSurfaceChase != null && a._noRbuSurfaceChase.Value, air = a._noAirChase != null && a._noAirChase.Value;
+                if (!rbu && !air) return;
+                if (!R.B(R.F(__instance, "_goingIntoFiringRange"))) return;
+                var range = R.F(__instance, "_ammunitionRanges");
+                float dist = R.Fl(R.F(__instance, "_distanceToAimpoint")), off = R.Fl(R.F(__instance, "_fireZoneMaxOffset"));
+                float max = range is Vector2 ? ((Vector2)range).y : float.MaxValue;
+                if (dist <= max - off) return;                              // too close: turning away stays
+                var unit = R.F(__instance, "_baseObject");
+                if (unit == null || _tVesselAi == null || !_tVesselAi.IsInstanceOfType(unit)) return;
+                var tgt = R.F(__instance, "_targetObject");
+                if (tgt == null) return;
+                bool isAir = R.B(R.Call(tgt, "isAirTarget"));
+                bool block = air && isAir;
+                if (!block && rbu && !isAir && R.S(R.F(R.F(__instance, "_ap"), "_type")) == "RBU" && !R.B(R.Call(tgt, "isSubmerged"))) block = true;
+                if (!block) return;
+                R.SetF(__instance, "_goingIntoFiringRange", false);
+                __result = null;
+            }
+            catch (Exception e) { Trace("chase: " + e.Message); }
+        }
+
         static bool GunChannelsOn() { var a = Active; return a != null && a._gunChannels != null && a._gunChannels.Value; }
 
         public static bool Working(object s)
@@ -666,7 +706,7 @@ namespace AlternativeWeaponsControl
                 };
                 var threats = R.F(unit, "_threats") as IEnumerable;
                 if (threats != null) foreach (var t in threats) add(t);
-                var pt = R.P(R.F(unit, "_taskforce"), "PlottingTable");
+                var pt = R.P(R.V(unit, "_taskforce"), "PlottingTable");
                 var vs = R.P(pt, "Vehicles") as IEnumerable;
                 if (vs != null) foreach (var v in vs) add(R.P(v, "BaseObject"));
                 var lv = R.P(pt, "LocalVehicles") as IDictionary;

@@ -1,4 +1,5 @@
 using System;
+using System.Text;
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
@@ -28,7 +29,7 @@ namespace AlternativeWeaponsControl
     {
         public const string PluginGuid = "com.rgreat.seapower.alternativeweaponscontrol";
         public const string PluginName = "Alternative Weapons Control";
-        public const string PluginVersion = "1.0.0";
+        public const string PluginVersion = "1.1.0";
 
         public static readonly string BuildId = ReadBuildId();
 
@@ -42,8 +43,10 @@ namespace AlternativeWeaponsControl
 
         // ------------------------------------------------------------ settings
         public ConfigFile Cfg;
-        internal ConfigEntry<bool> _debugEntry, _gunChannels, _gunOneDirector;
-        internal ConfigEntry<float> _clickVolume;
+        internal ConfigEntry<string> _language; internal ConfigEntry<bool> _debugEntry, _gunChannels, _gunOneDirector, _noRbuSurfaceChase, _noAirChase, _mgBurstFix, _hitSoundFix, _mgSoundLoop;
+        internal ConfigEntry<string> _secOrder;
+        internal ConfigEntry<float> _clickVolume, _samMinutes, _samAutoRange, _gunMinError, _flashPower, _firePower;
+        internal ConfigEntry<bool> _tabAir, _tabLand, _flashMissile, _fireFlicker, _optNormal, _optDayOnly, _flashMuzzle, _flashHit, _samButton, _zoneFire, _samAuto, _samKeep, _samAnim, _gunAimBeyond;
         public static string UserDir { get; private set; }
 
         /// <summary>The settings the window shows (in this order).</summary>
@@ -76,7 +79,7 @@ namespace AlternativeWeaponsControl
             return new HarmonyMethod(typeof(AwcPlugin).GetMethod(name, BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public));
         }
 
-        static Assembly GameAssembly()
+        internal static Assembly GameAssembly()
         {
             foreach (var a in AppDomain.CurrentDomain.GetAssemblies())
                 if (a.GetName().Name == "Seapower-Scripts") return a;
@@ -109,19 +112,77 @@ namespace AlternativeWeaponsControl
         {
             _inst = this;
             OpenSettingsFile();
-            _clickVolume = Cfg.Bind("UI", "ClickVolume", 0.4f,
+            _clickVolume = Cfg.Bind("UI", "ClickVolume", 0.5f,
                 "Volume of the click of the tab's buttons and switches, 0..1 (0 = no sound; the game's own buttons make none).");
             _gunOneDirector = Cfg.Bind("FireControl", "GunOneDirector", true,
                 "A gun opening fire takes a target channel on ONE of its directors (the one already tracking its target, or the best free " +
                 "one), not on all of them as in the game - so the other directors stay free for other guns and for missiles sharing them " +
                 "(e.g. Mk92 + STIR on the Adelaide, Top Bow + Four Eyes on the Sverdlov).");
-            _gunChannels = Cfg.Bind("FireControl", "GunChannelLimit", false,
+            _gunChannels = Cfg.Bind("FireControl", "GunChannelLimit", true,
                 "A gun whose directors have no free target channel for its target aims on local control (the game's penalty when no " +
                 "director works: lower solution gain, larger error in the dark) until a channel frees. Off = as in the game: a gun aims " +
                 "with its best working director however many targets that director already tracks.");
+            _samButton = Cfg.Bind("UI", "SamReadyButton", true,
+                "A readiness button on the rows of launchers that warm up before firing (SAM): click = load the missiles now, click again = put them away.");
+            _samMinutes = Cfg.Bind("UI", "SamReadyMinutes", 15f,
+                "Minutes the launcher stays ready after the button, if it is not used: then the missiles are put away.");
+            _samAuto = Cfg.Bind("Ships", "SamAutoCharge", true,
+                "Units (the enemy's too) charge their SAM launchers (missiles onto the rails) when an unknown aircraft comes closer than the " +
+                "range below. Only contacts the unit's crew has already processed (the game's OODA loop) count. Off = the game's own warm-up, " +
+                "which starts when a hostile target is known.");
+            _samKeep = Cfg.Bind("Ships", "SamKeepLoaded", true,
+                "A charged (hot) launcher keeps the missiles on its rails after a launch: the game unloads them into the magazine " +
+                "when the launcher has been idle for a while (a second missile 'disappears' after the first shot). Off = as in the game.");
+            _samAnim = Cfg.Bind("Ships", "SamAnimFix", true,
+                "Missiles move on load and unload (up from / down under the deck) even when the ammunition file has no position data " +
+                "under the launcher's exact system name (e.g. SA-N-1A with an SA-N-1 ammunition): the nearest matching entry is used.");
+            _samAutoRange = Cfg.Bind("Ships", "SamAutoChargeRange", 30f, "Distance (nm) of an approaching unknown aircraft that charges the SAM launchers.");
+            _noRbuSurfaceChase = Cfg.Bind("Ships", "NoRbuSurfaceChase", true,
+                "A ship attacking a surface target with ASW mortars (RBU) does not run after it to get into the mortars' range - " +
+                "it keeps its course and fires once the target comes into range. All ships, the enemy's too.");
+            _noAirChase = Cfg.Bind("Ships", "NoAirChase", true,
+                "A ship does not run after aircraft and missiles to get them into the range of its weapons - it keeps its course " +
+                "and fires once they come into range. All ships, the enemy's too.");
+            _tabLand = Cfg.Bind("UI", "WeaponsTabGroundUnits", true, "The Weapons tab for ground vehicles and land installations (the units with guns / launchers of their own).");
+            _tabAir = Cfg.Bind("UI", "WeaponsTabAircraft", true, "The Weapons tab for aircraft and helicopters (their weapons on the hardpoints: one group, a Fire for each ammunition type, switches by target type).");
+            _secOrder = Cfg.Bind("UI", "SectionOrder", "", "The order of the sections of the Weapons tab (drag a section's title to change it): names separated by commas. Empty = the default order.");
+            _freeAirKnots = Cfg.Bind("Fire", "UnknownAirMinKnots", 500f,
+                "Speed (knots) above which an unidentified aircraft coming towards the ship (within the distance of UnknownAirMaxNm) is engaged by the Weapons tab's \"On Free: engage unidentified aircraft\". " +
+                "Airliners of the game cruise at about 460-480 knots and reach 560 at most.");
+            _freeAirNm = Cfg.Bind("Fire", "UnknownAirMaxNm", 20f, "Distance (nm) within which an unidentified fast aircraft coming towards the ship is engaged by the Weapons tab's \"On Free: engage unidentified aircraft\".");
+            _freeAirOwn = Cfg.Bind("Fire", "UnknownAirDefaultOwn", false, "The starting state of the Weapons tab's \"On Free: engage unidentified aircraft\" for your ships and your allies' ships (a switch set on a unit is kept with it).");
+            _freeAirEnemy = Cfg.Bind("Fire", "UnknownAirDefaultEnemy", true, "The same for the enemy's AI ships (their AI engages such aircraft by itself).");
+            _zoneFire = Cfg.Bind("UI", "FireShowsZones", true,
+                "While the target is being picked after Fire, the firing arcs and range of the weapons are shown on the map and in 3D " +
+                "(as the game does with Alt held over a weapon in the unit's status line).");
+            _optNormal = Cfg.Bind("Optics", "BinocularsNormalView", true, "Binoculars at the maximum magnification start with the normal view (the game starts them with its night / thermal filter on). The game's filter key switches the filter on.");
+            _optDayOnly = Cfg.Bind("Optics", "NormalViewDayOnly", true, "The normal view is the default only by day; at night the game's own default filter stays.");
+            _fireFlicker = Cfg.Bind("Effects", "FireFlicker", true, "The light of a fire on a ship flickers, deeper and faster the stronger the fire (small / moderate / severe).");
+            _firePower = Cfg.Bind("Effects", "FireLightPower", 3f, "Brightness of the fire light on ships (the game's own fire light multiplied; its range grows too). 1 = the game's.");
+            _flashMuzzle = Cfg.Bind("Effects", "MuzzleFlashLight", true, "A short light flash at the muzzle when guns, CIWS and machine guns fire (visible at night).");
+            _flashMissile = Cfg.Bind("Effects", "MissileLaunchFlashLight", true, "A light follows a missile for as long as its booster burns after launch (the booster burn time of the missile).");
+            _flashHit = Cfg.Bind("Effects", "HitFlashLight", true, "A short light flash where a gun shell hits (not in the water).");
+            _flashPower = Cfg.Bind("Effects", "FlashPower", 1f, "Brightness and size of the flashes, 1 = default.");
+            _gunAimBeyond = Cfg.Bind("Guns", "AimBeyondMaxRange", true,
+                "The player's guns, CIWS and machine guns turn and elevate towards a target beyond their maximum range (up to 1.5 x the range, at least 5 nm) " +
+                "without firing, as if it were at the maximum range. Off = as in the game: the turret stays still until the target is in range.");
+            _gunMinError = Cfg.Bind("Guns", "MaxAccuracyMeters", 5f,
+                "Best (maximum) accuracy of guns against surface targets, in metres: the floor of the fire-control range error. The game uses about 40 m, so at close range " +
+                "(up to ~1.4 nm) guns are relatively less accurate than at medium range. The scaling with distance (1.5 % of range) stays. " +
+                "Set about 40 for the game's behaviour.");
+            _mgBurstFix = Cfg.Bind("Guns", "MachineGunBurstFix", true,
+                "Machine guns show their muzzle burst on every shot: a pooled burst effect that is still playing is restarted.");
+            _mgSoundLoop = Cfg.Bind("Guns", "MachineGunSoundLoopFix", true,
+                "The looped fire sound of machine guns skips the silent part of its clip (a gap in the middle of a long burst).");
+            _hitSoundFix = Cfg.Bind("Guns", "HitSoundFix", true,
+                "Gun hits always play their explosion sound: an effect whose sound did not start (pooled instance) is made to play it.");
             _debugEntry = Cfg.Bind("General", "Debug", false,
                 "Verbose logging and BepInEx/AlternativeWeaponsControl.trace.txt.");
-            Entries.Add(_clickVolume); Entries.Add(_gunOneDirector); Entries.Add(_gunChannels); Entries.Add(_debugEntry);
+            _language = Cfg.Bind("General", "Language", "",
+                "Language of the mod's texts: a code of a game language (en, ru ...); empty = the game's own language. The texts are in the files lang/<code>.ini in the mod folder - edit them to translate.");
+            Entries.Add(_clickVolume); Entries.Add(_samButton); Entries.Add(_zoneFire); Entries.Add(_freeAirKnots); Entries.Add(_freeAirNm); Entries.Add(_freeAirOwn); Entries.Add(_freeAirEnemy); Entries.Add(_tabLand); Entries.Add(_tabAir); Entries.Add(_samAuto); Entries.Add(_samKeep); Entries.Add(_samAnim); Entries.Add(_samAutoRange); Entries.Add(_samMinutes); Entries.Add(_gunOneDirector); Entries.Add(_gunChannels); Entries.Add(_noRbuSurfaceChase); Entries.Add(_noAirChase); Entries.Add(_gunAimBeyond); Entries.Add(_optNormal); Entries.Add(_optDayOnly); Entries.Add(_fireFlicker); Entries.Add(_firePower); Entries.Add(_flashMuzzle); Entries.Add(_flashMissile); Entries.Add(_flashHit); Entries.Add(_flashPower); Entries.Add(_gunMinError); Entries.Add(_mgBurstFix); Entries.Add(_mgSoundLoop); Entries.Add(_hitSoundFix); Entries.Add(_debugEntry); Entries.Add(_language);
+            Loc.Trace = Trace; Loc.Forced = () => _language == null ? "" : _language.Value;
+            foreach (var en in Entries) Loc.Register("help." + en.Definition.Section + "/" + en.Definition.Key, en.Description == null ? "" : en.Description.Description);
 
             _debug = _debugEntry.Value;
             _traceFile = Path.Combine(Paths.BepInExRootPath, "AlternativeWeaponsControl.trace.txt");
@@ -141,6 +202,7 @@ namespace AlternativeWeaponsControl
         void Update()
         {
             if (!_patchTried) TryPatch();
+            try { SettingsWindow.Tick(); } catch (Exception e) { Trace("settings tick: " + e.Message); }
             WatchConfigFile();
             try { FixTargetsStep(); } catch (Exception e) { Trace("target fix: " + e.Message); }
             if (!Enabled) return;
@@ -209,6 +271,11 @@ namespace AlternativeWeaponsControl
             var harmony = new Harmony(PluginGuid);
             const BindingFlags all = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
             try { HookStatusTabs(harmony, asm); } catch (Exception e) { Warn("Unit Status hooks failed: " + e.Message); Trace(e.ToString()); }
+            try { HookFireFlicker(harmony, asm); } catch (Exception e) { Warn("Fire flicker failed: " + e.Message); }
+            try { HookOptics(harmony, asm); } catch (Exception e) { Warn("Binocular view failed: " + e.Message); }
+            try { HookZones(harmony, asm); } catch (Exception e) { Warn("Fire zones failed: " + e.Message); }
+            try { HookWarmUp(harmony, asm); } catch (Exception e) { Warn("SAM ready button failed: " + e.Message); }
+            try { HookGunFixes(harmony, asm); } catch (Exception e) { Warn("Gun fixes failed: " + e.Message); }
             try { HookWeapons(harmony, asm); } catch (Exception e) { Warn("Weapons hooks failed: " + e.Message); Trace(e.ToString()); }
             try
             {
@@ -326,7 +393,10 @@ namespace AlternativeWeaponsControl
 
         bool WeaponsAvailableFor(object unit)
         {
-            if (!Enabled || unit == null || !(R.Is(unit, _tVessel) || R.Is(unit, _tSubmarine))) return false;
+            if (!Enabled || unit == null) return false;
+            bool land = R.Is(unit, _tLandUnit);
+            bool air = R.Is(unit, _tAircraft) || R.Is(unit, _tHelicopter);
+            if (!(R.Is(unit, _tVessel) || R.Is(unit, _tSubmarine) || (land && _tabLand != null && _tabLand.Value) || (air && _tabAir != null && _tabAir.Value))) return false;
             var w = W(unit);
             return CachedLaunchers(unit, w).Count > 0;
         }
@@ -364,7 +434,7 @@ namespace AlternativeWeaponsControl
                 var ex = e is TargetInvocationException && e.InnerException != null ? e.InnerException : e;
                 Trace("Weapons tab: " + ex);
                 R.SetP(tab, "Content", null);
-                R.SetP(tab, "ContentError", "The weapons could not be shown for the selected unit.");
+                R.SetP(tab, "ContentError", Loc.T("tab.contentError"));
             }
         }
 
@@ -390,6 +460,7 @@ namespace AlternativeWeaponsControl
             public Noesis.Border Host; public Noesis.Panel Panel; public Noesis.FrameworkElement Beside;
             public bool Failed; public int Tries;
             public Noesis.TextBlock Header; public float NextScan;
+            public bool ClickProbe;
         }
         static readonly ConditionalWeakTable<object, ViewState> ViewStates = new ConditionalWeakTable<object, ViewState>();
 
@@ -411,6 +482,7 @@ namespace AlternativeWeaponsControl
                 ModTab mt;
                 if (status == null || !StTabs.TryGetValue(status, out mt)) continue;
                 var vs = ViewStates.GetOrCreateValue(o);
+                if (_debug && !vs.ClickProbe) { vs.ClickProbe = true; try { AddClickProbe(usv, vs); } catch (Exception e) { Trace("click probe: " + e.Message); } }
                 try { HeaderStep(usv, mt, vs, now); } catch (Exception e) { Trace("tab header: " + e.Message); }
                 if (!vs.Failed) { try { HostStep(usv, status, mt, vs, now); } catch (Exception e) { Trace("tab host: " + e); } }
             }
@@ -453,6 +525,41 @@ namespace AlternativeWeaponsControl
                 if (host.Visibility != Noesis.Visibility.Collapsed) host.Visibility = Noesis.Visibility.Collapsed;
                 if (view == null && host.Child != null) host.Child = null;
             }
+        }
+
+        /// <summary>Debug: a click inside the Weapons tab is traced with the element the UI hit-tests on top at that point (and its
+        /// parents) - to find what covers buttons that do not react. Attached to the root of the view's UI tree (preview: before
+        /// anything handles the click).</summary>
+        static void AddClickProbe(Noesis.FrameworkElement usv, ViewState vs)
+        {
+            var root = Noesis.VisualTreeHelper.GetRoot(usv) as Noesis.UIElement;
+            if (root == null) return;
+            root.PreviewMouseLeftButtonDown += (o, e) =>
+            {
+                try
+                {
+                    var host = vs.Host;
+                    if (host == null || host.Visibility != Noesis.Visibility.Visible) return;
+                    var ph = e.GetPosition(host);
+                    if (ph.X < 0 || ph.Y < 0 || ph.X > host.ActualWidth || ph.Y > host.ActualHeight) return;
+                    var hit = Noesis.VisualTreeHelper.HitTest(root as Noesis.Visual, e.GetPosition(root));
+                    var sb = new StringBuilder("click in Weapons tab at " + ph.X.ToString("0") + "," + ph.Y.ToString("0") + " of " + host.ActualWidth.ToString("0") + "x" + host.ActualHeight.ToString("0") + ": ");
+                    Noesis.DependencyObject d = hit.VisualHit;
+                    bool ours = false;
+                    for (int i = 0; i < 14 && d != null; i++, d = Noesis.VisualTreeHelper.GetParent(d))
+                    {
+                        if (ReferenceEquals(d, host)) { ours = true; sb.Append(" < [our host]"); break; }
+                        var fe = d as Noesis.FrameworkElement;
+                        sb.Append(i == 0 ? "" : " < ").Append(d.GetType().Name);
+                        if (fe != null && !string.IsNullOrEmpty(fe.Name)) sb.Append('#').Append(fe.Name);
+                    }
+                    if (!ours) sb.Append("  (NOT inside the tab: something covers it)");
+                    var src = e.Source; sb.Append("; source ").Append(src == null ? "null" : src.GetType().Name);
+                    Trace(sb.ToString());
+                }
+                catch (Exception ex) { Trace("click probe: " + ex.Message); }
+            };
+            Trace("click probe on " + root.GetType().Name);
         }
 
         /// <summary>A Border next to where the game shows its tabs' contents (same panel, cell and margins); the place is found once per view.</summary>

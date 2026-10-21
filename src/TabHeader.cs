@@ -83,7 +83,7 @@ namespace AlternativeWeaponsControl
             catch (Exception e) { Trace("legend: " + e.Message); }
             var gear = HeaderIcon(GearIcon());
             gear.Margin = new Thickness(6f, 0f, 0f, 0f);
-            try { gear.Cursor = Cursors.Hand; ToolTipService.SetToolTip(gear, "Alternative Weapons Control settings"); } catch { }
+            try { gear.Cursor = Cursors.Hand; ToolTipService.SetToolTip(gear, Loc.T("tab.gearTip")); } catch { }
             gear.PreviewMouseLeftButtonDown += (s, e) =>
             {
                 e.Handled = true;

@@ -48,26 +48,35 @@ namespace AlternativeWeaponsControl
             public Grid G; public Ellipse Outer, Dot; public Rectangle Bar; public TextBlock None; public int Domain; public float Size; public bool Painted; public Chip Last;
         }
 
-        sealed class MemberRow { public Launcher L; public TextBlock State, Fc; public string FcSig; public StockUI Stock; public Ellipse Dot; public ChipUI[] Chips; }
+        sealed class MemberRow { public Launcher L; public TextBlock State, Fc; public string FcSig; public StockUI Stock; public Ellipse Dot; public ChipUI[] Chips; public Grid G; public List<string> Ids; }
+        sealed class AmmoCardUI { public string Id; public Grid G; public Border B; public Ellipse Dot; }
 
-        sealed class StockUI { public StackPanel P; public TextBlock Cur, Max; }
+        /// <summary>The switches of one ammunition card: copies of the group's - they switch the whole group.</summary>
+        sealed class AmmoChipsUI { public string Id; public int Dom; public ChipUI[] Chips; }
+
+        sealed class StockUI { public StackPanel P; public TextBlock Cur, Max, RailLab, RailCur, RailMax; public StackPanel Rail; }
 
         sealed class FireUI { public List<string> Ids; public Launcher Pin; public Border Box, Main, Arrow; public bool OverMain, OverArrow, Active; }
 
         sealed class IconBtn { public Border B; public bool Enabled = true, Over, Cease; public string Tip; }
+
+        /// <summary>SAM readiness button of one launcher: a missile icon, tinted by the state, with the time left under it.</summary>
+        sealed class WarmUI { public object Ws; public Border B; public StackPanel Icons; public TextBlock Timer; public bool Over; public int St = -1; public string TimerText = "", Tip, Sig; public List<bool> Rails; }
 
         /// <summary>The control slots of a row: fire (split), cease fire, reload - for a set of launchers.</summary>
         sealed class CtrlUI { public List<Launcher> Scope; public List<string> Ammo; public IconBtn Cease, Reload; }
 
         sealed class GroupRow
         {
-            public string Key; public List<Launcher> Ls = new List<Launcher>(); public bool Open; public string StateTip;
+            public string Key; public List<Launcher> Ls = new List<Launcher>(); public bool Open; public string StateTip; public string Suffix = "";
             public TextBlock Fc; public string FcSig;
             public bool StatesBuilt; public Ellipse[] SDot; public TextBlock[] SText; public StackPanel[] SPair; public string[] SLabel;
             public FrameworkElement SOne; public Ellipse SOneDot; public TextBlock SOneText; public FrameworkElement SMulti;
             public Path Chevron; public Border ChevronHit; public StockUI Stock; public Grid States; public ChipUI[] Chips; public StackPanel Detail;
             public List<MemberRow> Members = new List<MemberRow>(); public bool DetailBuilt, Expandable; public List<string> Ammo = new List<string>();
             public List<KeyValuePair<string, StockUI>> AmmoStocks = new List<KeyValuePair<string, StockUI>>();
+            public List<AmmoChipsUI> AmmoChips = new List<AmmoChipsUI>();
+            public string ActiveAmmo; public List<AmmoCardUI> Cards = new List<AmmoCardUI>();   // several ammunition types and several launchers: the chosen (active) ammunition, the launchers are listed under it
             public TextBlock Chan; public Border ChanBox; public string ChanTip; public List<object> Dirs = new List<object>(); public bool GuidedAmmo, Wires;
         }
 
@@ -85,12 +94,14 @@ namespace AlternativeWeaponsControl
             public Border[] Status = new Border[3];
             public TextBlock[] StatusText = new TextBlock[3];
             public Border TightBox; public Rectangle TightMark; public StackPanel TightRow;
+            public Border FreeBox; public Rectangle FreeMark; public StackPanel FreeRow;
             public TextBlock ExpandText;
             public float NextRefresh;
             public bool Fitting;   // the first opening for the unit: groups are closed one by one until the tab fits
             public readonly Dictionary<string, object> Entries = new Dictionary<string, object>();
             public readonly List<FireUI> Fires = new List<FireUI>();
             public readonly List<CtrlUI> Ctrls = new List<CtrlUI>();
+            public readonly List<WarmUI> Warms = new List<WarmUI>();
             // the fire-control directors window: opens while the mouse is over a group's T/W badge, stays while it is over it or the window
                // frames left to re-measure the scroll area after it is shown (its extent could stay stale)
             public Canvas Overlay; public Border DirCard; public GroupRow DirFor, DirHover; public float DirOpenAt = -1f, DirCloseAt = -1f;
@@ -290,17 +301,17 @@ namespace AlternativeWeaponsControl
             // header: weapons status, On Tight, expand all
             var head = new Grid { Background = WC.B(Color.FromRgb(38, 42, 48)) };
             head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1f, GridUnitType.Star) });   // the switches: in a row, wrapped only when they do not fit
             head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1f, GridUnitType.Star) });
             head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             var hb = new Border { Child = head, BorderBrush = WC.B(WC.Line), BorderThickness = new Thickness(0f, 0f, 0f, 1f), Padding = new Thickness(10f, 6f, 10f, 6f) };
             var seg = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            var lbl = T("WEAPONS", WC.Dim, 11f); lbl.Margin = new Thickness(0f, 0f, 12f, 0f);
+            var lbl = T(Loc.T("tab.weapons"), WC.Dim, 11f); lbl.Margin = new Thickness(0f, 0f, 12f, 0f);
             seg.Children.Add(lbl);
             var segBox = new Border { BorderBrush = WC.B(WC.BtnLine), BorderThickness = new Thickness(1f), CornerRadius = new CornerRadius(3f) };
             var segRow = new StackPanel { Orientation = Orientation.Horizontal };
             segBox.Child = segRow;
-            string[] sn = { "Free", "Tight", "Hold" };
+            string[] sn = { Loc.T("status.free"), Loc.T("status.tight"), Loc.T("status.hold") };
             int[] sv = { 1, 0, 2 };   // ObjectBase.WeaponStatus: Tight, Free, Hold
             for (int i = 0; i < 3; i++)
             {
@@ -319,11 +330,23 @@ namespace AlternativeWeaponsControl
             v.TightMark = new Rectangle { Width = 6f, Height = 6f, Fill = WC.B(WC.Ok), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
             v.TightBox.Child = v.TightMark;
             v.TightRow.Children.Add(v.TightBox);
-            v.TightRow.Children.Add(T("On Tight: engage hostile aircraft", WC.Sub, 12f));
+            v.TightRow.Children.Add(T(Loc.T("tab.onTight"), WC.Sub, 12f));
             Click(v.TightRow, () => ToggleTightAir(v));
-            Grid.SetColumn(v.TightRow, 1); head.Children.Add(v.TightRow);
+            // the second switch under it: On Free: engage approaching fast unidentified aircraft (the mod's own, saved with the unit); the tick is orange-red
+            var orange = Color.FromRgb(240, 96, 40);
+            v.FreeRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(16f, 0f, 0f, 0f), Background = WC.Clear, VerticalAlignment = VerticalAlignment.Center };
+            v.FreeBox = new Border { Width = 14f, Height = 14f, BorderBrush = WC.B(WC.Ring), BorderThickness = new Thickness(1f), CornerRadius = new CornerRadius(2f), Margin = new Thickness(0f, 0f, 6f, 0f) };
+            v.FreeMark = new Rectangle { Width = 6f, Height = 6f, Fill = WC.B(orange), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            v.FreeBox.Child = v.FreeMark;
+            v.FreeRow.Children.Add(v.FreeBox);
+            v.FreeRow.Children.Add(T(Loc.T("tab.onFree"), WC.Sub, 12f));
+            Click(v.FreeRow, () => { W(v.Unit).FreeAirSet = FreeAirOn(v.Unit) ? 0 : 1; Refresh(v, false); });
+            { var ai = AwcPlugin.Instance; SetTip(v.FreeRow, Loc.F("tab.onFreeTip", Num(ai != null && ai._freeAirKnots != null ? ai._freeAirKnots.Value : 500f), Num(ai != null && ai._freeAirNm != null ? ai._freeAirNm.Value : 50f))); }
+            var sw = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0f), VerticalAlignment = VerticalAlignment.Center };
+            sw.Children.Add(v.TightRow); sw.Children.Add(v.FreeRow);
+            Grid.SetColumn(sw, 1); head.Children.Add(sw);
             // Expand / Collapse all: at the left of the WEAPONS column title, centred in its height
-            v.ExpandText = T("Expand all", WC.Sub, 11f);
+            v.ExpandText = T(Loc.T("tab.expandAll"), WC.Sub, 11f);
             var exp = new Border { Child = v.ExpandText, Padding = new Thickness(8f, 2f, 8f, 3f), Margin = new Thickness(2f, 0f, 0f, 0f), Background = WC.B(WC.BtnBg), BorderBrush = WC.B(WC.BtnLine),
                                    BorderThickness = new Thickness(1f), CornerRadius = new CornerRadius(3f), VerticalAlignment = VerticalAlignment.Center,
                                    HorizontalAlignment = HorizontalAlignment.Left };
@@ -333,18 +356,18 @@ namespace AlternativeWeaponsControl
             // column titles
             var ch = Columns(true, v);
             ch.Margin = new Thickness(10f, 6f, 10f, 6f);
-            var lh = T("WEAPONS", WC.Dim, 10.5f); lh.HorizontalAlignment = HorizontalAlignment.Center; At(ch, lh, 1);
+            var lh = T(Loc.T("tab.weapons"), WC.Dim, 10.5f); lh.HorizontalAlignment = HorizontalAlignment.Center; At(ch, lh, 1);
             Grid.SetColumnSpan(exp, 2); At(ch, exp, 0);
-            var sth = T("STATE", WC.Dim, 10.5f); sth.HorizontalAlignment = HorizontalAlignment.Center; At(ch, sth, 2);
-            var stk = T("AMMO", WC.Dim, 10.5f); stk.HorizontalAlignment = HorizontalAlignment.Center;
+            var sth = T(Loc.T("tab.state"), WC.Dim, 10.5f); sth.HorizontalAlignment = HorizontalAlignment.Center; At(ch, sth, 2);
+            var stk = T(Loc.T("tab.ammo"), WC.Dim, 10.5f); stk.HorizontalAlignment = HorizontalAlignment.Center;
             At(ch, stk, 3);
-            var fh = T("FIRE", WC.Dim, 10.5f); fh.HorizontalAlignment = HorizontalAlignment.Center;
-            SetTip(fh, "Click: pick the target on the map. Arrow: salvo and launch options.");
+            var fh = T(Loc.T("tab.fire"), WC.Dim, 10.5f); fh.HorizontalAlignment = HorizontalAlignment.Center;
+            SetTip(fh, Loc.T("tab.fireTip"));
             At(ch, fh, 4);
             for (int i = 0; i < 5; i++)
             {
-                var t = T(DomainNames[i], WC.Dim, 10.5f); t.HorizontalAlignment = HorizontalAlignment.Center;
-                SetTip(t, "Automatic use against " + DomainLong[i]);
+                var t = T(Loc.T("dom." + i), WC.Dim, 10.5f); t.HorizontalAlignment = HorizontalAlignment.Center;
+                SetTip(t, Loc.F("tab.autoAgainst", Loc.T("domLong." + i)));
                 ChipVisible(v, t, i);
                 At(ch, t, 5 + i);
             }
@@ -373,13 +396,26 @@ namespace AlternativeWeaponsControl
                 if (gr == null) { gr = new GroupRow { Key = key }; list.Add(gr); v.Groups.Add(gr); }
                 gr.Ls.Add(l);
             }
-            foreach (var kv in bySection)
+            // groups of one launcher that share a name with another group of the section (the same mount with another ammunition load): the position tells them apart
+            foreach (var kv0 in bySection)
+                foreach (var gr in kv0.Value)
+                {
+                    if (gr.Ls.Count != 1) continue;
+                    var same = kv0.Value.FindAll(x => x.Ls[0].Name == gr.Ls[0].Name);
+                    if (same.Count < 2) continue;
+                    var loc = gr.Ls[0].Loc;
+                    gr.Suffix = !string.IsNullOrEmpty(loc) ? Cap(loc) : "#" + (same.IndexOf(gr) + 1);
+                }
+            var secOrder = new List<KeyValuePair<int, List<GroupRow>>>(bySection);
+            { var so = SectionOrder(); secOrder.Sort((x, y) => { int a = so.IndexOf(x.Key), b = so.IndexOf(y.Key); return (a < 0 ? 1000 + x.Key : a).CompareTo(b < 0 ? 1000 + y.Key : b); }); }
+            foreach (var kv in secOrder)
             {
                 var card = new StackPanel();
                 var cb = new Border { Child = card, Background = WC.B(WC.Card), BorderBrush = WC.B(WC.Line), BorderThickness = new Thickness(1f),
                                       CornerRadius = new CornerRadius(3f), Margin = new Thickness(0f, 0f, 0f, 6f) };
-                var sh = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(10f, 4f, 10f, 3f) };
-                sh.Children.Add(T(SectionNames[kv.Key], WC.Sub, 11.5f, FontWeights.SemiBold));
+                var sh = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0f), Background = WC.Clear };
+                sh.Margin = new Thickness(10f, 4f, 10f, 3f);
+                sh.Children.Add(T(Loc.T("section." + kv.Key), WC.Sub, 11.5f, FontWeights.SemiBold));
                 // "2 turrets", "2 launchers, 2 tubes": counted by what they are
                 var counts = new List<KeyValuePair<string, int>>();
                 int count = 0;
@@ -392,10 +428,11 @@ namespace AlternativeWeaponsControl
                         if (at < 0) counts.Add(new KeyValuePair<string, int>(nn, 1)); else counts[at] = new KeyValuePair<string, int>(nn, counts[at].Value + 1);
                     }
                 var subText = new StringBuilder();
-                if (count > 1) foreach (var c in counts) subText.Append(subText.Length > 0 ? ", " : "").Append(c.Value).Append(' ').Append(c.Key).Append(c.Value == 1 ? "" : "s");
+                if (count > 1) foreach (var c in counts) subText.Append(subText.Length > 0 ? ", " : "").Append(Loc.F("count.format", c.Value, Loc.T("noun." + c.Key + (c.Value == 1 ? "" : "s"))));
                 var sub = T(subText.ToString(), WC.Dim2, 11f); sub.Margin = new Thickness(8f, 0f, 0f, 0f);
                 sh.Children.Add(sub);
                 card.Children.Add(sh);
+                MakeDraggable(v, cb, sh, kv.Key);
                 foreach (var gr in kv.Value)
                 {
                     bool o;
@@ -404,7 +441,7 @@ namespace AlternativeWeaponsControl
                 }
                 v.Body.Children.Add(cb);
             }
-            if (v.Groups.Count == 0) v.Body.Children.Add(T("No weapons.", WC.Dim, 12f));
+            if (v.Groups.Count == 0) v.Body.Children.Add(T(Loc.T("tab.noWeapons"), WC.Dim, 12f));
             else
             {
                 // the last card: no gap below it (6 px between cards), nor below its last group's open rows
@@ -418,17 +455,146 @@ namespace AlternativeWeaponsControl
             return v;
         }
 
+        // ------------------------------------------------------------------ the order of the sections (drag a section's title)
+        static List<int> SectionOrder()
+        {
+            var res = new List<int>();
+            var a = Active; if (a == null || a._secOrder == null) return res;
+            foreach (var n in a._secOrder.Value.Split(','))
+            {
+                int i = Array.IndexOf(SectionNames, n.Trim());
+                if (i >= 0 && !res.Contains(i)) res.Add(i);
+            }
+            return res;
+        }
+
+        static readonly ConditionalWeakTable<Border, object> CardSec = new ConditionalWeakTable<Border, object>();
+
+        /// <summary>The section card follows the mouse by its title; on release it goes to the place it was dragged to; the order is kept for all units.</summary>
+        /// <summary>Where the dragged card goes: the place whose top edge is the nearest to the card's top edge (not the centres: a tall card
+        /// would have to be dragged far). The places' tops are those of the list without the card, the card put in at each index.</summary>
+        static int DropIndex(float[] tops, float[] hs, int from, float dragTop)
+        {
+            int best = from; float bd = float.MaxValue, t = 0f; int j = 0;
+            for (int i = 0; i <= tops.Length; i++)
+            {
+                // slot j: the card goes in front of the j-th of the other cards (t = their heights above)
+                if (i == from) continue;
+                float dist = Math.Abs(dragTop - t);
+                if (dist < bd) { bd = dist; best = j; }
+                if (i < tops.Length) t += hs[i];
+                j++;
+            }
+            return best;
+        }
+
+        static void MakeDraggable(WeaponsView v, Border card, FrameworkElement handle, int sec)
+        {
+            CardSec.Add(card, sec);
+            handle.Cursor = Cursors.Hand;
+            SetTip(handle, Loc.T("tab.dragOrder"));
+            bool drag = false; float startY = 0f, dy = 0f;
+            // the layout at the start of the drag (tops / heights of the cards): the other cards slide aside while the card is dragged
+            float[] tops = null, hs = null; int from = -1;
+            Action<float> slide = d =>
+            {
+                var kids = v.Body.Children;
+                if (tops == null || from < 0 || kids.Count != tops.Length) return;
+                int to = DropIndex(tops, hs, from, tops[from] + d);
+                for (int i = 0; i < kids.Count; i++)
+                {
+                    if (i == from) continue;
+                    float shift = 0f;
+                    if (from < to && i > from && i <= to) shift = -hs[from];
+                    else if (from > to && i >= to && i < from) shift = hs[from];
+                    var el = kids[i] as UIElement;
+                    if (el != null) el.RenderTransform = Math.Abs(shift) < 0.01f ? null : new TranslateTransform(0f, shift);
+                }
+            };
+            Action clearAll = () =>
+            {
+                var kids = v.Body.Children;
+                for (int i = 0; i < kids.Count; i++) { var el = kids[i] as UIElement; if (el != null && !ReferenceEquals(el, card)) el.RenderTransform = null; }
+                tops = null; hs = null; from = -1;
+            };
+            handle.MouseLeftButtonDown += (s, e) =>
+            {
+                try
+                {
+                    if (v.Body.Children.Count < 2) return;
+                    drag = handle.CaptureMouse();
+                    startY = e.GetPosition(v.Body).Y; dy = 0f;
+                    var kids0 = v.Body.Children;
+                    tops = new float[kids0.Count]; hs = new float[kids0.Count]; from = -1;
+                    float top0 = 0f;
+                    for (int i = 0; i < kids0.Count; i++)
+                    {
+                        if (ReferenceEquals(kids0[i], card)) from = i;
+                        var fe = kids0[i] as FrameworkElement;
+                        tops[i] = top0; hs[i] = fe == null ? 0f : fe.ActualHeight + fe.Margin.Top + fe.Margin.Bottom;
+                        top0 += hs[i];
+                    }
+                    if (drag) { Panel.SetZIndex(card, 50); e.Handled = true; }
+                }
+                catch (Exception ex) { drag = false; Trace("section drag: " + ex.Message); }
+            };
+            handle.MouseMove += (s, e) =>
+            {
+                if (!drag) return;
+                try { dy = e.GetPosition(v.Body).Y - startY; card.RenderTransform = new TranslateTransform(0f, dy); slide(dy); }
+                catch (Exception ex) { Trace("section drag move: " + ex.Message); }
+            };
+            handle.MouseLeftButtonUp += (s, e) =>
+            {
+                if (!drag) return;
+                drag = false;
+                try
+                {
+                    handle.ReleaseMouseCapture();
+                    card.RenderTransform = null;
+                    clearAll();
+                    Panel.SetZIndex(card, 0);
+                    e.Handled = true;
+                    if (Math.Abs(dy) < 6f) return;   // a click, not a drag
+                    // the new place: the one whose top is the nearest to the dragged card's top
+                    var kids = v.Body.Children;
+                    int from = -1;
+                    for (int i = 0; i < kids.Count; i++) if (ReferenceEquals(kids[i], card)) from = i;
+                    if (from < 0) return;
+                    float top = 0f;
+                    var tops = new float[kids.Count]; var hs = new float[kids.Count];
+                    for (int i = 0; i < kids.Count; i++)
+                    {
+                        var fe = kids[i] as FrameworkElement;
+                        tops[i] = top; hs[i] = fe == null ? 0f : fe.ActualHeight + fe.Margin.Top + fe.Margin.Bottom;
+                        top += hs[i];
+                    }
+                    int to = DropIndex(tops, hs, from, tops[from] + dy);
+                    if (to == from) return;
+                    kids.RemoveAt(from);
+                    kids.Insert(to, card);
+                    // margins: 6 px between cards, none below the last
+                    for (int i = 0; i < kids.Count; i++) { var b = kids[i] as Border; if (b != null) b.Margin = new Thickness(0f, 0f, 0f, i == kids.Count - 1 ? 1f : 6f); }
+                    var names = new List<string>();
+                    foreach (var k in kids) { var b = k as Border; object o; if (b != null && CardSec.TryGetValue(b, out o)) names.Add(SectionNames[(int)o]); }
+                    var a = Active; if (a != null && a._secOrder != null) a._secOrder.Value = string.Join(",", names.ToArray());
+                }
+                catch (Exception ex) { Trace("section drag end: " + ex.Message); }
+            };
+            handle.LostMouseCapture += (s, e) => { if (drag) { drag = false; card.RenderTransform = null; Panel.SetZIndex(card, 0); clearAll(); } };
+        }
+
         /// <summary>The AMMO column's width: the widest "max/max" of the tab's groups, ammunition and launchers (and the title), measured
         /// in the stock's font; set on every row's column (rows built later take it from v.StockW).</summary>
         void StockWidth(WeaponsView v)
         {
-            float w = Measure("AMMO", 10.5f);
+            float w = Measure(Loc.T("tab.ammo"), 10.5f);
             Action<int> fit = max => { if (max > 0) { var s = Fmt(max); w = Math.Max(w, Measure(s + "/" + s, 12f)); } };
             foreach (var gr in v.Groups)
             {
                 fit(StockMax(gr.Ls));
                 foreach (var a in gr.Ammo) fit(StockMax(gr.Ls, a));
-                if (gr.Ls.Count > 1) foreach (var l in gr.Ls) fit(R.I(R.F(R.F(l.Ws, "_vwp"), "_maxAmmoCount")));
+                if (gr.Ls.Count > 1) foreach (var l in gr.Ls) fit(Cap(l.Ws));
             }
             v.StockW = (float)Math.Ceiling(w) + 16f;
             foreach (var c in v.StockCols) c.Width = new GridLength(v.StockW);
@@ -467,26 +633,26 @@ namespace AlternativeWeaponsControl
             Func<Chip, UIElement> chip = st => { var c = MakeChip(11f, 0); Paint(c, st); c.G.Width = 16f; c.G.Height = 16f; c.G.Cursor = null; return c.G; };
             Func<Color, UIElement> dot = c => new Ellipse { Width = 7f, Height = 7f, Fill = WC.B(c), HorizontalAlignment = HorizontalAlignment.Left };
 
-            line("AIR · MSL · SUR · SUB · LND - may the AI use the launcher by itself against aircraft, missiles, surface ships, submarines, land targets:", WC.Text, 13f);
-            item(chip(Chip.On), "automatic");
-            item(chip(Chip.Off), "off (click to switch; the group's switch sets all its launchers)");
-            item(chip(Chip.Order), "off by the unit's Standing Orders (click: allowed for this launcher)");
-            item(chip(Chip.Mixed), "mixed in the group");
-            line("Manual fire is never restricted. The switches are kept in the mission save.", WC.Dim, 12f);
+            line(Loc.T("legend.dom"), WC.Text, 13f);
+            item(chip(Chip.On), Loc.T("legend.auto"));
+            item(chip(Chip.Off), Loc.T("legend.off"));
+            item(chip(Chip.Order), Loc.T("legend.order"));
+            item(chip(Chip.Mixed), Loc.T("legend.mixed"));
+            line(Loc.T("legend.manual"), WC.Dim, 12f);
 
             var gap = new Border { Height = 6f }; sp.Children.Add(gap);
-            line("State:", WC.Text, 13f);
-            item(dot(WC.Ok), "ready");
-            item(dot(WC.Engage), "engaging - and its target (Track N)");
-            item(dot(WC.Amber), "reloading; sensors offline (none of its directors is on); waiting - queued behind the launcher's own target, or for a fire-control channel");
-            item(dot(WC.Red), "damaged");
-            item(dot(WC.Grey), "off / empty");
-            line("At a weapon's name while it fires: the director aiming it (blue), or \"Local control\" (orange) - no working director, less accurate.", WC.Dim, 12f);
+            line(Loc.T("legend.state"), WC.Text, 13f);
+            item(dot(WC.Ok), Loc.T("legend.ready"));
+            item(dot(WC.Engage), Loc.T("legend.engaging"));
+            item(dot(WC.Amber), Loc.T("legend.waiting"));
+            item(dot(WC.Red), Loc.T("legend.damaged"));
+            item(dot(WC.Grey), Loc.T("legend.empty"));
+            line(Loc.T("legend.local"), WC.Dim, 12f);
 
             gap = new Border { Height = 6f }; sp.Children.Add(gap);
-            line("Fire: pick the target on the map (on a launcher's row - that launcher fires); ▾ salvo and launch options; ■ cease fire; ↻ reload.", WC.Sub, 12.5f);
-            line("T 2/6 · W 5/12: fire-control channels of the group's directors - targets tracked / guided weapons in flight at a time; amber when none is free. Point at it: the directors, with their reference.", WC.Sub, 12.5f);
-            line("AMMO: left / at the start (loaded and in the magazines).", WC.Sub, 12.5f);
+            line(Loc.T("legend.fire"), WC.Sub, 12.5f);
+            line(Loc.T("legend.channels"), WC.Sub, 12.5f);
+            line(Loc.T("legend.ammo"), WC.Sub, 12.5f);
             return sp;
         }
 
@@ -503,6 +669,12 @@ namespace AlternativeWeaponsControl
                                     Margin = new Thickness(0f, 0f, 4f, 0f) };   // 2 px left of the column's centre
             gr.ChevronHit = new Border { Child = gr.Chevron, Background = WC.Clear, Width = 22f, Height = 28f, VerticalAlignment = VerticalAlignment.Center };
             if (!gr.Expandable) gr.ChevronHit.Visibility = Visibility.Hidden;
+            bool warmInline = false;
+            if (gr.Ls.Count == 1 && _samButton != null && _samButton.Value && CanWarm(gr.Ls[0].Ws))
+            {
+                // one launcher: the button is in the name line (below)
+                warmInline = true;
+            }
             At(row, gr.ChevronHit, 0);
             // name cell: the launcher and its ammunition (one type: its name, type and characteristics; several: their names)
             var cell = new Grid { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0f, 3f, 6f, 3f) };
@@ -512,13 +684,16 @@ namespace AlternativeWeaponsControl
             cell.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             var l0 = gr.Ls[0];
             var top = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            top.Children.Add(Link(Cap(l0.Name), WC.Text, 13f, FontWeights.Medium, "Reference of " + Cap(l0.Name), () => OpenSystemReference(v, l0)));
+            var sysLink = Link(Cap(l0.Name) + (gr.Suffix.Length > 0 ? " " + gr.Suffix : ""), WC.Text, 13f, FontWeights.Medium, null, () => OpenSystemReference(v, l0));
+            ToolTipService.SetToolTip(sysLink, DescTip(R.S(R.P(SystemEntry(l0), "Description")), "Reference of " + Cap(l0.Name)));
+            top.Children.Add(sysLink);
             if (gr.Ls.Count > 1)
             {
                 var badge = new Border { Child = T("×" + gr.Ls.Count, Color.FromRgb(214, 218, 223), 11f, FontWeights.SemiBold), Background = WC.B(WC.Badge),
                                          CornerRadius = new CornerRadius(2f), Padding = new Thickness(4f, 0f, 4f, 0f), Margin = new Thickness(6f, 0f, 0f, 0f), VerticalAlignment = VerticalAlignment.Center };
                 top.Children.Add(badge);
             }
+            if (warmInline) top.Children.Add(WarmButton(v, gr.Ls[0].Ws, true));
             // fire-control channels: a framed badge at the end of the first line
             Directors(v, gr);
             if (gr.Dirs.Count > 0 || gr.Wires)
@@ -567,7 +742,7 @@ namespace AlternativeWeaponsControl
             At(row, gr.States, 2);
             gr.Stock = MakeStock(12f, WC.Text);
             At(row, gr.Stock.P, 3);
-            At(row, Controls(v, gr.Ls, gr.Ammo, gr.Ammo.Count == 1, true, gr.Ls.Count == 1 ? gr.Ls[0] : null), 4);
+            At(row, Controls(v, gr.Ls, gr.Ammo, gr.Ammo.Count == 1, gr.Ammo.Count == 1, gr.Ls.Count == 1 ? gr.Ls[0] : null), 4);   // several ammunition types: Fire / Stop / Reload are in each ammunition's card
             gr.Chips = new ChipUI[5];
             for (int i = 0; i < 5; i++)
             {
@@ -620,7 +795,7 @@ namespace AlternativeWeaponsControl
             {
                 var tb = new Border { Child = T(type, WC.Sub, 10.5f), BorderBrush = WC.B(Color.FromRgb(74, 82, 96)), BorderThickness = new Thickness(1f), Background = WC.Clear,
                                       CornerRadius = new CornerRadius(2f), Padding = new Thickness(4f, 0f, 4f, 0f), Margin = new Thickness(6f, 0f, 0f, 0f), VerticalAlignment = VerticalAlignment.Center };
-                SetTip(tb, "Weapon type");
+                SetTip(tb, Loc.T("tip.weaponType"));
                 At(g, tb, 2);
             }
             var specs = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
@@ -637,7 +812,7 @@ namespace AlternativeWeaponsControl
             if (all.Length > 0) SetTip(clip, all.ToString());
             At(g, clip, 3);
             var desc = R.S(R.P(mw, "Description"));
-            ToolTipService.SetToolTip(nl, string.IsNullOrEmpty(desc) ? TipOf("Reference of the weapon") : new TextBlock { Text = desc.Replace("\\n", "\n"), TextWrapping = TextWrapping.Wrap, MaxWidth = 420f });
+            ToolTipService.SetToolTip(nl, DescTip(desc, Loc.T("tip.refWeapon")));
             return g;
         }
 
@@ -655,16 +830,98 @@ namespace AlternativeWeaponsControl
             if (fire && ammo.Count > 0) At(g, FireButton(v, ammo, pin), 0);
             if (!more) return g;
             var cu = new CtrlUI { Scope = scope, Ammo = ammo };
-            cu.Cease = IconButton(true, "Cease fire", () => Cease(v, cu));
+            cu.Cease = IconButton(true, Loc.T("btn.cease"), () => Cease(v, cu));
             At(g, cu.Cease.B, 1);
             bool mag = scope.Exists(l => { try { return R.B(R.Call(l.Ws, "hasAMagazine")); } catch { return false; } });
             if (mag)
             {
-                cu.Reload = IconButton(false, "Reload from the magazine", () => Reload(v, cu));
+                cu.Reload = IconButton(false, Loc.T("btn.reload"), () => Reload(v, cu));
                 At(g, cu.Reload.B, 2);
             }
             v.Ctrls.Add(cu);
             return g;
+        }
+
+        const string MissileIcon = "M 5 0 L 7.2 3.2 L 7.2 9 L 10 12 L 10 13 L 5 11.4 L 0 13 L 0 12 L 2.8 9 L 2.8 3.2 Z";
+
+        /// <summary>
+        /// SAM readiness button: one missile per rail (bright = loaded), grey = nothing loaded, amber = loading / partly loaded,
+        /// green = all rails loaded, with the time left under it.
+        /// </summary>
+        FrameworkElement WarmButton(WeaponsView v, object ws, bool inline = false)
+        {
+            var wu = new WarmUI { Ws = ws };
+            wu.Icons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            wu.B = new Border { Height = 20f, MinWidth = 22f, Child = wu.Icons, BorderThickness = new Thickness(1f), CornerRadius = new CornerRadius(3f),
+                                Padding = new Thickness(3f, 0f, 3f, 0f), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.Hand };
+            wu.Timer = T("", WC.Ok, 9f); wu.Timer.HorizontalAlignment = HorizontalAlignment.Center; wu.Timer.Visibility = Visibility.Collapsed;
+            wu.B.MouseEnter += (s, e) => { wu.Over = true; PaintWarm(wu); };
+            wu.B.MouseLeave += (s, e) => { wu.Over = false; PaintWarm(wu); };
+            Click(wu.B, () => { if ((object)Active != null) Active.ClickSound(); WarmToggle(ws); Refresh(v, false); }, false);
+            var sp = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            if (inline)
+            {
+                // in the launcher's name line (the rails' icons do not fit the narrow chevron column): the time left beside the button
+                sp.Orientation = Orientation.Horizontal; sp.Margin = new Thickness(8f, 1f, 0f, 0f);
+                wu.Timer.Margin = new Thickness(5f, 0f, 0f, 0f);
+            }
+            sp.Children.Add(wu.B); sp.Children.Add(wu.Timer);
+            v.Warms.Add(wu);
+            RefreshWarm(wu);
+            return sp;
+        }
+
+        static void PaintWarm(WarmUI wu)
+        {
+            Color bg, hover, line, ink;
+            switch (wu.St)
+            {
+                case 1: case 2: bg = Color.FromRgb(66, 52, 24); hover = Color.FromRgb(92, 72, 30); line = Color.FromRgb(150, 116, 48); ink = Color.FromRgb(240, 205, 130); break;
+                case 3: bg = Color.FromRgb(30, 62, 48); hover = Color.FromRgb(42, 88, 66); line = Color.FromRgb(62, 140, 104); ink = Color.FromRgb(170, 235, 205); break;
+                default: bg = WC.BtnBg; hover = WC.BtnHover; line = WC.BtnLine; ink = WC.Dim; break;
+            }
+            wu.B.Background = WC.B(wu.Over ? hover : bg);
+            wu.B.BorderBrush = WC.B(line);
+            var br = WC.B(ink);
+            for (int i = 0; i < wu.Icons.Children.Count; i++)
+            {
+                var p = (Path)wu.Icons.Children[i];
+                p.Fill = br;
+                p.Opacity = wu.Rails != null && i < wu.Rails.Count && wu.Rails[i] ? 1f : (wu.St == 1 ? 0.55f : 0.3f);
+            }
+            wu.Timer.Foreground = WC.B(WC.Ok);
+        }
+
+        static string Mmss(float s) { int t = (int)Math.Ceiling(s); return (t / 60) + ":" + (t % 60).ToString("00"); }
+
+        static void RefreshWarm(WarmUI wu)
+        {
+            var wi = WarmState(wu.Ws);
+            var rails = wi.Rails;
+            if (rails.Count == 0) rails.Add(false);
+            string sig = wi.St + ":"; foreach (var r in rails) sig += r ? "1" : "0";
+            if (rails.Count != wu.Icons.Children.Count)
+            {
+                wu.Icons.Children.Clear();
+                bool one = rails.Count == 1;
+                for (int i = 0; i < rails.Count; i++)
+                    wu.Icons.Children.Add(new Path { Data = Geometry.Parse(MissileIcon), Stretch = Stretch.Uniform, Width = one ? 10f : 8f, Height = one ? 13f : 10.5f,
+                                                     Margin = new Thickness(i == 0 ? 0f : 2f, 0f, 0f, 0f) });
+            }
+            string tx = wi.Left >= 0f ? Mmss(wi.Left) : "";
+            if (sig != wu.Sig) { wu.Sig = sig; wu.St = wi.St; wu.Rails = rails; PaintWarm(wu); }
+            if (tx != wu.TimerText)
+            {
+                wu.TimerText = tx; wu.Timer.Text = tx;
+                wu.Timer.Visibility = tx.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+            }
+            int loaded = 0; foreach (var r in rails) if (r) loaded++;
+            string tip = wi.St == 0 ? Loc.T("sam.away")
+                       : wi.St == 1 ? Loc.T("sam.loading")
+                       : (wi.St == 2 ? Loc.F("sam.railsLoaded", loaded, rails.Count) : Loc.T("sam.ready"))
+                         + (wi.Left >= 0f ? Loc.F("sam.putAwayIn", Mmss(wi.Left)) : "")
+                         + Loc.T("sam.putAway");
+            if (tip != wu.Tip) { wu.Tip = tip; Tip(wu.B, tip); }
         }
 
         /// <summary>A small square button with a drawn icon: cease fire (red tones: a square) or reload (blue tones: a circular arrow).</summary>
@@ -710,6 +967,12 @@ namespace AlternativeWeaponsControl
             {
                 if (R.B(R.F(l.Ws, "_executingEngageTask")) || R.B(R.F(l.Ws, "_isAutoEngaging")))
                 {
+                    // one ammunition of a multi-ammunition system (aircraft stores): only when it is the one being fired
+                    if (cu.Ammo.Count < l.Ammo.Count)
+                    {
+                        var cur = R.S(R.F(R.F(R.F(l.Ws, "_ammoForEngage"), "_ap"), "_ammunitionFileName"));
+                        if (cur != null && !cu.Ammo.Contains(cur)) continue;
+                    }
                     try { R.Call(l.Ws, "EndEngageTask", true); } catch (Exception e) { Trace("cease: " + e.Message); }
                     if (R.Is(l.Ws, _tCiws)) { try { R.Call(l.Ws, "StopEngage"); } catch { } }
                 }
@@ -738,6 +1001,7 @@ namespace AlternativeWeaponsControl
         {
             foreach (var l in cu.Scope)
             {
+                if (CanWarm(l.Ws)) { Recharge(l.Ws); continue; }
                 try { if (R.B(R.Call(l.Ws, "CanForceReload"))) R.Call(l.Ws, "ForceReload"); } catch (Exception e) { Trace("reload: " + e.Message); }
             }
             Refresh(v, false);
@@ -747,6 +1011,7 @@ namespace AlternativeWeaponsControl
 
         void RefreshCtrls(WeaponsView v)
         {
+            foreach (var wu in v.Warms) RefreshWarm(wu);
             var tasks = R.F(v.Unit, "_currentEngageTasks") as IList;
             foreach (var cu in v.Ctrls)
             {
@@ -761,9 +1026,9 @@ namespace AlternativeWeaponsControl
                 SetEnabled(cu.Cease, cease);
                 if (cu.Reload != null)
                 {
-                    bool can = cu.Scope.Exists(l => { try { return R.B(R.Call(l.Ws, "CanForceReload")); } catch { return false; } });
+                    bool can = cu.Scope.Exists(l => { try { return CanWarm(l.Ws) ? !IsEngaging(l.Ws) : R.B(R.Call(l.Ws, "CanForceReload")); } catch { return false; } });
                     SetEnabled(cu.Reload, can);
-                    Tip(cu.Reload.B, can ? cu.Reload.Tip : cu.Reload.Tip + " (nothing to reload now)");
+                    Tip(cu.Reload.B, can ? cu.Reload.Tip : Loc.F("btn.nothingToReload", cu.Reload.Tip));
                 }
             }
         }
@@ -773,11 +1038,11 @@ namespace AlternativeWeaponsControl
             var g = new Grid();
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            var main = new Border { Child = T("Fire", WC.FireText, 12f, FontWeights.Medium), Padding = new Thickness(9f, 0f, 7f, 0f), Background = WC.Clear };
+            var main = new Border { Child = T(Loc.T("btn.fire"), WC.FireText, 12f, FontWeights.Medium), Padding = new Thickness(9f, 0f, 7f, 0f), Background = WC.Clear };
             SetTip(main, pin != null && v.Groups.Exists(x => x.Ls.Count > 1 && x.Ls.Contains(pin)) ? "Fire this launcher: pick the target on the map" : "Fire: pick the target on the map");
             var arrow = new Border { Child = T("▾", WC.FireText, 11f), Padding = new Thickness(6f, 0f, 6f, 0f), Background = WC.Clear,
                                      BorderBrush = WC.B(WC.FireLine), BorderThickness = new Thickness(1f, 0f, 0f, 0f) };
-            SetTip(arrow, "Salvo and launch options");
+            SetTip(arrow, Loc.T("btn.salvoTip"));
             Grid.SetColumn(arrow, 1);
             g.Children.Add(main); g.Children.Add(arrow);
             var fire = new Border { Height = 22f, Background = WC.B(WC.FireBg), BorderBrush = WC.B(WC.FireLine), BorderThickness = new Thickness(1f), CornerRadius = new CornerRadius(3f),
@@ -820,13 +1085,13 @@ namespace AlternativeWeaponsControl
         /// <summary>The fire button whose ammunition the game is picking a target for (AttackingState of this unit) is red until the state ends.</summary>
         static void CheckTargeting(WeaponsView v)
         {
-            string id = null;
+            string id = null; bool ours = false;   // ours: the targeting was started by this mod's Fire (the zones are shown only for it)
             try
             {
                 var globals = GameAssemblyStatic().GetType("SeaPower.Globals");
                 var mgvm = globals == null ? null : globals.GetField("_mainGameViewModel", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic).GetValue(null);
                 var st = R.Rv(R.P(R.P(mgvm, "StateManager"), "CurrentState"));
-                if (st != null && st.GetType().Name == "AttackingState" && ReferenceEquals(R.P(st, "Source"), v.Unit)) id = R.S(R.P(st, "Ammunition"));
+                if (st != null && st.GetType().Name == "AttackingState" && ReferenceEquals(R.P(st, "Source"), v.Unit)) { id = R.S(R.P(st, "Ammunition")); ours = IsOurState(st); }
             }
             catch { }
             // the launcher tie of a Fire ends 3 s after the game's target picking for that unit is over (30 s if it never began)
@@ -839,6 +1104,12 @@ namespace AlternativeWeaponsControl
                 else if (now > pp.EndAt) { Pending = null; pp = null; }
             }
             else pp = null;
+            {
+                object zpin = null;
+                if (id != null && pp != null && ReferenceEquals(pp.Unit, v.Unit) && pp.Ws != null && pp.Ammos.Contains(id)) zpin = pp.Ws;
+                var we = id == null ? null : WeaponEntryFor(v, id);
+                ZonesUpdate(v.Unit, ours ? id : null, zpin, we == null ? null : R.P(we, "WeaponSystems") as IEnumerable);
+            }
             foreach (var f in v.Fires)
             {
                 bool a = id != null && f.Ids.Contains(id) && (f.Pin == null ? pp == null : pp != null && ReferenceEquals(pp.Ws, f.Pin.Ws));
@@ -851,12 +1122,14 @@ namespace AlternativeWeaponsControl
         void FireNow(WeaponsView v, string id)
         {
             var cmd = R.P(WeaponEntryFor(v, id), "Command");
-            if (cmd != null) R.Call(cmd, "Execute", (object)null);
+            if (cmd != null) OurFireExecute(cmd);
         }
 
         void BuildDetail(WeaponsView v, GroupRow gr)
         {
             gr.DetailBuilt = true;
+            bool pick = gr.Ammo.Count > 1 && gr.Ls.Count > 1;   // choose the active ammunition: the launchers are listed under it
+            if (pick) gr.ActiveAmmo = RememberedActive(v, gr) ?? DefaultActive(gr);
             if (gr.Ammo.Count > 1) foreach (var id in gr.Ammo) gr.Detail.Children.Add(AmmoCard(v, gr, id));
             if (gr.Ls.Count < 2) return;
             var names = new Dictionary<string, int>();
@@ -877,6 +1150,13 @@ namespace AlternativeWeaponsControl
                 var nb = new Border { Child = lab, BorderBrush = WC.B(WC.Badge), BorderThickness = new Thickness(2f, 0f, 0f, 0f),
                                       Padding = new Thickness(6f, 0f, 0f, 0f), Margin = new Thickness(8f, 0f, 0f, 0f) };
                 At(g, nb, 0);
+                if (_samButton != null && _samButton.Value && CanWarm(l.Ws))
+                {
+                    var wb = WarmButton(v, l.Ws);
+                    wb.HorizontalAlignment = HorizontalAlignment.Left; wb.VerticalAlignment = VerticalAlignment.Center;
+                    wb.Margin = new Thickness(-20f, 0f, 0f, 0f);   // in the chevron's column, left of the member rows
+                    At(g, wb, 0);
+                }
                 // state: wraps to a second line when long, centred
                 var st = new Grid { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8f, 2f, 6f, 2f), Background = WC.Clear };
                 m.Dot = new Ellipse { Width = 6f, Height = 6f, Margin = new Thickness(0f, 0f, 5f, 0f), VerticalAlignment = VerticalAlignment.Center };
@@ -886,7 +1166,10 @@ namespace AlternativeWeaponsControl
                 At(g, st, 1);
                 m.Stock = MakeStock(12f, WC.Sub);
                 At(g, m.Stock.P, 2);
-                At(g, Controls(v, new List<Launcher> { l }, l.Ammo, true, true, l), 3);
+                m.G = g;
+                m.Ids = pick ? new List<string>(l.Ammo.Contains(gr.ActiveAmmo) ? new[] { gr.ActiveAmmo } : l.Ammo.ToArray()) : l.Ammo;
+                At(g, Controls(v, new List<Launcher> { l }, m.Ids, true, true, l), 3);
+                if (pick && v.Ctrls.Count > 0) v.Ctrls[v.Ctrls.Count - 1].Ammo = new List<string>(l.Ammo);   // Stop ends the launcher's engagements with any of its ammunition
                 for (int i = 0; i < 5; i++)
                 {
                     var c = MakeChip(10f, Domains[i]);
@@ -898,8 +1181,65 @@ namespace AlternativeWeaponsControl
                     At(g, c.G, 4 + i);
                 }
                 gr.Members.Add(m);
-                gr.Detail.Children.Add(g);
+                if (!pick) gr.Detail.Children.Add(g);
             }
+            if (pick) LayoutDetail(gr);
+        }
+
+        // the choice of the active ammunition is kept for the unit while the game runs (not in the saves)
+        static readonly ConditionalWeakTable<object, Dictionary<string, string>> ActiveMemory = new ConditionalWeakTable<object, Dictionary<string, string>>();
+
+        static string RememberedActive(WeaponsView v, GroupRow gr)
+        {
+            Dictionary<string, string> d; string a;
+            return v.Unit != null && ActiveMemory.TryGetValue(v.Unit, out d) && d.TryGetValue(gr.Key, out a) && gr.Ammo.Contains(a) ? a : null;
+        }
+
+        /// <summary>The ammunition a group starts with: the one a launcher holds ready, else one loaded in a launcher, else the first.</summary>
+        static string DefaultActive(GroupRow gr)
+        {
+            foreach (var l in gr.Ls)
+            {
+                try { var cur = R.S(R.F(R.F(R.F(l.Ws, "_ammoForEngage"), "_ap"), "_ammunitionFileName")); if (cur != null && gr.Ammo.Contains(cur)) return cur; } catch { }
+            }
+            foreach (var l in gr.Ls)
+                foreach (var a in gr.Ammo) { try { if (l.Ammo.Contains(a) && R.I(R.Call(l.Ws, "getLoadedAmmoCount", a)) > 0) return a; } catch { } }
+            return gr.Ammo[0];
+        }
+
+        /// <summary>The ammunition cards in order; the launchers that can use the active one are under its card, the others (dimmed) at the end.</summary>
+        static void LayoutDetail(GroupRow gr)
+        {
+            gr.Detail.Children.Clear();
+            foreach (var c in gr.Cards)
+            {
+                gr.Detail.Children.Add(c.G);
+                if (c.Id != gr.ActiveAmmo) continue;
+                foreach (var m in gr.Members) if (m.L.Ammo.Contains(c.Id)) { m.G.Opacity = 1f; gr.Detail.Children.Add(m.G); }
+            }
+            foreach (var m in gr.Members) if (!m.L.Ammo.Contains(gr.ActiveAmmo)) { m.G.Opacity = 0.5f; gr.Detail.Children.Add(m.G); }
+        }
+
+        void SetActive(WeaponsView v, GroupRow gr, string id)
+        {
+            if (gr.ActiveAmmo == id) return;
+            gr.ActiveAmmo = id;
+            if (v.Unit != null) ActiveMemory.GetOrCreateValue(v.Unit)[gr.Key] = id;
+            foreach (var m in gr.Members)
+            {
+                m.Ids.Clear();
+                if (m.L.Ammo.Contains(id)) m.Ids.Add(id); else m.Ids.AddRange(m.L.Ammo);
+            }
+            foreach (var c in gr.Cards) PaintCard(c, c.Id == id);
+            LayoutDetail(gr);
+            Refresh(v, true);
+        }
+
+        static void PaintCard(AmmoCardUI c, bool on)
+        {
+            c.B.BorderBrush = WC.B(on ? WC.Engage : WC.Line);
+            c.B.Background = WC.B(on ? Color.FromRgb(28, 38, 46) : WC.Ammo);
+            c.Dot.Visibility = on ? Visibility.Visible : Visibility.Hidden;
         }
 
         /// <summary>One of several ammunition types of a group: its line in a frame, its stock, its fire button (in the control block).</summary>
@@ -908,15 +1248,55 @@ namespace AlternativeWeaponsControl
             var g = MemberColumns(v);
             g.MinHeight = 28f;
             var line = AmmoLine(v, id, 12f);
-            var b = new Border { Child = line, Background = WC.B(WC.Ammo), BorderBrush = WC.B(WC.Line), BorderThickness = new Thickness(1f), CornerRadius = new CornerRadius(3f),
+            bool pick = gr.Ammo.Count > 1 && gr.Ls.Count > 1;
+            AmmoCardUI cardUi = null;
+            UIElement inner = line;
+            if (pick)
+            {
+                // the selector of the active ammunition before the name
+                var rg = new Grid();
+                rg.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                rg.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1f, GridUnitType.Star) });
+                var ring = new Border { Width = 16f, Height = 16f, CornerRadius = new CornerRadius(8f), BorderBrush = WC.B(WC.Engage), BorderThickness = new Thickness(1.5f),
+                                        Background = WC.Clear, Margin = new Thickness(0f, 0f, 8f, 0f), VerticalAlignment = VerticalAlignment.Center };
+                var dot = new Ellipse { Width = 8f, Height = 8f, Fill = WC.B(WC.Engage), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+                ring.Child = dot;
+                SetTip(ring, Loc.T("ammo.activeTip"));
+                rg.Children.Add(ring);
+                Grid.SetColumn((UIElement)line, 1); rg.Children.Add((UIElement)line);
+                inner = rg;
+                cardUi = new AmmoCardUI { Id = id, Dot = dot };
+                Click(ring, () => SetActive(v, gr, id));
+            }
+            var b = new Border { Child = inner, Background = WC.B(WC.Ammo), BorderBrush = WC.B(WC.Line), BorderThickness = new Thickness(1f), CornerRadius = new CornerRadius(3f),
                                  Padding = new Thickness(8f, 2f, 6f, 2f), Margin = new Thickness(0f, 2f, 8f, 2f), VerticalAlignment = VerticalAlignment.Center };
             Grid.SetColumnSpan(b, 2);
             g.Children.Add(b);
+            if (cardUi != null)
+            {
+                cardUi.B = b; cardUi.G = g;
+                gr.Cards.Add(cardUi);
+                Click(b, () => SetActive(v, gr, id));
+                PaintCard(cardUi, id == gr.ActiveAmmo);
+            }
             var stock = MakeStock(12f, WC.Sub);
             At(g, stock.P, 2);
             gr.AmmoStocks.Add(new KeyValuePair<string, StockUI>(id, stock));
             var scope = gr.Ls.FindAll(x => x.Ammo.Contains(id));
-            At(g, Controls(v, scope, new List<string> { id }, true, false, null), 3);
+            At(g, Controls(v, scope, new List<string> { id }, true, true, null), 3);
+            // copies of the group's switches (they switch the whole group), for the domains this ammunition can engage
+            var ac = new AmmoChipsUI { Id = id, Chips = new ChipUI[5] };
+            foreach (var l in scope) { int ix = l.Ammo.IndexOf(id); if (ix >= 0 && ix < l.AmmoDom.Length) ac.Dom |= l.AmmoDom[ix]; }
+            for (int i = 0; i < 5; i++)
+            {
+                var c = MakeChip(10f, Domains[i]);
+                int d = Domains[i];
+                Click(c.G, () => { if ((ac.Dom & d) != 0) ClickGroup(v, gr, d); });
+                ac.Chips[i] = c;
+                ChipVisible(v, c.G, i);
+                At(g, c.G, 4 + i);
+            }
+            gr.AmmoChips.Add(ac);
             return g;
         }
 
@@ -949,24 +1329,39 @@ namespace AlternativeWeaponsControl
 
         static System.Reflection.Assembly GameAssemblyStatic() { return _tObjectBase == null ? null : _tObjectBase.Assembly; }
 
+        /// <summary>The game's guidance name (parts joined by ", "): when the whole text is longer than 15 characters each part is shown as the short form of the language
+        /// (lang file, keys guid.&lt;GuidanceType&gt;: SARH, ПАРГСН ...); an empty / missing entry keeps the game's name. The full name is in the tooltip.</summary>
+        static string ShortGuidance(string g, object mw)
+        {
+            var names = new List<string>();
+            var prim = R.P(mw, "GuidanceType"); if (prim != null) names.Add(prim.ToString());
+            var sec = R.P(mw, "SecondaryPassiveRadarGuidanceType");
+            if (sec != null && sec.ToString() != "None") names.Add("HomeOnJam");
+            var texts = g.Split(new[] { ", " }, StringSplitOptions.None);
+            if (texts.Length != names.Count) return g;
+            if (g.Length <= 15) return g;   // the whole text counts: a second type (Home on Jam) makes it long
+            for (int k = 0; k < texts.Length; k++) texts[k] = Loc.Or("guid." + names[k], texts[k]);
+            return string.Join(", ", texts);
+        }
+
         /// <summary>The characteristics shown in a line: (text, tooltip).</summary>
         static List<KeyValuePair<string, string>> Specs(object ap, object mw)
         {
             var parts = new List<KeyValuePair<string, string>>();
             var g = R.S(R.P(mw, "GuidanceTypeText"));
-            if (!string.IsNullOrEmpty(g) && g != "None") parts.Add(new KeyValuePair<string, string>(g, "Guidance: " + g));
+            if (!string.IsNullOrEmpty(g) && g != "None") parts.Add(new KeyValuePair<string, string>(ShortGuidance(g, mw), Loc.F("spec.guidance", g)));   // the full name is in the tooltip
             float min = R.Fl(R.P(R.P(mw, "MinLaunchRange"), "InNauticalMiles")), max = R.Fl(R.P(R.P(mw, "MaxLaunchRange"), "InNauticalMiles"));
             if (max > 0f && !float.IsNaN(max))
             {
                 bool hasMin = min > 0.01f && !float.IsNaN(min);
-                parts.Add(new KeyValuePair<string, string>((hasMin ? Num(min) + "–" : "up to ") + Num(max) + " nm",
-                                                           "Range, nm: " + (hasMin ? Num(min) + "–" : "") + Num(max)));
+                parts.Add(new KeyValuePair<string, string>((hasMin ? Num(min) + "–" : Loc.T("spec.upTo") + " ") + Num(max) + " " + Loc.T("spec.nm"),
+                                                           Loc.F("spec.range", (hasMin ? Num(min) + "–" : "") + Num(max))));
             }
             var type = R.S(R.F(ap, "_type"));
             float kt = R.Fl(R.F(ap, "_maxVelocityInKnots"));
-            if (kt > 0f && type != "Projectile") parts.Add(new KeyValuePair<string, string>(Num(kt) + " kt", "Max speed, kt: " + Num(kt)));
+            if (kt > 0f && type != "Projectile") parts.Add(new KeyValuePair<string, string>(Num(kt) + " " + Loc.T("spec.kt"), Loc.F("spec.speed", Num(kt))));
             float wh = R.Fl(R.F(ap, "_warheadPower"));
-            if (wh > 0f) parts.Add(new KeyValuePair<string, string>("pwr " + Num(wh), "Warhead power: " + Num(wh)));
+            if (wh > 0f) parts.Add(new KeyValuePair<string, string>(Loc.T("spec.pwr") + " " + Num(wh), Loc.F("spec.warhead", Num(wh))));
             return parts;
         }
 
@@ -989,7 +1384,8 @@ namespace AlternativeWeaponsControl
         }
 
         const int NCat = 7;
-        static readonly string[] CatNames = { "ready", "engaging", "reload", "damaged", "off", "waiting", "sensors off" };
+        static readonly string[] CatKeys = { "ready", "engaging", "reload", "damaged", "off", "waiting", "sensorsOff" };
+        static string CatName(int c) { return Loc.T("cat." + CatKeys[c]); }
         static Color CatColor(int c) { return c == 0 ? WC.Ok : c == 1 ? WC.Engage : c == 2 ? WC.Amber : c == 3 ? WC.Red : c == 5 || c == 6 ? WC.Amber : WC.Grey; }
 
         /// <summary>All the launcher's directors switched off - the game's status "Sensors Offline" (WeaponSystem.GetStatus: it has
@@ -1027,10 +1423,16 @@ namespace AlternativeWeaponsControl
 
         static StockUI MakeStock(float size, Color c)
         {
-            var u = new StockUI { P = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+            var u = new StockUI { P = new StackPanel { Orientation = Orientation.Vertical, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
                                                        Background = WC.Clear } };
             u.Cur = T("", c, size); u.Max = T("", WC.Dim, size);
-            u.P.Children.Add(u.Cur); u.P.Children.Add(u.Max);
+            var line = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
+            line.Children.Add(u.Cur); line.Children.Add(u.Max);
+            u.P.Children.Add(line);
+            u.RailLab = T("", WC.Dim, 10f); u.RailCur = T("", c, 10f); u.RailMax = T("", WC.Dim, 10f);
+            u.Rail = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0f, 3f, 0f, 0f), Visibility = Visibility.Collapsed };
+            u.Rail.Children.Add(u.RailLab); u.Rail.Children.Add(u.RailCur); u.Rail.Children.Add(u.RailMax);
+            u.P.Children.Add(u.Rail);
             u.Cur.Tag = c;
             return u;
         }
@@ -1049,6 +1451,14 @@ namespace AlternativeWeaponsControl
         static bool IsGun(Launcher l) { var t = R.S(R.F(l.Ws, "_weaponType")); return t == "Gun" || t == "CIWS"; }
 
         /// <summary>The stock at the start: the magazines' initial counts (each once), the launcher's own rounds where it has no magazine.</summary>
+        /// <summary>What a launcher holds at most: its own capacity; the game's launchers with none (Mk 141: _maxAmmoCount 0, no reload) hold what their rails do.</summary>
+        static int Cap(object ws)
+        {
+            int n = R.I(R.F(R.F(ws, "_vwp"), "_maxAmmoCount"));
+            if (n > 0) return n;
+            try { return Rails(ws).Count; } catch { return 0; }
+        }
+
         static int StockMax(List<Launcher> ls, string only = null)
         {
             int n = 0;
@@ -1059,7 +1469,7 @@ namespace AlternativeWeaponsControl
                 if (ammo.Count == 0) continue;
                 var vwp = R.F(l.Ws, "_vwp");
                 var mag = R.F(vwp, "_associatedMagazine");
-                if (mag == null) { n += R.I(R.F(vwp, "_maxAmmoCount")); continue; }
+                if (mag == null) { n += Cap(l.Ws); continue; }
                 if (mags.Contains(mag)) continue;
                 mags.Add(mag);
                 var init = R.F(mag, "_initialAmmoCount") as IDictionary;
@@ -1080,12 +1490,12 @@ namespace AlternativeWeaponsControl
                     string own = null;
                     try { own = R.S(R.Call(target, "GetMapContactID")); } catch { }
                     var nm = R.S(R.P(target, "DisplayNameShort"));
-                    return string.IsNullOrEmpty(own) ? nm : "Track " + own + " (" + nm + ")";
+                    return string.IsNullOrEmpty(own) ? nm : Loc.F("target.track", own, nm);
                 }
                 var globals = GameAssemblyStatic().GetType("SeaPower.Globals");
                 var tf = globals.GetField("_playerTaskforce", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic).GetValue(null);
                 var veh = R.Call(target, "GetMapVehicle", tf);
-                if (veh == null) return "unknown";
+                if (veh == null) return Loc.T("target.unknown");
                 var id = R.S(R.P(veh, "Id"));
                 return R.B(R.Rv(R.P(veh, "Identified"))) ? "Track " + id + " (" + R.S(R.Rv(R.P(target, "Name"))) + ")" : "Track " + id;
             }
@@ -1109,13 +1519,14 @@ namespace AlternativeWeaponsControl
             {
                 // a task of this launcher waits: for the launcher, or for a fire-control channel
                 var pw = PinWait(ws);
-                st = pw.Wait == 1 ? "Queued" : "Waiting for FCR channel";
+                st = pw.Wait == 1 ? Loc.T("st.queued") : Loc.T("st.waitFcr");
                 tgt = TrackLabel(pw.Target);
                 return;
             }
             try { st = R.S(R.Call(ws, "GetStatus")); } catch { }
-            st = string.IsNullOrEmpty(st) ? CatNames[c] : st;
-            if (c == 2 && st.Length > 0 && !char.IsLetter(st[0])) st = "Reloading: " + st;
+            st = string.IsNullOrEmpty(st) ? CatName(c) : st;
+            if (st.IndexOf("/10000)", StringComparison.Ordinal) > 0) st = System.Text.RegularExpressions.Regex.Replace(st, @"\((\d+)/10000\)", "($1)");   // the game's default capacity of a mount that has none of its own
+            if (c == 2 && st.Length > 0 && !char.IsLetter(st[0])) st = Loc.F("st.reloading", st);
             if (c != 3 && c != 4)
             {
                 var t = R.F(ws, "_targetObject");
@@ -1197,7 +1608,7 @@ namespace AlternativeWeaponsControl
                 object dir = null;
                 if (wt == "Gun" || wt == "CIWS")
                 {
-                    if (LocalControl(ws)) return new KeyValuePair<string, bool>("Local control", true);
+                    if (LocalControl(ws)) return new KeyValuePair<string, bool>(Loc.T("st.localControl"), true);
                     if (wt == "Gun") dir = R.Call(ws, "GetFireControlSensor");
                     else
                     {
@@ -1268,6 +1679,13 @@ namespace AlternativeWeaponsControl
             var tight = R.P(R.P(unit, "TacticalDoctrine"), "ShipsOnWeaponsTightEngageHostileAircraft");
             bool vessel = R.Is(unit, _tVessel) && tight != null;
             v.TightRow.Visibility = vessel ? Visibility.Visible : Visibility.Collapsed;
+            v.FreeRow.Visibility = R.Is(unit, _tVessel) ? Visibility.Visible : Visibility.Collapsed;
+            if (R.Is(unit, _tVessel))
+            {
+                bool fa = FreeAirOn(unit);
+                v.FreeMark.Visibility = fa ? Visibility.Visible : Visibility.Hidden;
+                v.FreeBox.BorderBrush = WC.B(fa ? Color.FromRgb(240, 96, 40) : WC.Ring);
+            }
             if (vessel)
             {
                 bool t = R.B(R.P(tight, "ResolvedValue"));
@@ -1275,7 +1693,7 @@ namespace AlternativeWeaponsControl
                 v.TightBox.Background = WC.Clear;
                 v.TightBox.BorderBrush = WC.B(t ? WC.Ok : WC.Ring);
             }
-            v.ExpandText.Text = v.Groups.Exists(g => g.Expandable && !g.Open) ? "Expand all" : "Collapse all";
+            v.ExpandText.Text = v.Groups.Exists(g => g.Expandable && !g.Open) ? Loc.T("tab.expandAll") : Loc.T("tab.collapseAll");
             RefreshCtrls(v);
 
             foreach (var gr in v.Groups)
@@ -1296,7 +1714,25 @@ namespace AlternativeWeaponsControl
                 }
                 bool plain = gr.Ls.TrueForAll(IsGun);
                 SetStock(gr.Stock, Stock(gr.Ls), StockMax(gr.Ls), plain);
-                foreach (var kv in gr.AmmoStocks) SetStock(kv.Value, Stock(gr.Ls, kv.Key), StockMax(gr.Ls, kv.Key), plain);
+                {
+                    // one launcher: what is on its rails (the stock above is all that the launcher holds, the magazine behind it included)
+                    var rails = gr.Ls.Count == 1 && !plain ? Rails(gr.Ls[0].Ws) : null;
+                    int on = 0;
+                    if (rails != null) foreach (var x in rails) if (x) on++;
+                    // not when it only repeats the stock above (Mk 141: all it holds is on the rails)
+                    if (rails != null && rails.Count > 0 && rails.Count < 10000 && !(on == Stock(gr.Ls) && rails.Count == StockMax(gr.Ls)))
+                    {
+                        // "On launcher " + current (coloured by what is left, as the stock above) + "/max"
+                        var rt = Loc.T("stock.rail"); int p0 = rt.IndexOf("{0}"), p1 = rt.IndexOf("{1}");
+                        string pre = p0 > 0 ? rt.Substring(0, p0) : "", mid = p0 >= 0 && p1 > p0 ? rt.Substring(p0 + 3, p1 - p0 - 3) : "/", post = p1 >= 0 ? rt.Substring(p1 + 3) : "";
+                        float rr = on / (float)rails.Count;
+                        SetText(gr.Stock.RailLab, pre, WC.Dim);
+                        SetText(gr.Stock.RailCur, Fmt(on), rr > 0.5f ? WC.Ok : rr > 0.25f ? WC.Amber : WC.Red);
+                        SetText(gr.Stock.RailMax, mid + Fmt(rails.Count) + post, WC.Dim);
+                        if (gr.Stock.Rail.Visibility != Visibility.Visible) gr.Stock.Rail.Visibility = Visibility.Visible;
+                    }
+                    else if (gr.Stock.Rail.Visibility != Visibility.Collapsed) gr.Stock.Rail.Visibility = Visibility.Collapsed;
+                }
                 for (int i = 0; i < 5; i++)
                 {
                     var d = Domains[i];
@@ -1309,6 +1745,12 @@ namespace AlternativeWeaponsControl
                     }
                     Paint(gr.Chips[i], st);
                     Tip(gr.Chips[i].G, st == AwcPlugin.Chip.None ? null : GroupTip(unit, gr, d, st));
+                    foreach (var ac in gr.AmmoChips)
+                    {
+                        var ast = (ac.Dom & d) != 0 ? st : AwcPlugin.Chip.None;
+                        Paint(ac.Chips[i], ast);
+                        Tip(ac.Chips[i].G, ast == AwcPlugin.Chip.None ? null : Loc.F("tip.switchesGroup", GroupTip(unit, gr, d, ast)));
+                    }
                 }
                 foreach (var m in gr.Members)
                 {
@@ -1322,7 +1764,13 @@ namespace AlternativeWeaponsControl
                     SetFill(m.Dot, CatColor(c));
                     var mf = FcOf(m.L.Ws);
                     SetFc(m.Fc, ref m.FcSig, mf == null ? new List<KeyValuePair<string, bool>>() : new List<KeyValuePair<string, bool>> { mf.Value });
-                    SetStock(m.Stock, Loaded(m.L.Ws, m.L.Ammo), R.I(R.F(R.F(m.L.Ws, "_vwp"), "_maxAmmoCount")), IsGun(m.L));
+                    {
+                        int mmax = Cap(m.L.Ws);
+                        var one = new List<Launcher> { m.L };
+                        // the game's default capacity of 10000 (a mount that has none of its own, e.g. an aircraft's guns): the magazine's
+                        if (mmax >= 10000 && R.F(R.F(m.L.Ws, "_vwp"), "_associatedMagazine") != null) SetStock(m.Stock, Stock(one), StockMax(one), IsGun(m.L));
+                        else SetStock(m.Stock, Loaded(m.L.Ws, m.L.Ammo), mmax, IsGun(m.L));
+                    }
                     for (int i = 0; i < 5; i++)
                     {
                         var st = State(unit, m.L, Domains[i]);
@@ -1366,7 +1814,7 @@ namespace AlternativeWeaponsControl
             if (gr.Dirs.Count > 0)
             {
                 int tw = 0, uw = 0, tt = 0, ut = 0;
-                var sb = new StringBuilder("Fire-control channels of the directors:");
+                var sb = new StringBuilder(Loc.T("chan.head"));
                 foreach (var s in gr.Dirs)
                 {
                     int w = R.I(R.P(s, "EffectiveWeaponChannels")), w0 = Count(R.F(s, "_associatedWeapons"));
@@ -1374,12 +1822,12 @@ namespace AlternativeWeaponsControl
                     tw += w; uw += w0; tt += t; ut += t0;
                     bool on = R.B(R.Rv(R.P(s, "IsOn"))), bad = R.B(R.Rv(R.P(s, "Inoperable")));
                     sb.Append("\n").Append(Cap(R.S(R.Rv(R.P(s, "DisplayName"))) ?? R.S(R.F(s, "_systemName")) ?? "?"))
-                      .Append(bad ? " (damaged)" : on ? "" : " (off)").Append(": targets ").Append(t0).Append('/').Append(t);
-                    if (gr.GuidedAmmo) sb.Append(", guided weapons ").Append(w0).Append('/').Append(w);
+                      .Append(bad ? Loc.T("chan.damaged") : on ? "" : Loc.T("chan.off")).Append(Loc.F("chan.targets", t0, t));
+                    if (gr.GuidedAmmo) sb.Append(Loc.F("chan.guidedWeapons", w0, w));
                 }
-                text = "T " + ut + "/" + tt + (gr.GuidedAmmo ? " · W " + uw + "/" + tw : "");
+                text = Loc.F("chan.tracked", ut, tt) + (gr.GuidedAmmo ? Loc.F("chan.guided", uw, tw) : "");
                 full = ut >= tt || (gr.GuidedAmmo && uw >= tw);
-                sb.Append("\nT: targets tracked at a time; W: guided weapons in flight at a time.");
+                sb.Append(Loc.T("chan.foot"));
                 tip = sb.ToString();
             }
             else
@@ -1387,9 +1835,9 @@ namespace AlternativeWeaponsControl
                 int used = 0;
                 try { used = R.I(R.Call(v.Unit, "WiresInUse")); } catch { }
                 int max = R.I(R.F(v.Unit, "_maxWireCount"));
-                text = "Wires " + used + "/" + max;
+                text = Loc.F("chan.wires", used, max);
                 full = used >= max;
-                tip = "Wire-guided torpedoes on the wire: in use / at a time.";
+                tip = Loc.T("chan.wiresTip");
             }
             if (gr.Chan.Text != text) gr.Chan.Text = text;
             gr.Chan.Foreground = WC.B(full ? WC.Amber : WC.Sub);
@@ -1428,7 +1876,7 @@ namespace AlternativeWeaponsControl
         {
             HideDirs(v);
             var sp = new StackPanel();
-            sp.Children.Add(T("FIRE-CONTROL DIRECTORS", WC.Dim, 10.5f));
+            sp.Children.Add(T(Loc.T("dir.title"), WC.Dim, 10.5f));
             foreach (var s in gr.Dirs)
             {
                 var box = new StackPanel { Margin = new Thickness(0f, 6f, 0f, 0f) };
@@ -1436,7 +1884,7 @@ namespace AlternativeWeaponsControl
                 var entry = SensorEntry(s);
                 var head = new StackPanel { Orientation = Orientation.Horizontal };
                 var dirSys = s;
-                head.Children.Add(entry != null ? (UIElement)Link(name, WC.Text, 12.5f, FontWeights.SemiBold, "Reference of the director", () => OpenEntry(entry))
+                head.Children.Add(entry != null ? (UIElement)DescLink(name, R.S(R.P(entry, "Description")), Loc.T("tip.refDirector"), () => OpenEntry(entry))
                                                 : T(name, WC.Text, 12.5f, FontWeights.SemiBold));
                 var state = T("", WC.Ok, 11.5f); state.Margin = new Thickness(8f, 0f, 0f, 0f);
                 head.Children.Add(state);
@@ -1452,7 +1900,7 @@ namespace AlternativeWeaponsControl
                 v.DirLines.Add(new KeyValuePair<object, TextBlock[]>(s, new[] { state, chan }));
                 sp.Children.Add(box);
             }
-            var foot = T("T: targets tracked at a time · W: guided weapons in flight at a time", WC.Dim2, 10.5f);
+            var foot = T(Loc.T("dir.foot"), WC.Dim2, 10.5f);
             foot.Margin = new Thickness(0f, 8f, 0f, 0f);
             sp.Children.Add(foot);
             v.DirCard = new Border { Child = sp, Background = WC.B(Color.FromRgb(24, 27, 31)), BorderBrush = WC.B(WC.BtnLine), BorderThickness = new Thickness(1f),
@@ -1482,11 +1930,11 @@ namespace AlternativeWeaponsControl
             {
                 var s = kv.Key;
                 bool on = R.B(R.Rv(R.P(s, "IsOn"))), bad = R.B(R.Rv(R.P(s, "Inoperable")));
-                SetText(kv.Value[0], bad ? "damaged" : on ? "on" : "off", bad ? WC.Red : on ? WC.Ok : WC.Amber);
+                SetText(kv.Value[0], bad ? Loc.T("dir.damaged") : on ? Loc.T("dir.on") : Loc.T("dir.off"), bad ? WC.Red : on ? WC.Ok : WC.Amber);
                 int w = R.I(R.P(s, "EffectiveWeaponChannels")), w0 = Count(R.F(s, "_associatedWeapons"));
                 int t = R.I(R.F(s, "_targetChannels")), t0 = Count(R.F(s, "_associatedTargets"));
                 bool full = t0 >= t || (guided && w0 >= w);
-                SetText(kv.Value[1], "Targets " + t0 + "/" + t + (guided ? " · guided weapons " + w0 + "/" + w : ""), full ? WC.Amber : WC.Sub);
+                SetText(kv.Value[1], Loc.F("dir.targets", t0, t) + (guided ? Loc.F("dir.guided", w0, w) : ""), full ? WC.Amber : WC.Sub);
             }
         }
 
@@ -1497,7 +1945,7 @@ namespace AlternativeWeaponsControl
             if (entry != null)
             {
                 var ty = R.S(R.P(entry, "TypeText")); if (!string.IsNullOrEmpty(ty)) parts.Add(ty);
-                var gr = R.S(R.P(entry, "FireControlGradeText")); if (!string.IsNullOrEmpty(gr)) parts.Add("grade " + gr);
+                var gr = R.S(R.P(entry, "FireControlGradeText")); if (!string.IsNullOrEmpty(gr)) parts.Add(Loc.F("spec.grade", gr));
                 var facts = R.P(entry, "DetailFacts") as IEnumerable;
                 if (facts != null)
                     foreach (var f in facts)
@@ -1508,7 +1956,7 @@ namespace AlternativeWeaponsControl
                     }
             }
             float gain = R.Fl(R.F(s, "_fcSolutionGainRate"));
-            if (gain > 0f) parts.Add("solution gain " + gain.ToString("0.0#", CultureInfo.InvariantCulture));
+            if (gain > 0f) parts.Add(Loc.F("spec.gain", gain.ToString("0.0#", CultureInfo.InvariantCulture)));
             return string.Join(" · ", parts.ToArray());
         }
 
@@ -1668,7 +2116,7 @@ namespace AlternativeWeaponsControl
                         bool show = cnt[c] > 0 && l2 == ln;
                         var vis = show ? Visibility.Visible : Visibility.Collapsed;
                         if (gr.SPair[i].Visibility != vis) gr.SPair[i].Visibility = vis;
-                        if (show) SetText(gr.SText[i], cnt[c] + " " + CatNames[c], CatColor(c));
+                        if (show) SetText(gr.SText[i], cnt[c] + " " + CatName(c), CatColor(c));
                     }
                 }
             }
@@ -1730,17 +2178,17 @@ namespace AlternativeWeaponsControl
         {
             if (gr.Ls.Count == 1) return ChipTip(unit, gr.Ls[0], d);
             int di = Array.IndexOf(Domains, d);
-            if (st != AwcPlugin.Chip.Mixed) return ChipTip(unit, gr.Ls[0], d).Replace("this launcher", "all " + gr.Ls.Count + " " + Noun(gr.Ls[0]) + "s");
-            var sb = new StringBuilder(DomainNames[di] + ": mixed - ");
+            if (st != AwcPlugin.Chip.Mixed) return ChipTip(unit, gr.Ls[0], d, Loc.F("chip.allOf", gr.Ls.Count, Loc.T("noun." + Noun(gr.Ls[0]) + "s")));
+            var sb = new StringBuilder(Loc.F("chip.mixed", Loc.T("dom." + di)));
             int k = 0;
             foreach (var l in gr.Ls)
             {
                 var s = State(unit, l, d);
                 if (s == AwcPlugin.Chip.None) continue;
                 sb.Append(k++ > 0 ? ", " : "").Append(string.IsNullOrEmpty(l.Loc) ? l.Name : l.Loc).Append(": ")
-                  .Append(s == AwcPlugin.Chip.On ? "automatic" : s == AwcPlugin.Chip.Off ? "off" : "off by Standing Orders");
+                  .Append(s == AwcPlugin.Chip.On ? Loc.T("chip.mixedAuto") : s == AwcPlugin.Chip.Off ? Loc.T("chip.mixedOff") : Loc.T("chip.mixedOrder"));
             }
-            sb.Append(".\nClick: the same for all.");
+            sb.Append(Loc.T("chip.mixedEnd"));
             return sb.ToString();
         }
 
@@ -1796,7 +2244,7 @@ namespace AlternativeWeaponsControl
             Refresh(v, false);
         }
 
-        object WeaponEntryFor(WeaponsView v, string id)
+        static object WeaponEntryFor(WeaponsView v, string id)
         {
             object e;
             if (v.Entries.TryGetValue(id, out e)) return e;
@@ -1816,6 +2264,38 @@ namespace AlternativeWeaponsControl
             var e = WeaponEntryFor(v, id);
             var cmd = R.P(e, "OpenReferenceCommand");
             if (cmd != null) R.Call(cmd, "Execute", (object)null);
+        }
+
+        /// <summary>A reference link's tooltip: the encyclopedia's description (wrapped at 420 px), else the plain "Reference of ...".</summary>
+        static object DescTip(string desc, string fallback)
+        {
+            if (string.IsNullOrEmpty(desc)) return TipOf(fallback);
+            return new TextBlock { Text = desc.Replace("\\n", "\n").Trim(), TextWrapping = TextWrapping.Wrap, MaxWidth = 420f };
+        }
+
+        static TextBlock DescLink(string name, string desc, string fallback, Action a)
+        {
+            var t = Link(name, WC.Text, 12.5f, FontWeights.SemiBold, null, a);
+            ToolTipService.SetToolTip(t, DescTip(desc, fallback));
+            return t;
+        }
+
+        /// <summary>The museum entry of a launcher / gun (Gun / LauncherMuseumEntries by system name); null when there is none.</summary>
+        static object SystemEntry(Launcher l)
+        {
+            try
+            {
+                var edm = GameAssemblyStatic().GetType("SeaPower.EncyclopedicDataManager");
+                var inst = edm.GetProperty("Instance", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.FlattenHierarchy).GetValue(null, null);
+                var sys = R.S(R.F(l.Ws, "_systemName"));
+                foreach (var listName in new[] { "GunMuseumEntries", "LauncherMuseumEntries" })
+                {
+                    var list = R.P(inst, listName) as IEnumerable;
+                    if (list != null) foreach (var e in list) if (R.S(R.P(e, "IniRef")) == sys) return e;
+                }
+            }
+            catch (Exception e) { Trace("system entry: " + e.Message); }
+            return null;
         }
 
         /// <summary>The reference of a launcher / gun (its museum entry by system name, opened as the Unit Reference opens it); else its first ammunition's.</summary>
@@ -1930,7 +2410,7 @@ namespace AlternativeWeaponsControl
                 else
                 {
                     var cmd = R.P(ci, "Command");
-                    if (cmd != null) mi.Click += (s, ev) => { try { R.Call(cmd, "Execute", (object)null); } catch (Exception ex) { Trace("fire menu: " + ex.Message); } };
+                    if (cmd != null) mi.Click += (s, ev) => { try { OurFireExecute(cmd); } catch (Exception ex) { Trace("fire menu: " + ex.Message); } };
                 }
                 target.Add(mi);
             }

@@ -22,28 +22,61 @@ namespace AlternativeWeaponsControl
         public static Action<string> Trace = s => { };
         public static Action<string> Warn = s => { };
 
-        enum Kind { Number, Bool }
+        enum Kind { Number, Bool, Lang }
 
         sealed class Field
         {
-            public string Group, Key, Label, Unit, Game;
+            public string Tab, Group, Key, Label, Unit, Game;
             public Kind Kind;
             public float Step, Min, Max;
         }
 
         static readonly List<Field> Fields = new List<Field>();
+        static readonly List<string> Tabs = new List<string>();
+        static string _curTab = "tabs.panel";
 
-        static void Add(string group, string key, string label, string unit, Kind kind, float step, float min, float max, string game = null)
+        static void Add(string tab, string group, string key, string label, string unit, Kind kind, float step, float min, float max, string game = null)
         {
-            Fields.Add(new Field { Group = group, Key = key, Label = label, Unit = unit, Kind = kind, Step = step, Min = min, Max = max, Game = game });
+            if (!Tabs.Contains(tab)) Tabs.Add(tab);
+            Fields.Add(new Field { Tab = tab, Group = group, Key = key, Label = label, Unit = unit, Kind = kind, Step = step, Min = min, Max = max, Game = game });
         }
 
         static SettingsWindow()
         {
-            Add("Weapons tab", "UI/ClickVolume", "Click sound volume", "0..1 · 0 = no sound", Kind.Number, 0.1f, 0f, 1f);
-            Add("Fire control", "FireControl/GunOneDirector", "Guns take one director", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add("Fire control", "FireControl/GunChannelLimit", "Guns without a free channel: local control", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add("Diagnostics", "General/Debug", "Debug trace", "", Kind.Bool, 0, 0, 0);
+            const string T1 = "tabs.panel", T2 = "tabs.fire", TA = "tabs.ai", T3 = "tabs.guns", T4 = "tabs.visual", T5 = "tabs.debug";
+            Add(T1, "grp.panel", "UI/WeaponsTabGroundUnits", "Weapons tab for ground units", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T1, "grp.panel", "UI/WeaponsTabAircraft", "Weapons tab for aircraft and helicopters", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T1, "grp.panel", "UI/FireShowsZones", "Fire shows weapon arcs and range", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T1, "grp.panel", "UI/ClickVolume", "Click sound volume", "0..1 · 0 = no sound", Kind.Number, 0.1f, 0f, 1f);
+            Add(T1, "grp.samButton", "UI/SamReadyButton", "SAM readiness button", "", Kind.Bool, 0, 0, 0);
+            Add(T1, "grp.samButton", "UI/SamReadyMinutes", "SAM readiness time, minutes", "1..60", Kind.Number, 1f, 1f, 60f);
+            Add(T2, "grp.sam", "Ships/SamAutoCharge", "Charge SAMs when unknown aircraft approach", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T2, "grp.sam", "Ships/SamAutoChargeRange", "Unknown aircraft distance to charge", "nm", Kind.Number, 5f, 5f, 200f);
+            Add(T2, "grp.sam", "Ships/SamKeepLoaded", "Keep SAM missiles on the rails while hot", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T2, "grp.sam", "Ships/SamAnimFix", "Missile load / unload animation fix", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T2, "grp.fireControl", "FireControl/GunOneDirector", "Guns take one director", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T2, "grp.fireControl", "FireControl/GunChannelLimit", "Guns without a free channel: local control", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(TA, "grp.freeAir", "Fire/UnknownAirMinKnots", "Engage unidentified aircraft faster than", "kn", Kind.Number, 10f, 100f, 2000f);
+            Add(TA, "grp.freeAir", "Fire/UnknownAirMaxNm", "Engage unidentified aircraft closer than", "nm", Kind.Number, 5f, 5f, 200f);
+            Add(TA, "grp.freeAir", "Fire/UnknownAirDefaultOwn", "On Free by default: your and allied ships", "", Kind.Bool, 0, 0, 0);
+            Add(TA, "grp.freeAir", "Fire/UnknownAirDefaultEnemy", "On Free by default: enemy AI ships", "", Kind.Bool, 0, 0, 0);
+            Add(TA, "grp.chasing", "Ships/NoRbuSurfaceChase", "No chasing surface targets with ASW mortars", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(TA, "grp.chasing", "Ships/NoAirChase", "No chasing air targets", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T3, "grp.accuracy", "Guns/AimBeyondMaxRange", "Aim guns at targets beyond max range", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T3, "grp.accuracy", "Guns/MaxAccuracyMeters", "Gun maximum accuracy (best fire control error)", "m", Kind.Number, 1f, 0f, 100f);
+            Add(T3, "grp.tracers", "Guns/MachineGunBurstFix", "Machine gun tracers in the whole burst", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T3, "grp.tracers", "Guns/MachineGunSoundLoopFix", "Seamless machine gun sound", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T3, "grp.tracers", "Guns/HitSoundFix", "Always play gun hit sound", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T4, "grp.binoculars", "Optics/BinocularsNormalView", "Normal view in binoculars at max zoom", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T4, "grp.binoculars", "Optics/NormalViewDayOnly", "Normal view only by day", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T4, "grp.flashes", "Effects/MuzzleFlashLight", "Light flash when guns fire", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T4, "grp.flashes", "Effects/HitFlashLight", "Light flash when shells hit", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T4, "grp.flashes", "Effects/MissileLaunchFlashLight", "Light of missile boosters at launch", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T4, "grp.flashes", "Effects/FlashPower", "Flash brightness", "x", Kind.Number, 0.1f, 0.1f, 5f);
+            Add(T4, "grp.fires", "Effects/FireFlicker", "Fire light flicker", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T4, "grp.fires", "Effects/FireLightPower", "Fire light brightness", "x", Kind.Number, 0.1f, 0.1f, 10f);
+            Add(T5, "grp.diagnostics", "General/Debug", "Debug trace", "", Kind.Bool, 0, 0, 0);
+            Add("tabs.language", "grp.language", "General/Language", "Language", "", Kind.Lang, 0, 0, 0);
         }
 
         // ------------------------------------------------------------ colours (the game's dark panels)
@@ -59,7 +92,7 @@ namespace AlternativeWeaponsControl
         static UIElement _top;             // the screen the window is centred on (mouse positions for dragging)
         static Grid _root;
         static TextBlock _help, _status;
-        static StackPanel _body;
+        static StackPanel _body, _tabBar;
         static Panel _host;                // the top panel of the screen the window was put into (null: shown in a Popup)
         static TranslateTransform _move;
         static readonly Dictionary<string, string> _work = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -225,24 +258,26 @@ namespace AlternativeWeaponsControl
         }
 
         // size in UI units (the game's UI scale applies): everything fits at once; kept while the game runs, at most the screen less 40 px
-        const float WinW = 820f, WinH = 580f;
+        const float WinW = 820f, WinH = 805f   /* screen pixels: converted to UI units at the first opening */;
         static float _winW = WinW, _winH = WinH;
         static int _place;
+        static bool _sizedOnce;
 
-        static void BuildWindow()
+        static void BuildWindow(bool keepRoot = false)
         {
-            _root = new Grid { Width = _winW, Height = _winH };
+            if (keepRoot && _root != null) _root.Children.Clear();
+            else _root = new Grid { Width = _winW, Height = _winH };
             var win = new Border { Background = B(CBg), BorderBrush = B(CLine), BorderThickness = new Thickness(1f), CornerRadius = new CornerRadius(4f) };
             _root.Children.Add(win);
             var layout = new Grid();
-            for (int r = 0; r < 4; r++) layout.RowDefinitions.Add(new RowDefinition { Height = r == 1 ? new GridLength(1f, GridUnitType.Star) : GridLength.Auto });
+            for (int r = 0; r < 5; r++) layout.RowDefinitions.Add(new RowDefinition { Height = r == 2 ? new GridLength(1f, GridUnitType.Star) : GridLength.Auto });
             win.Child = layout;
 
             // title bar: drag to move, ✕ to close
             var title = new Grid { Background = B(CTitle), Height = 32f };
             title.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1f, GridUnitType.Star) });
             title.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            var tt = Text("Alternative Weapons Control - Settings", CText, 14f); tt.Margin = new Thickness(10f, 0f, 0f, 0f);
+            var tt = Text(Loc.T("set.title"), CText, 14f); tt.Margin = new Thickness(10f, 0f, 0f, 0f);
             title.Children.Add(tt);
             var x = new Button { Content = Cross(10f), Width = 28f, Height = 24f, Padding = new Thickness(0f), Margin = new Thickness(0f, 0f, 4f, 0f),
                                  HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
@@ -252,15 +287,18 @@ namespace AlternativeWeaponsControl
             Draggable(title);
             layout.Children.Add(title);
 
+            _tabBar = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(12f, 10f, 12f, 0f) };
+            Grid.SetRow(_tabBar, 1); layout.Children.Add(_tabBar);
+
             _body = new StackPanel { Orientation = Orientation.Vertical, Margin = new Thickness(0f, 6f, 0f, 6f) };
             var scroll = new ScrollViewer { Content = _body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
-            var area = new Border { Child = scroll, Background = B(CCard), BorderBrush = B(CLine), BorderThickness = new Thickness(1f), Margin = new Thickness(12f, 12f, 12f, 0f) };
-            Grid.SetRow(area, 1); layout.Children.Add(area);
+            var area = new Border { Child = scroll, Background = B(CCard), BorderBrush = B(CLine), BorderThickness = new Thickness(1f), Margin = new Thickness(12f, 4f, 12f, 0f) };
+            Grid.SetRow(area, 2); layout.Children.Add(area);
 
-            _help = new TextBlock { Foreground = B(Color.FromRgb(194, 199, 204)), FontSize = 12f, TextWrapping = TextWrapping.Wrap, Text = "Point at a setting to see what it does." };
+            _help = new TextBlock { Foreground = B(Color.FromRgb(194, 199, 204)), FontSize = 12f, TextWrapping = TextWrapping.Wrap, Text = Loc.T("set.hint") };
             var hb = new Border { Child = _help, Background = B(Color.FromRgb(34, 38, 44)), BorderBrush = B(CLine), BorderThickness = new Thickness(1f),
                                   Padding = new Thickness(10f, 8f, 10f, 8f), Margin = new Thickness(12f, 8f, 12f, 0f), Height = 108f, CornerRadius = new CornerRadius(3f) };
-            Grid.SetRow(hb, 2); layout.Children.Add(hb);
+            Grid.SetRow(hb, 3); layout.Children.Add(hb);
 
             var foot = new Grid { Margin = new Thickness(12f, 10f, 12f, 12f) };
             foot.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -269,12 +307,12 @@ namespace AlternativeWeaponsControl
             _status = Text("", CDim, 11f); _status.HorizontalAlignment = HorizontalAlignment.Right; _status.Margin = new Thickness(0f, 0f, 10f, 0f);
             Grid.SetColumn(_status, 1); foot.Children.Add(_status);
             var right = new StackPanel { Orientation = Orientation.Horizontal };
-            right.Children.Add(Btn("Cancel", () => { Load(); Close(); }, 70f));   // the saved values back: edits not applied are dropped
-            right.Children.Add(Btn("Apply", () => Commit(false), 70f));
-            var ok = Btn("OK", () => Commit(true), 70f); ok.Margin = new Thickness(0f);
+            right.Children.Add(Btn(Loc.T("set.cancel"), () => { Load(); Close(); }, 70f));   // the saved values back: edits not applied are dropped
+            right.Children.Add(Btn(Loc.T("set.apply"), () => Commit(false), 70f));
+            var ok = Btn(Loc.T("set.ok"), () => Commit(true), 70f); ok.Margin = new Thickness(0f);
             right.Children.Add(ok);
             Grid.SetColumn(right, 2); foot.Children.Add(right);
-            Grid.SetRow(foot, 3); layout.Children.Add(foot);
+            Grid.SetRow(foot, 4); layout.Children.Add(foot);
 
             AddResizeHandles();
         }
@@ -308,7 +346,7 @@ namespace AlternativeWeaponsControl
             {
                 h.Margin = new Thickness(0f, 0f, 1f, 1f);
                 h.Child = new Path { Data = new StreamGeometry("M15,4 L4,15 M15,8 L8,15 M15,12 L12,15"), Stroke = B(CDim), StrokeThickness = 1f };
-                try { ToolTipService.SetToolTip(h, "Drag to resize"); } catch { }
+                try { ToolTipService.SetToolTip(h, Loc.T("set.resizeTip")); } catch { }
             }
             try { h.Cursor = corner ? (sx == sy ? Cursors.SizeNWSE : Cursors.SizeNESW) : sx != 0 ? Cursors.SizeWE : Cursors.SizeNS; } catch { }
             bool down = false; Point start = new Point(); float w0 = 0f, h0 = 0f;
@@ -376,6 +414,7 @@ namespace AlternativeWeaponsControl
                 float sw = UnityEngine.Screen.width, sh = UnityEngine.Screen.height;
                 if (_place == 0)
                 {
+                    if (!_sizedOnce) { _winH = WinH / k; _sizedOnce = true; }
                     _root.Width = Math.Min(_winW, (sw - 40f) / k);
                     _root.Height = Math.Min(_winH, (sh - 40f) / k);
                     _place = 1;
@@ -396,13 +435,51 @@ namespace AlternativeWeaponsControl
         {
             if (_body == null) return;
             _body.Children.Clear();
+            if (_tabBar != null)
+            {
+                _tabBar.Children.Clear();
+                foreach (var t in Tabs)
+                {
+                    string tab = t;
+                    bool sel = tab == _curTab, chg = TabChanged(tab);
+                    var lab = new StackPanel { Orientation = Orientation.Horizontal };
+                    if (chg) lab.Children.Add(new Ellipse { Width = 6f, Height = 6f, Fill = B(CWarn), Margin = new Thickness(0f, 0f, 6f, 0f), VerticalAlignment = VerticalAlignment.Center });
+                    lab.Children.Add(Text(Loc.T(tab), sel ? CText : CDim, 13f));
+                    var b = new Border { Child = lab, Padding = new Thickness(14f, 6f, 14f, 6f), Margin = new Thickness(0f, 0f, 3f, 0f), Cursor = Cursors.Hand,
+                                         Background = B(sel ? CCard : CTitle), BorderBrush = B(CLine), BorderThickness = new Thickness(1f, 1f, 1f, 0f), CornerRadius = new CornerRadius(3f, 3f, 0f, 0f) };
+                    b.MouseLeftButtonUp += (o, e) => { _curTab = tab; Show(); };
+                    _tabBar.Children.Add(b);
+                }
+            }
             string group = null;
             foreach (var f in Fields)
             {
-                if (f.Group != group) { group = f.Group; _body.Children.Add(GroupTitle(group)); }
+                if (f.Tab != _curTab) continue;
+                if (f.Group != group) { group = f.Group; _body.Children.Add(GroupTitle(Loc.T(group))); }
                 _body.Children.Add(Row(f));
             }
             UpdateStatus();
+        }
+
+        static void UpdateTabDots()
+        {
+            if (_tabBar == null) return;
+            int i = 0;
+            foreach (var t in Tabs)
+            {
+                var b = _tabBar.Children[i++] as Border; var sp = b == null ? null : b.Child as StackPanel;
+                if (sp == null) continue;
+                bool has = sp.Children.Count > 1, want = TabChanged(t);
+                if (has == want) continue;
+                if (want) sp.Children.Insert(0, new Ellipse { Width = 6f, Height = 6f, Fill = B(CWarn), Margin = new Thickness(0f, 0f, 6f, 0f), VerticalAlignment = VerticalAlignment.Center });
+                else sp.Children.RemoveAt(0);
+            }
+        }
+
+        static bool TabChanged(string tab)
+        {
+            foreach (var f in Fields) if (f.Tab == tab && !Same(Get(f), Saved(f))) return true;
+            return false;
         }
 
         static void UpdateStatus()
@@ -410,7 +487,7 @@ namespace AlternativeWeaponsControl
             if (_status == null) return;
             bool any = false;
             foreach (var f in Fields) if (!Same(Get(f), Saved(f))) { any = true; break; }
-            _status.Text = any ? "● changed, not applied yet   ↺ = back to the default" : "";
+            _status.Text = any ? Loc.T("set.changed") : "";
         }
 
         static TextBlock GroupTitle(string s)
@@ -421,8 +498,8 @@ namespace AlternativeWeaponsControl
         static FrameworkElement Row(Field f)
         {
             var g = new Grid { Background = B(Color.FromArgb(0, 0, 0, 0)) };
-            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(330f) });
-            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1f, GridUnitType.Star) });
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1f, GridUnitType.Star), MinWidth = 330f });   // the names take what the window gains
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1f, GridUnitType.Star), MinWidth = 200f });
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110f) });
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(30f) });
             var outer = new Border { Child = g, Padding = new Thickness(12f, 4f, 6f, 4f), Background = B(Color.FromArgb(0, 0, 0, 0)) };
@@ -430,23 +507,24 @@ namespace AlternativeWeaponsControl
             var lab = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
             var dot = new Ellipse { Width = 6f, Height = 6f, Fill = B(CWarn), Margin = new Thickness(0f, 0f, 6f, 0f), VerticalAlignment = VerticalAlignment.Center };
             lab.Children.Add(dot);
-            lab.Children.Add(Text(f.Label, CText));
+            lab.Children.Add(Text(Loc.T("lbl." + f.Key), CText));
             g.Children.Add(lab);
 
-            Action mark = () => { dot.Visibility = Same(Get(f), Saved(f)) ? Visibility.Hidden : Visibility.Visible; UpdateStatus(); };
+            Action mark = () => { dot.Visibility = Same(Get(f), Saved(f)) ? Visibility.Hidden : Visibility.Visible; UpdateStatus(); UpdateTabDots(); };
             Action refresh;
-            var editor = f.Kind == Kind.Bool ? BoolEditor(f, mark, out refresh) : NumberEditor(f, mark, out refresh);
+            var editor = f.Kind == Kind.Bool ? BoolEditor(f, mark, out refresh) : f.Kind == Kind.Lang ? LangEditor(f, mark, out refresh) : NumberEditor(f, mark, out refresh);
             Grid.SetColumn(editor, 1);
             g.Children.Add(editor);
 
-            string d = Default(f).Replace("True", "on").Replace("False", "off").Replace("true", "on").Replace("false", "off");
-            var game = new TextBlock { Text = "default: " + d + (f.Game != null ? "\n" + f.Game : ""), Foreground = B(CDim), FontSize = 11f, TextAlignment = TextAlignment.Right,
+            string d = Default(f).Replace("True", Loc.T("set.on")).Replace("False", Loc.T("set.off")).Replace("true", Loc.T("set.on")).Replace("false", Loc.T("set.off"));
+            if (f.Kind == Kind.Lang) d = Loc.T("set.gameLang");
+            var game = new TextBlock { Text = Loc.F("set.default", d) + (f.Game != null ? "\n" + Loc.T("set.gameOff") : ""), Foreground = B(CDim), FontSize = 11f, TextAlignment = TextAlignment.Right,
                                        VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
             Grid.SetColumn(game, 2);
             g.Children.Add(game);
 
             var rst = new Button { Content = "↺", Width = 24f, Height = 22f, Padding = new Thickness(0f), HorizontalAlignment = HorizontalAlignment.Right };
-            try { ToolTipService.SetToolTip(rst, "Back to the default"); } catch { }
+            try { ToolTipService.SetToolTip(rst, Loc.T("set.resetTip")); } catch { }
             rst.Click += (o, e) => { _work[f.Key] = Default(f); refresh(); mark(); };
             Grid.SetColumn(rst, 3);
             g.Children.Add(rst);
@@ -457,9 +535,9 @@ namespace AlternativeWeaponsControl
                 outer.Background = B(CHl);
                 var en = Entry(f.Key);
                 _help.Inlines.Clear();
-                var r = new Run(f.Label); r.FontWeight = FontWeight.Bold; r.Foreground = B(CText);
+                var r = new Run(Loc.T("lbl." + f.Key)); r.FontWeight = FontWeight.Bold; r.Foreground = B(CText);
                 _help.Inlines.Add(r);
-                _help.Inlines.Add(new Run(" - " + (en != null && en.Description != null ? en.Description.Description : "")));
+                _help.Inlines.Add(new Run(" - " + Loc.Or("help." + f.Key, en != null && en.Description != null ? en.Description.Description : "")));
             };
             outer.MouseLeave += (o, e) => outer.Background = B(Color.FromArgb(0, 0, 0, 0));
             return outer;
@@ -501,7 +579,7 @@ namespace AlternativeWeaponsControl
             box.LostFocus += (o, e) => typed();
             box.KeyDown += (o, e) => { if (e.Key == Key.Return) { typed(); e.Handled = true; } };
             sp.Children.Add(minus); sp.Children.Add(box); sp.Children.Add(plus);
-            if (!string.IsNullOrEmpty(f.Unit)) { var u = Text(f.Unit, CDim, 12f); u.Margin = new Thickness(8f, 0f, 0f, 0f); sp.Children.Add(u); }
+            if (!string.IsNullOrEmpty(f.Unit)) { var u = Text(Loc.Or("unit." + f.Key, f.Unit), CDim, 12f); u.Margin = new Thickness(8f, 0f, 0f, 0f); sp.Children.Add(u); }
             refresh = () => box.Text = Get(f);
             return sp;
         }
@@ -511,6 +589,27 @@ namespace AlternativeWeaponsControl
             var cb = new CheckBox { IsChecked = Get(f).Trim().Equals("true", StringComparison.OrdinalIgnoreCase), VerticalAlignment = VerticalAlignment.Center };
             cb.Click += (o, e) => { _work[f.Key] = cb.IsChecked == true ? "true" : "false"; mark(); };
             refresh = () => cb.IsChecked = Get(f).Trim().Equals("true", StringComparison.OrdinalIgnoreCase);
+            return cb;
+        }
+
+        static FrameworkElement LangEditor(Field f, Action mark, out Action refresh)
+        {
+            var codes = new List<string> { "" };
+            foreach (var l in Loc.GameLanguages()) if (!codes.Contains(l.Key)) codes.Add(l.Key);
+            var names = new Dictionary<string, string>();
+            foreach (var l in Loc.GameLanguages()) names[l.Key] = l.Value;
+            Func<string, string> show = c => string.IsNullOrEmpty(c) ? Loc.T("set.gameLang") : (names.ContainsKey(c) ? names[c] + " (" + c + ")" : c);
+            var cb = new ComboBox { Width = 200f, MinHeight = 24f, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center };
+            foreach (var c in codes) cb.Items.Add(show(c));
+            Func<int> index = () => { int i = codes.IndexOf((Get(f) ?? "").Trim()); return i < 0 ? 0 : i; };
+            cb.SelectedIndex = index();
+            cb.SelectionChanged += (o, e) =>
+            {
+                int i = cb.SelectedIndex;
+                if (i < 0 || i >= codes.Count || codes[i] == (Get(f) ?? "").Trim()) return;
+                _work[f.Key] = codes[i]; mark();
+            };
+            refresh = () => cb.SelectedIndex = index();
             return cb;
         }
 
@@ -527,6 +626,18 @@ namespace AlternativeWeaponsControl
             if (close) { Close(); return; }
             Load();
             Show();
+            _redraw = 2;   // the whole window is rebuilt a couple of frames later: not inside the click of a button that is being replaced
+        }
+
+        static int _redraw;
+
+        /// <summary>Called every frame: the delayed rebuild of the window after Apply (the texts follow the new language).</summary>
+        public static void Tick()
+        {
+            if (_redraw <= 0) return;
+            if (--_redraw > 0) return;
+            if (_root == null || !IsOpen) return;
+            try { BuildWindow(true); Show(); } catch (Exception ex) { Trace("rebuild: " + ex); }
         }
     }
 }

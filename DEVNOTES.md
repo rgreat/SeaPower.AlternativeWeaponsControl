@@ -27,7 +27,7 @@ Alternative Damage Model: настройки — шестерёнка на кн�
 предупредить заранее.
 
 ## Совместимость
-`_info.ini` ApproximateVersion=0.8.4 (все используемые члены игры проверены по декомпиляции 0.8.4 и 0.8.5).
+`_info.ini` ApproximateVersion=0.8.6 (члены игры проверены по декомпиляции 0.8.4 и 0.8.5; 0.8.6 - по описанию, не по коду).
 Отсутствующее имя → мягкий отказ функции (предупреждение в логе).
 
 ## Структура
@@ -62,11 +62,11 @@ Alternative Damage Model: настройки — шестерёнка на кн�
 * Пусковые = `_obp._weaponSystems` (индекс в списке — ключ настроек) без Chaff / Noisemaker / Hardpoint / UNKNOWN; имя —
   `DisplayName.Value` (с заглавной); боеприпасы — `_associatedAmmunitionNames` (те, что есть у юнита,
   `getAmmunitionByName`); раздел по `_weaponType` (CIWS, Gun) и первому боеприпасу (AAW → SAM, ASuW → ANTI-SHIP, ASW /
-  торпеда / RBU / ASROC → ASW, только удар по суше → LAND ATTACK); место — позиция `_mountObject` в осях корабля
+  RBU / ASROC / торпеда против ПЛ → ASW, торпеда только против надводных → ANTI-SHIP, только удар по суше → LAND ATTACK); место — позиция `_mountObject` в осях корабля
   (fore/aft по z, port/starboard по x, если |x| > 25% максимального). Группа = раздел + имя + набор боеприпасов (×N).
-* Домены: AIR (IsAirUnit), MSL (WeaponBase кроме торпед), SUR (Vessel, всплывшая ПЛ), SUB (погружённая ПЛ, торпеда,
+* Домены: AIR (IsAirUnit), MSL (WeaponBase: ракеты и торпеды, с 1.1.0), SUR (Vessel, всплывшая ПЛ), SUB (погружённая ПЛ,
   биология), LND (LandUnit). У пусковой — объединение по её боеприпасам: AAW → AIR+MSL, ASuW → SUR, ASW → SUB,
-  `_landAttack` → LND, `_antiTorpedo` → SUB.
+  `_landAttack` → LND, `_antiTorpedo` → MSL.
 * Переключатели игрока: `UnitW.Off[индекс] = маска выключенных доменов` (ConditionalWeakTable по юниту), сохраняются в
   секцию юнита сохранения (`AlternativeWeaponsControl_WeaponAuto=idx:mask,...`, постфиксы ObjectBase.Save/LoadStateFromFile).
 * Объединение со Standing Orders юнита (`TacticalDoctrine`): AutoAttackSurface (все пусковые × SUR/SUB/LND, кроме
@@ -235,6 +235,201 @@ Alternative Damage Model: настройки — шестерёнка на кн�
 две строки): панель Weapons (строки с состояниями и чипами AIR..SUB, рамка T 1/1), корабль, каждая установка — по своей
 цели. Рисуется скриптом PIL `/home/claude/tools/thumb_awc.py [out.jpg]` (в репозитории нет; DejaVu Sans, рисуется ×2).
 
+## Корабли: погоня за целью ([Ships])
+* Корабль, у которого цель вне дальности оружия, разворачивается на неё и даёт полный ход: `AlignUnitToTarget.GetValidHeadingArcs`
+  ставит `_goingIntoFiringRange` и дугу ±2° на цель (`Vessel.UpdateAlignmentSteering`: руль, telegraph 5). Задача
+  выравнивания создаётся в `ObjectBase.HandleEngageTasks` для каждой задачи с оружием без `_engageOnlyInsideArc`.
+* NoRbuSurfaceChase (true) / NoAirChase (true): postfix `GetValidHeadingArcs` (`ChasePostfix`) — у Vessel (и ИИ противника),
+  если идёт «в дальность» из-за того, что цель ДАЛЬШЕ максимума, и цель надводная (не погружена) при боеприпасе RBU, или
+  воздушная (`isAirTarget`: самолёты, вертолёты, ракеты) — `_goingIntoFiringRange = false`, дуг нет (null): корабль держит курс.
+  Разворот от слишком близкой цели и наведение дуги пусковой на цель в дальности — как в игре. Только при включённом моде.
+
+## Орудия: опции [Guns] (GunFixes.cs)
+* Пулемёты (14.5mm_2M-5 и др.) — Type=CIWS (`CIWS.cs`), не GunBarrel. Видимые трассеры — системы частиц эффекта
+  (`CIWS._tracers`, дочерняя «Tracers» с rateOverTime = FireRate/60/5) с duration 1.1 с и loop=false: через 1.1 с после
+  `startFire()` эмиссия прекращалась, очередь «через раз». MachineGunBurstFix: postfix `CIWS.startFire` — `main.loop = true`
+  у всех играющих систем эффекта (белые и синие трассеры идут вместе). Emit(1) в начале очереди давал только синий — убран.
+* Звук попаданий (HitSoundFix): у префабов `missile_hit_ship_small`, `_2`, `_4` (+ `missile_hit_air*`, `Bomb_cluster` и др.)
+  нет AudioSource; postfix `EffectsManager.spawnEffect` внутри `Projectile.ProcessCollision` добавляет AudioSource с клипом
+  explosion*/flak* «донора» (из `_effectsDictionary`), maxDistance >= 50 юн. Приоритет звуков не меняется. В сцене играет
+  60-70 источников при 32 real voices (virtual 512).
+* Звук пулемёта: пауза между очередями на слух — реальная пауза в стрельбе (дисциплина огня), а не ошибка; визуально трассеры
+  цельные только потому, что летят до 12 с. Звук гаснет через 0.3 с после последнего выстрела (игра) — оставлен как есть.
+  Пробовали продлевать звук через паузу — отвергнуто: звук должен идти только пока пулемёт стреляет.
+* Trace: звук очереди — клип `tripleA` 2.16 с, loop=true, playing/virtual False/громкость 1 всю очередь (3 с) → пауза
+  в середине = тихая часть самого клипа при зацикливании (позиция 1.98 → 0.03). MachineGunSoundLoopFix: громкость клипа
+  меряется окнами 50 мс (`AudioClip.GetData`), позиция воспроизведения перепрыгивает с конца громкой части на её начало
+  (postfix `CIWS.update`). Если клип не читается (compressed) — ничего не делает, пишет в trace. 
+* Кнопки внизу вкладки Weapons перестали не нажиматься сами; `AddClickProbe` (Debug) оставлен.
+
+## Очередь задач (следующий релиз, от пользователя, Oct 20)
+1. Опция: наводить туррели на цель в 3D даже за максимальной дальностью (AlignMaxRange = WeaponMaxRange * 1.5 + 2 nm).
+2. Кнопка готовности ракет ЗРК на пилонах: под треугольником группы (или вместо него, если пусковая одна); клик — принудительно
+   зарядить; таймаут 15 мин, затем ракеты разряжаются; таймер мелким шрифтом; дизайн как у Fire/Cease fire/Reload.
+3. Опция: автозарядка ракет ЗРК при приближении неизвестных воздушных контактов (с учётом ООДА).
+4. Проверить: почему у пушек вблизи точность хуже, чем на средних дистанциях.
+5. Fire подсвечивает зоны досягаемости оружия на карте и в 3D (как Alt + наведение на оружие в статусной строке).
+6. Опция: вспышки света при стрельбе и попаданиях в 3D.
+7. Опция: по умолчанию обычный режим просмотра в «режиме бинокля» при макс. увеличении; доп. опция — только днём.
+8. Закладка Weapons для самолётов и наземной техники.
+9. Перетаскивание групп разных видов по вертикали (смена порядка).
+
 ## Версия
-* 1.0.0 (в работе): выделен из Smart Windows; шестерёнка и (i) на кнопке вкладки.
+* 1.0.0 — Steam Release (коммит 5e2fc90): выделен из Smart Windows; шестерёнка и (i) на кнопке вкладки.
+* 1.1.0 (в работе): противокорабельные торпеды — в ANTI-SHIP; торпеды как цели — домен MSL; описания в подсказках
+  ссылок; опции [Ships] NoRbuSurfaceChase / NoAirChase; отладочный зонд кликов (кнопки внизу вкладки не нажимаются —
+  причина не найдена); автопушки «очередь через раз» и звук попаданий — не решено, см. «Открытые вопросы».
 * Версия: константа `PluginVersion` (BepInPlugin, ACPlugin, лог) + `<Version>` в csproj — менять обе.
+
+## Кнопка готовности ЗРК (WarmUp.cs, WeaponsView.cs: WarmButton)
+- Только `WeaponSystemLauncher` с `_vwp._hasWarmUp && _hasWarmUpAmmo` и магазином. Рельсы: `_containers[i]._weapons` / `_attachmentPositions` -> по иконке ракеты на каждую позицию (многобалочные).
+- Состояния: серая (рельсы пусты), янтарная (идёт зарядка: Pending/_isReloading/_state!=Idle или заряжено частично), зелёная (все рельсы).
+- Клик по серой: `Charge` = `WarmUp()` + Pending; в postfix `WeaponSystemLauncher.OnUpdate` после конца перезарядки `_ammoForEngage = PickAmmo` + `triggerLoadSystem()`; таймер (SamReadyMinutes) стартует, когда рельсы заряжены. Пуск (рельсы пусты) - таймер сбрасывается, стартует заново после новой зарядки. По истечении без использования: `Discharge` (container.unload(true) - ракеты в магазин, IsHot=false). Клик по зелёной/янтарной: `Discharge` (не в бою).
+- Reload для таких пусковых (`CanForceReload` у launcher всегда false): `Recharge` = Discharge + Charge; активна, если пусковая не в бою.
+- Не проверено в игре: загрузка через triggerLoadSystem без цели (`_ammoForEngage` ставим сами).
+- Опции: [UI] SamReadyButton (true), SamReadyMinutes (15).
+- Авто-заряжание ([Ships] SamAutoCharge=true, SamAutoChargeRange=40 nm): postfix `AI.OnUpdate` (WarmUp.cs AutoChargePostfix), раз в 3 с, все юниты (и AI), не Hold. ООДА: берём только `AI._processedObjects` (контакты, прошедшие Observe/Orient). Контакт: `IsAirUnit`, есть на плоте таксфорса, не опознан (`Identified` false или relation Unknown), ближе дальности, сближается (скорость·вектор<0). Заряжаются пусковые с доменом AIR, чип AIR не Off, холодные: `Charge`. Опознанные враги - как в игре (AI.cs ~713 WarmUp).
+- SamKeepLoaded ([Ships], true): игра при простое пусковой (rest position, `_systemState==SystemClosed`, !_hasPreloadedAmmunition, `_ammunitionOnWeapon!=null`) ставит `_triggerShutDown=true` -> `unloadSystem()` выгружает рельсы (2-я ракета «пропадает» после 1-го пуска). Postfix `WeaponSystemLauncher.OnUpdate` сбрасывает флаг, пока `IsHot` и state Idle. Остывание IsHot игрой - 1800 с покоя, наша метка - SamReadyMinutes.
+- Авто-заряжание: учитываются и опознанные Hostile (игра для них только греет, рельсы не загружает).
+- Анимация ракет (SamAnimFix, true): трейс показал `alp=(0,0,0)/(0,0,0)` у load/unload анимации SA-N-1A: в `ammunition/wp_sa-n-1*.ini` `[Launchers]` есть только `SA-N-1`, имя системы пусковой `SA-N-1A` не находится (`TryGetValue` false -> default struct) -> MoveMissileUp/Down двигает с 0 в 0, ракеты появляются/исчезают. Фикс: postfix `setNextAmmunitionLauncherPositions` (загрузка) и `playUnloadAnimation` (выгрузка) подставляют ближайший ключ (префикс имени) в `anim.setAmmunitionLoaderPositions`.
+
+- Диагностика кнопки ЗРК/анимации (warm state/anim/data, auto charge) убрана после подтверждения; остались только Trace при ошибках и отсутствии методов. Данные мода Task Force Grom: в ammunition/wp_sa-n-1a/1b/1c/1d, wp_sa-n-3a, wp_rgb-12 добавлены [Launchers] под имена систем (SA-N-1A.. SA-N-3A, RBU1200).
+
+## Прицеливание за максимальной дальностью (GunFixes.cs, [Guns] AimBeyondMaxRange=true) - пункт 1 очереди, СДЕЛАН
+- `WeaponSystemGun.AlignTurret` сразу `return false`, если дальность > `_ammoForEngage._ap._launchRangesInUnity.y` - туррель не двигается. Prefix (только юниты игрока): если max < dist <= 1.5*max + 2 nm - `targetPosition` заменяется точкой на том же азимуте на 0.98*max (поворот/возвышение делает код игры); postfix принудительно `__result=false` (не стрелять). 2 nm = 2/0.036285 юнитов.
+- Для воздушных целей дополнительно действует прямой лимит `GunBallistics.DirectFireRangeUnity` внутри метода.
+- CIWS и пулемёты (Type=CIWS): prefix `WeaponSystemCIWS.FireAtTarget` (CiwsAimPrefix): в зоне (max + CiwsPrepMargin, 1.5*max + 2 nm] - `CalculateAimPosition` + проверка дуг + `alignToTarget(aim,false,0,false)`, оригинал пропускается (не стрелять). Ближе - код игры. Пусковые - не сделано (свой код).
+## Очередь: осталось 9 (1-8 сделаны).
+
+- AimBeyondMaxRange: зона = max(1.5*max + 2 nm, 5 nm) (`AimLimit`). Для воздушных целей max ограничивается `DirectFireRangeUnity*1.15` (prefix получает `isAirTarget`), иначе внутри игрового лимита наведение всё равно отказывалось.
+- Формула зоны упрощена: max(1.5*max, 5 nm) (без +2 nm).
+
+## Максимальная точность стрельбы (GunFixes.cs, [Guns] MaxAccuracyMeters=5) - пункт 4 очереди
+- Причина худшей точности вблизи: `WeaponSystemGun.GetMeasurementRangeSigma` = max(Globals._gunFCBaseRangeErrorFloorUnity (0.595 units ~ 40 м), 1.5% дальности) / gain^2 * освещённость * (1-0.7*solution). До ~1.4 nm доминирует постоянный пол - это ошибка СУО, не орудия. Разброс самого орудия (CEP / таблица) считается отдельно (DeviateByCEP).
+- Опция: на время вызова пол подменяется значением в метрах (prefix/finalizer `RangeSigmaPrefix/Finalizer`), 1 unit = 0.036285132 nm. Масштаб с дистанцией (1.5%) не меняется. ~40 = как в игре.
+
+## Fire показывает зоны (Zones.cs, [UI] FireShowsZones=true) - пункт 5 очереди, СДЕЛАН (не проверено в игре)
+- Игра рисует секторы огня и дальность (карта: WeaponArcSegmentViewModel; 3D: WeaponArc3DRenderer.Show) через `WeaponArcHoverManager`: `Hovered` = `_candidate` только при зажатом Alt (private static `Reconcile` каждый кадр).
+- Мы создаём свой `HoverInfo` (Unit, Systems, MapRangeInUnity = ammo._ap._launchRangesInUnity.y), prefix `Reconcile` держит его в `Hovered` и вызывает `Show`, пока идёт выбор цели (`CheckTargeting`: AttackingState для этого юнита); `SetCandidate` с нашим owner запускает тик менеджера; по окончании `ClearCandidate(owner)` и штатный Reconcile убирает подсветку.
+- Z-порядок на карте: клин сектора (`WeaponArcSegmentViewModel`, `MapPie`) лежит на слое 1 (UNASSIGNED_INFO), кольцо дальности выбранного юнита (`RangeOnMapViewModel`) - на слое 19 (UNIT_MAP_RANGE); `GizmoLayer.AddGizmo` берёт Z-index = номер слоя, поэтому кольцо перекрывало сектор. `ArcZStep` (Zones.cs, из `Update`): после старта Fire ищет `MapPie` с DataContext `WeaponArcSegmentViewModel` в дереве UI (корень - от видимого статус-вью) и ставит Z-index 20 (между 19 и конусами ГСН 21); слой/видимость не меняются, до 25 попыток с шагом 0.2 с. НЕ делать Harmony-патч `GizmoHost.UpdateHost` - игра падала на старте. Alt-подсветка не затронута. Не проверено в игре.
+- Пусковая/орудие с Fire на одной пусковой - зона только её (`Pending.Ws`), иначе все системы боеприпаса (`WeaponEntry.WeaponSystems`).
+
+## Вспышки света (Flash.cs, [Effects] MuzzleFlashLight/HitFlashLight=false, FlashPower=1) - пункт 6, СДЕЛАН (не проверено в игре)
+- Дульная вспышка: postfix `GunBarrel.LaunchProjectile` -> точечный Light в `_gunObject.TransformPoint(_effectPosition)`; CIWS/пулемёты: в `CiwsUpdate` пока `_isFiring`, ~8 вспышек/с у `_tracers`.
+- Попадание: в `HitEffect` (spawnEffect во время `Projectile.ProcessCollision`), пропуск эффектов с water/splash/wake в имени.
+- Light живёт `AwcFlash` (MonoBehaviour: затухание, самоудаление); не более 10 одновременно, камера дальше ~10 nm - пропуск. 1 unit = 67 м.
+
+## Обычный вид в бинокле на макс. увеличении (Optics.cs, [Optics] BinocularsNormalView=true, NormalViewDayOnly=true (по умолчанию)) - пункт 7, СДЕЛАН (не проверено в игре)
+- `CameraManager` на профиль бинокля (`binocular_7x50`, `bridge_binocular_20x120_stab`) вешает `FullscreenShaderToggleCycle.Configure(...)`: фильтр (ночной/тепловой) включён сразу (`effectEnabled=true`), `toggleKey=None`.
+- Postfix `CameraManager.ApplyOpticalPostProcessProfile`: если режим Binoculars, профиль последний в `_availableOpticalViewProfiles` (макс. увеличение), есть материалы фильтра, (опция DayOnly: `DynamicSky.getSunlightIntensity() >= 0.5`) -> `effectEnabled=false`, `toggleKey` = исходный (`originalToggleKey`, KeypadDivide) - игровая клавиша включает фильтр обратно.
+- Профили `optical_views/*.ini` в распакованных файлах не нашёл (внутри игры) - какие именно фильтры у профилей, не проверено.
+
+## Правка: вспышки и огонь
+- Вспышка попадания теперь 0.28 с (было 0.14).
+- Мерцание пожара ([Effects] FireFlicker=true, Flash.cs `AwcFireFlicker`): postfix `Compartments.CreateFireEffect` вешает компонент на игровой `pointlight` эффекта пожара; модуляция intensity/range шумом Перлина, глубина и частота зависят от силы (small 0.5 / moderate 1 / severe 1.6 - по сравнению effect с `_obp._small/_moderate/_severeFireEffect`). Базовые значения света берутся из префаба игры. Не проверено в игре.
+
+## Свет при пуске ракет ([Effects] MissileLaunchFlashLight=false, Flash.cs)
+- Prefix/postfix `Missile.ScheduleFlightEffects` (только первый вызов: `_flightEffects==null` до вызова) -> Light, прикреплённый к ракете (идёт за ней), живёт `MissileSimulator.GetAccelerationTimes(ap, airLaunched).primaryTime` (время работы стартового ускорителя; максимум 20 с), яркость держится 70% времени, затем гаснет.
+- Время есть у всех ракет: для Kinematics=Full это `AccelerationTime` (в ini задан у 96 из 163 ракет, иначе по умолчанию 6 с), для остальных считается из max velocity / ускорения. `BoosterEffect` (дым/пламя) нет только у pla_yj-6 и usn_aim-54a - свет у них всё равно будет. Лимит одновременных огней для ракет: 18.
+
+## Правка: ярче взрывы и пожары
+- Вспышка попадания: пик 8 (было 4), 0.56 с (было 0.28), радиус 10.
+- Пожары: свет НЕ наш - игровой `pointlight` эффекта пожара отсека (`Compartments.CreateFireEffect`: позиция = `_obp._compartmentEffectPositions[i] + effect._position`). Мерцание его модулирует; добавлен [Effects] FireLightPower=3 (множитель яркости, радиус растёт на 50% множителя-1), минимумы базы 0.5 / 3.
+
+## Вспышки на все взрывы ([Effects] HitFlashLight)
+- Postfix `EffectsManager.spawnEffect(ep)` (`HitEffect(__result, ep)`): `ExplosionFlash` смотрит `ep._effect._effectClassName/_name`: содержит explosion / impact_ / blast / detonat -> вспышка; water / splash / underwater / wake / starshell исключены. Размер по Tiny/Small/Medium/Large/VeryLarge (0.4..2.4), flak x0.7; яркость 8*sqrt(k)*1.2, радиус 10*k, время 0.56*(0.6+0.4k). Не только снаряды орудий, но и ракеты, боевые части, бомбы, взрывы боезапаса.
+
+## Яркость применяется сразу
+- `AwcFlash` каждый кадр читает [Effects] FlashPower (`FlashK`) и пересчитывает range/intensity (хранит базовые Peak/Range); `AwcFireFlicker` уже читал FireLightPower каждый кадр. Окно настроек работает на копии - значения вступают в силу по Apply/OK, уже горящие огни и текущие вспышки меняются без перезапуска.
+
+## Всплывающие сообщения игры блокируют клики - вынесено в Smart Windows
+- Причина «кнопки не нажимаются» (подтверждена пользователем): `ItemsControl` над `MainGameViewModel.TopAlerts` (правый нижний угол) ловит клики погасшими сообщениями (hit-test не учитывает Opacity); Smart Windows 1.5.2 с отрицательным ZIndex окон поставил его над окнами. Исправление (IsHitTestVisible по сообщению: `AlertTextOpacity > 0.05`) перенесено в Smart Windows; из AWC убрано. Код был в коммите «Next release work…» (AwcPlugin.cs `AlertsStep`).
+
+## Вкладка Weapons для наземной техники ([UI] WeaponsTabGroundUnits=true) - пункт 8, часть 1 (не проверено в игре)
+- `WeaponsAvailableFor`: кроме Vessel/Submarine пропускается `LandUnit` (у него `_obp._weaponSystems` с Gun/Missile/CIWS, как у кораблей) при наличии лаунчеров. Остальной код (модель, AI-хуки, Fire, переключатели доменов) общий: `ItemApplies` для сухопутных - только пункт AutoAttackSurface не применяется, строка Tight-режима только у Vessel.
+- Наземные: подтверждено пользователем («вроде все хорошо»).
+- Самолёты и вертолёты ([UI] WeaponsTabAircraft=true, часть 2, не проверено в игре): у них ОДНА `WeaponSystemHardpoint` (много `Station`), боеприпасы разных типов в `_associatedAmmunitionNames` (через `addAmmunitionToWeaponReference`) и в `_obp._launcherAmmunitionGroups` (топливные баки - `_fueltankAmmunitionGroups`). `Launchers()` для Aircraft/Helicopter берёт Hardpoint как один Launcher (секция 7 STORES, боеприпасы с доменом 0 - баки, буи - пропускаются), группа с несколькими боеприпасами = AmmoCard с Fire на каждый тип. Переключатели доменов - на всю гардпоинт-систему по домену ЦЕЛИ (SUR off блокирует всё оружие по надводным целям, AAM по воздушным остаются): `WeaponSelector.GetWeaponSystemsForAmmunition` postfix и AI-хуки общие.
+
+## Переключатели в карточках боеприпасов (WeaponsView.cs AmmoCard, AmmoChipsUI)
+- В карточке боеприпаса группы (несколько типов) - копии переключателей AIR..LND (кружки 10 px): показаны для доменов, которые этот боеприпас может поражать (`AmmoDom` лаунчеров в scope), состояние = состояние группы, клик = `ClickGroup` (переключает ВСЮ группу). Отдельное состояние по боеприпасу не делали (слишком сложно: `Off` по индексу системы): решение пользователя.
+- Cease fire в карточке боеприпаса (`Controls(..., fire:true, more:true)`): гасит задачи только этого боеприпаса (`CtrlUI.Ammo`); `Cease` не прерывает движок системы, если она сейчас стреляет другим боеприпасом из той же системы (`cu.Ammo.Count < l.Ammo.Count` и `_ammoForEngage` не в списке). Cease группы (в строке группы) остаётся - гасит всё.
+- Заголовок группы с несколькими боеприпасами без кнопок Fire/Stop/Reload (они в карточках боеприпасов) - решение пользователя.
+- Пушки самолёта (F-5A: 2 x M39, `Type=CIWS`, магазины по 280 из `[WeaponMagazineM39_N]`; `MaxAmmoCount` не задан -> умолчание игры 10000): в строке мount показывалось «280/10 000» и в статусе игры «Ready (280/10000)». Теперь при `_maxAmmoCount >= 10000` и магазине - запас = `Stock/StockMax` (280/280), а «/10000)» в тексте статуса вырезается (`StatusParts`).
+
+## Перетаскивание секций по вертикали (WeaponsView.cs MakeDraggable, [UI] SectionOrder) - пункт 9 (не проверено в игре)
+- Заголовок секции (SAM / GUNS / STORES ...) - ручка: зажать, тянуть вверх/вниз (карточка идёт за мышью через RenderTransform + capture), отпустить - карточка встаёт на место по центру (позиции по ActualHeight+Margin), отступы пересчитываются (6 px, у последней 1). Сдвиг < 6 px - клик, ничего не делает.
+- Порядок общий для всех юнитов, строка имён секций через запятую в [UI] SectionOrder (скрыт из окна настроек); пустая = по умолчанию; секции, которых нет в списке, идут после, по умолчанию.
+## Очередь: все 9 пунктов сделаны.
+
+## Бинокль (Optics.cs): пользователь сообщил «всё ещё термальный вид при макс. увеличении»
+- Причина по коду не найдена: `effectEnabled=false` в `FullscreenShaderToggleCycle` даёт обычное изображение (OnRenderImage), других мест включения нет. Добавлена трассировка (Debug) `optics ...`: профиль, режим, число профилей, последний ли, материалы/фильтры, DefaultFilter. Нужен лог с Debug. Исправлено: `toggleKey` - ПОЛЕ (SetF, а не SetP).
+
+## Settings window tabs
+SettingsWindow.cs: each Field has Tab + Group. Tabs: Weapons panel (Panel, SAM readiness button), Fire Control (SAM, Fire control), AI (On Free: unidentified aircraft, Chasing), Guns (Accuracy, Tracers and sound), Visual effects (Binoculars, Flashes, Fires), Debug. Tab bar is row 1 of the window; a yellow dot on a tab = unapplied changes inside it. Current tab is kept while the game runs.
+
+## Локализация (Loc.cs, Release/lang/*.ini)
+- Все тексты мода - в таблице `D(key, en)` в Loc.cs; в коде `Loc.T(key)` / `Loc.F(key, args)` (`{0}`...). Тексты .cfg-описаний (подсказки окна настроек) регистрируются в рантайме как `help.Section/Key` (`Loc.Register`), подписи полей окна - `lbl.Section/Key`, вкладки `tabs.*`, группы `grp.*`.
+- Файлы `lang/<код>.ini` рядом с dll (формат `key = text`, `;` комментарий, `\n` перенос). Мод сам создаёт файл для каждого языка игры (список - config.ini [Languages] через `Utils.openIniFile("", "/config.ini")`) и en.ini; в существующий дописывает отсутствующие ключи после `; --- new ---`, ничего не меняя в правках игрока. Нет перевода/файла - английский.
+- Язык: `LanguageResourceHandler.Language` игры (проверка раз в 1.5 с) или `[General] Language` в .cfg (вкладка Language окна настроек: клик циклично переключает язык игры / коды).
+- Release/lang/*.ini (en, ru, cn, de, es, fr, ko, ja, vn - коды языков игры из config.ini [Languages]) генерируются `/home/claude/tools/gen_lang.py` (ru.json + langs/*.txt, позиционные списки по ключам). Подсказки help.* - langs/help_<код>.txt (29 строк, порядок как в help.json).
+- Не переведено: названия из игры (ItemLabels = подписи Standing Orders, имена оружия) - они приходят из локализации игры.
+
+- Перетаскивание секций: остальные карточки сдвигаются прямо во время перетаскивания (RenderTransform по снимку раскладки на MouseDown, WeaponsView.MakeDraggable).
+
+## Выбор активного боеприпаса (группа с несколькими боеприпасами и несколькими пусковыми)
+- WeaponsView.AmmoCard: круглая кнопка-селектор перед названием боеприпаса (клик по ней или по рамке карточки), активная карточка с голубой рамкой. `GroupRow.ActiveAmmo` - запоминается для юнита на время сессии (`ActiveMemory`, ConditionalWeakTable по объекту юнита + ключ группы), в сохранения не пишется. По умолчанию - боеприпас, уже готовый в пусковой (`_ammoForEngage`), иначе заряженный, иначе первый (`DefaultActive`).
+- `LayoutDetail`: под карточкой активного боеприпаса - строки пусковых, умеющих его применять; остальные (приглушены, Opacity 0.5) в конце. Fire пусковой стреляет активным (`MemberRow.Ids` = [active], список общий с `FireUI.Ids`/`CtrlUI.Ammo`); Stop пусковой по-прежнему гасит любые её боеприпасы (`CtrlUI.Ammo` = все).
+- Ключ перевода `ammo.activeTip` (последний в списке ru.json / langs/*.txt).
+
+## Названия пусковых (WeaponsModel: Launchers, ArcCentre)
+- Раньше нос/корма и борт считались по положению `_mountObject`. У подлодок (Romeo, plan_ss_romeo.ini) все торпедные аппараты с `Mount=Dummy` стоят в одной точке корпуса (разброс < 1 ед.), поэтому все были «Fore», а одна с микросмещением по x - «Fore starboard». Кормовые аппараты (`[WeaponSystem7/8] #Aft`, `PreferredArcs=90,-90`, магазин `..._Aft`) не отличались.
+- Теперь: по положению (как раньше, с борт-суффиксом), КРОМЕ наборов одноимённых пусковых (>1 шт.), стоящих в одной точке (разброс мировых позиций < 0.03 ед. (1 ед. = 67 м, AimNmPerUnit); версии с порогом «1 ед.» и с 2 % bounds Renderer сломали названия кораблей: Prj.159 «AK-726 Gun #1», «Port #1/#2»); для таких - по центру `_vwp._preferredArcs[0]` (-90,90 -> центр 0 -> fore; 90,-90 -> 180 -> aft; около ±90 -> port/starboard). Подписи одинаковых получают «#N».
+- Подписи сокращаются: часть (fore/aft или port/starboard), одинаковая у всех пусковых одного имени, отбрасывается: «Fore port / Fore starboard» -> «Port / Starboard»; «Fore port / Aft port» -> «Fore / Aft»; «Fore / Aft» без бортов остаётся.
+- Место пусковой = мировая позиция `_containers[0]._gunObject` («AmmunitionParent», локальная позиция = `ContainerN_Position`), иначе `_mountObject`. Причина: у подлодок все аппараты имеют один `Mount=Dummy`, а положение носовых (z=+0.44) и кормовых (z=-0.43) задано только в Container1_Position (plan_ss_romeo.ini [WeaponSystem7] `Container1_Position=0.0094,-0.0002,-0.426`) - кормовые аппараты Prj.633 были «Fore». Бортовая часть подписи - только при |x| > 0.02 ед. (миллиметровые смещения - не борт).
+- Кнопка готовности ЗРК (WarmButton): раньше стояла в колонке шеврона (22 px) - иконки двух-трёхбалочной пусковой (M-1 Volna) не влезали и выступали за край. Теперь `inline` только для одиночной пусковой: в строке названия (после названия / ×N, до значка каналов), таймер справа от кнопки, отступ сверху 1 px. У строк-членов группы кнопка осталась в колонке шеврона (Margin -20), как было.
+
+## Остаток на пусковой (stock.rail)
+У одиночной пусковой (не орудие), у которой есть направляющие (`Rails(ws)`: слоты контейнеров), под общим остатком группы маленькой строкой «На пусковой N/M»: сколько ракет сейчас на направляющих / сколько слотов. Общий остаток (`Stock`) - всё, что есть у пусковой (у Mk 29 без отдельного магазина это `_maxAmmoCount`, 16/24). Первая версия требовала `_associatedMagazine` и у Mk 29 не показывалась. Не проверено в игре.
+
+## Сокращение типа наведения (ShortGuidance, WeaponsView.cs; lang-ключи guid.<GuidanceType>)
+Название из игры (`GuidanceTypeText`, ui.ini [GuidanceType]; части через ", ": основной тип + HomeOnJam) - если ВЕСЬ текст (с обеими частями) длиннее 15 символов, каждая часть заменяется кратким видом из lang-файла (`guid.IRHoming`, `guid.SemiActiveRadarHoming` ... `guid.HomeOnJam`; en: SARH, ARH, ARM, ASH...; ru: ПАРГСН, АРГСН, ПРГСН...). Пустое/удалённое значение - показывается название игры. Полное название - в подсказке (`spec.guidance`). Автосокращение по буквам убрано (давало коллизии). Сокращения других языков подобраны мной и не проверены носителями. Не проверено в игре.
+
+## Остаток "всего" у пусковых без ёмкости (Cap, WeaponsView.cs)
+У Mk 141 (Harpoon, weapons.ini `[MK141]`, `ReloadTime=0`) `_maxAmmoCount` = 0 и магазина нет: игра считает заряженными те ракеты, что на направляющих (`loadAmmunitionNoMagazine`, `WeaponContainer.LoadAmmo`). `StockMax` давал 0 -> показывалось просто «8», без «/8». Теперь `Cap(ws)`: `_maxAmmoCount`, а если 0 - число слотов направляющих (`Rails(ws).Count`). Не проверено в игре.
+
+## Перетаскивание групп: куда встаёт карточка (DropIndex, WeaponsView.cs)
+Раньше сравнивались центры (центр перетаскиваемой карточки с центрами остальных) - «толстую» группу приходилось тащить далеко. Теперь верхняя граница перетаскиваемой карточки сравнивается с верхними границами мест (список без неё, карточка вставлена на каждый индекс): берётся ближайшее. Сдвиг на соседа начинается примерно при смещении в половину его высоты, высота самой карточки не важна. Один и тот же расчёт для живого сдвига (`slide`) и для итогового места. Не проверено в игре.
+
+## On Free: engage approaching fast unidentified aircraft (FreeAir.cs)
+- Флажок под «On Tight» в шапке вкладки (только корабли, `UnitW.FreeAirSet`: -1 = по умолчанию стороны, 0/1 = выбор игрока; галочка оранжево-красная); хранится в сейве юнита (`AlternativeWeaponsControl_FreeUnknownAir=0/1`, только если выбрано явно; ObjectBase.Save/LoadStateFromFile). По умолчанию (`FreeAirOn`): выключен у кораблей игрока и союзников, ВКЛЮЧЁН у кораблей противника (`Taskforce.Side == Enemy`, их ИИ тоже получает эти цели). Это НЕ доктрина игры (у «On Tight» это `ShipsOnWeaponsTightEngageHostileAircraft`).
+- Причина, почему игра не стреляет по неопознанным: `AI.GetPossibleTargetsList` берёт юнит только если `IdentifiedAsHostile` (`Vehicle.CurrentRelationship() == Hostile` на плоте игрока).
+- Postfix `AI.GetPossibleTargetsList` (`FreeAirPostfix`): для корабля (игрока и ИИ) на Free с флажком из `_processedObjects` добавляет в `_possibleTargetsWithPriorities` самолёты/вертолёты, которые (1) на плоте ещё `Unknown` (настоящая принадлежность НЕ проверяется - без читерства: опознанные свои/нейтралы отсеяны самим `Unknown`, неопознанные свой/нейтрал, подходящие по скорости и курсу, будут атакованы - штраф игры, решение пользователя; свой taskforce в `_processedObjects` не попадает), (2) быстрее [Fire] UnknownAirMinKnots (500; крейсерская гражданских Mach 0.8-0.84 ~ 460-480 уз, максимум Mach 0.98 ~ 560 уз на высоте), (3) ближе 50 nm (`MaxRangeUnits`, 1 ед. = 0.036285 nm), (4) летят на корабль (угол между скоростью и направлением на корабль <= 45°). Скорость узлы = |UnityVelocityVector| / 0.0076554087. Порог только в .cfg (в окне настроек нет).
+- Не проверено в игре: берёт ли цель дальше `HandleEngageTasks`/оружие без идентификации (CIWS проверяет `CurrentRelationship == Hostile` сам и по таким целям не откроет огонь).
+
+- Флажки шапки (On Tight / On Free) стоят в строке (`WrapPanel` в растягивающейся колонке, переносятся на 2-ю строку только при нехватке ширины). Текст On Free сокращён («On Free: engage unidentified aircraft»), подробности - в подсказке `tab.onFreeTip` (порог из `[Fire] UnknownAirMinKnots`).
+- Порог скорости On Free теперь и в окне настроек (вкладка AI, группа «On Free: unidentified aircraft», `Fire/UnknownAirMinKnots`, 100..2000 kn); из подсказки флажка убраны строки про умолчания и .cfg.
+- On Free, окно настроек (группа «On Free: unidentified aircraft»): `Fire/UnknownAirMinKnots` (500), `Fire/UnknownAirMaxNm` (50), `Fire/UnknownAirDefaultOwn` (false: свои и союзные корабли), `Fire/UnknownAirDefaultEnemy` (true: корабли противника, ИИ). Выбор, сделанный на юните (`FreeAirSet`), главнее умолчаний. Подсказка флажка берёт скорость и дистанцию из настроек при построении вкладки.
+
+## Название группы из одной пусковой, когда есть одноимённая группа (GroupRow.Suffix)
+Пусковые одного типа с разным набором боеприпасов (Mk 26: RIM-66C+RUR-5 и только RIM-66C) стоят в разных группах, и названия строк совпадали (подписи положения есть только в строках-членах групп из 2+ пусковых). Теперь у группы из одной пусковой, чьё имя совпадает с другой группой секции, к названию добавляется положение пусковой (`Launcher.Loc`: Fore / Aft ...), без него - «#N». Не проверено в игре.
+- ОШИБКА (исправлена): `ObjectBase._taskforce` - СВОЙСТВО (`_innerTaskforceValue`), `R.F` его не видит (null). `FreeAirPostfix` выходил на `tf == null`, поэтому On Free ничего не делал (в trace не было строк `free air`); `FreeAirOn` не определял сторону. Для таксфорса брать `R.V` (поле или свойство). Там же исправлен `CiwsEnter` (WeaponsAi.cs: контакты плота для отключённых доменов теперь попадают в skip, раньше - только `_threats`).
+- Settings window: the label column is star-sized (MinWidth 330), so it grows with the window; editor column is star-sized too (MinWidth 200).
+- Settings window: height 805 screen pixels (converted by the UI scale at the first opening); language is a ComboBox as in ADM; Apply rebuilds the whole window (title, tabs, buttons) so a new language shows at once.
+- Apply: rebuild of the whole window is delayed by 2 frames (SettingsWindow.Tick from Update), not done inside the Apply click.
+- Fire: the game's max-range circle (AttackingState MapEllipse with SemiMajorAxis == MaxRangeInLat) is collapsed by RingHideStep (UI-tree scan every 0.25 s while zones are active); the firing-arc wedges get a red Stroke (235,45,45) in ArcZStep.
+- Defaults changed to the user's cfg: Muzzle/MissileLaunch/HitFlashLight=true, UnknownAirMaxNm=20, SamAutoChargeRange=30, ClickVolume=0.5.
+- Fire zones scan (Zones.cs ArcZStep): every frame for 90 frames after the zones start, then 4/s; all visible roots; hides AttackingState max-range ellipse, wedges red + Z 20 re-applied on every scan (they are rebuilt when the hovered weapon changes).
+- Fire zones: Harmony postfix on AttackingState ctor starts a per-frame scan (120 frames) that collapses the max-range circle; the wedges' orange is replaced by changing the colour of the game's resource Map_FiringArc (ArcColorStep, every 1 s, found via FindResource); the per-wedge Stroke is only a fallback if that fails.
+- Fire zones, range circle (replaces the scan): Harmony prefix on AttackingState.set_MaxRangeInLat stores the real value (ConditionalWeakTable) and passes 0 (FireShowsZones on) - the MapEllipse never gets a radius, the max label hides with it; prefix/postfix of UpdateBearingPreview put the real value into _maxRangeInLat for the call (line ~742 uses it). The scan of ArcZStep now only sets the wedges' Z-index 20.
+- Fire zones, FINAL approach (replaces the zero radius, resource colour and the scan): Harmony postfix ZoneStylePost on MapEllipse.MarkDirty, MapPie.MarkDirty and MapPath.StrokeChanged (property-changed callbacks, so it runs when the control gets its values): MapEllipse of AttackingState with SemiMajorAxis == MaxRangeInLat -> local Stroke fully transparent; MapPie of WeaponArcSegmentViewModel -> local red Stroke + Z-index 20. A local value overrides the DynamicResource brush; the shared resources and the model stay untouched.
+- Fire zones, CURRENT: the transparent-stroke patches of MapEllipse/MapPie/MapPath callbacks CRASHED the game at start - reverted to the zero-radius circle (AttackingState.set_MaxRangeInLat prefix + UpdateBearingPreview swap) and the UI-tree scan for the wedges (red Stroke always, Z 20, Map_FiringArc colour changed too). Do not patch the map controls.
+- Fire zones, FINAL (no scanning): zero-radius max-range circle (set_MaxRangeInLat prefix + UpdateBearingPreview swap) and red wedges via Harmony postfix of ThemeDictionarySwapper.ApplyTheme, which replaces Map_FiringArc in the dictionary just merged into the map (the theme is local to the map, so FindResource from the status view never saw it). The UI-tree scan and the wedges' Z-index step are gone (the circle was what covered them). Takes effect when the map loads / theme changes, so FireShowsZones is read then. Patching MapEllipse/MapPie callbacks crashed the game at start.
+- The game crashed at start with ThemeDictionarySwapper.ApplyTheme postfix changing the dictionary inside the callback: now the postfix only notes the swapper, ThemeSwapStep (Update) changes Map_FiringArc on a later frame. If it still crashes - suspects: that patch, then set_MaxRangeInLat/UpdateBearingPreview.
+- LogOutput of the crash ended right after 'Enabled in the game's Mods menu' (patching at start): the ThemeDictionarySwapper.ApplyTheme patch is REMOVED (do not patch it). Wedge colour now: ArcColorOnce at the start of the zones finds the MapBase once (cached), replaces Map_FiringArc in its MergedDictionaries by a red brush.
+- Missile booster light scales with the missile mass (ap._massInKg, ln(mass+250) scale, 15..7000 kg): brightness 25..100 %, radius 50..100 % (Flash.cs MissileLaunchFlash).
+- Muzzle flash and hit flash graded like the missile booster light (brightness 25..100 %; radius muzzle 50..300 m, hit 100..600 m, missile 50..100 % of 12 units): muzzle by the shell mass (ammo._ap._massInKg, ln(mass+10), 0.13..862 kg; BarrelFlash got the 'ammo' argument), hits by the size tier in the effect name (Tiny 0 .. VeryLarge 1; 100 % = 24 range / 14.9 peak). CIWS/machine-gun flashes unchanged.
+- CIWS/machine-gun flash radius: shot 50 m, hit 100 m (hit by effect impact_small_shell_multi = 0.5 in..35 mm shells); brightness unchanged.
+- Flash of torpedo / bomb / RBU detonation: postfix of WeaponBase.CreateDesctructionEffects (prefix sets _inDetonation, which turns the generic ExplosionFlash off for these three types - one flash, not two); strength = ap._warheadPower on the guns' Power scale (0.1..35, capped), hit scale: brightness 25..100 %, radius 100..600 m; duds (_warheadMalfunction) none; the light is lifted to y>=0.3. ASROC / depth charges (AirDepthCharge) are not covered.
+- Flash duration also graded by the same strength: 100..300 % (muzzle 0.09..0.27 s; hits and detonations 0.39..1.18 s; autocannon/MG hits and CIWS shots stay at 100 %).
+- The max-range circle is hidden only for a targeting state started by the mod's Fire button / its menu (OurFireExecute wraps the command, OurFireDepth > 0 when the state first gets MaxRangeInLat; marked in RealMax). The game's own Fire keeps its circle.
+- Zones (wedges) are shown only for targeting started by the mod's Fire (IsOurState, the RealMax mark); the game's own Fire shows neither the zones nor hides its circle.
