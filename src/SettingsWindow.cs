@@ -56,7 +56,7 @@ namespace AlternativeWeaponsControl
             Add(T2, "grp.sam", "Ships/SamAnimFix", "Missile load / unload animation fix", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T2, "grp.fireControl", "FireControl/GunOneDirector", "Guns take one director", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T2, "grp.fireControl", "FireControl/GunChannelLimit", "Guns without a free channel: local control", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(TA, "grp.targeting", "Fire/EngageByPlotRelation", "Ignore the true side of contacts", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(TA, "grp.targeting", "Fire/EngageByPlotRelation", "Disable AI cheating", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(TA, "grp.freeAir", "Fire/UnknownAirMinKnots", "Engage unidentified aircraft faster than", "kn", Kind.Number, 10f, 100f, 2000f);
             Add(TA, "grp.freeAir", "Fire/UnknownAirMaxNm", "Engage unidentified aircraft closer than", "nm", Kind.Number, 5f, 5f, 200f);
             Add(TA, "grp.freeAir", "Fire/UnknownAirDefaultOwn", "On Free by default: your and allied ships", "", Kind.Bool, 0, 0, 0);

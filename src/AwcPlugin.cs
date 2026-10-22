@@ -29,7 +29,7 @@ namespace AlternativeWeaponsControl
     {
         public const string PluginGuid = "com.rgreat.seapower.alternativeweaponscontrol";
         public const string PluginName = "Alternative Weapons Control";
-        public const string PluginVersion = "1.1.0";
+        public const string PluginVersion = "1.2.0";
 
         public static readonly string BuildId = ReadBuildId();
 
@@ -145,7 +145,7 @@ namespace AlternativeWeaponsControl
                 "and fires once they come into range. All ships, the enemy's too.");
             _tabLand = Cfg.Bind("UI", "WeaponsTabGroundUnits", true, "The Weapons tab for ground vehicles and land installations (the units with guns / launchers of their own).");
             _tabAir = Cfg.Bind("UI", "WeaponsTabAircraft", true, "The Weapons tab for aircraft and helicopters (their weapons on the hardpoints: one group, a Fire for each ammunition type, switches by target type).");
-            _secOrder = Cfg.Bind("UI", "SectionOrder", "", "The order of the sections of the Weapons tab (drag a section's title to change it): names separated by commas. Empty = the default order.");
+            _secOrder = Cfg.Bind("UI", "SectionOrder", "SAM,GUNS,ANTI-SHIP,ASW", "The order of the sections of the Weapons tab (drag a section's title to change it): names separated by commas; the sections not named follow in the usual order. Empty = the usual order (SAM, ANTI-SHIP, LAND ATTACK, ASW, GUNS, CIWS, OTHER, STORES).");
             _freeAirKnots = Cfg.Bind("Fire", "UnknownAirMinKnots", 500f,
                 "Speed (knots) above which an unidentified aircraft coming towards the ship (within the distance of UnknownAirMaxNm) is engaged by the Weapons tab's \"On Free: engage unidentified aircraft\". " +
                 "Airliners of the game cruise at about 460-480 knots and reach 560 at most.");

@@ -19,7 +19,7 @@ namespace AlternativeWeaponsControl
     {
         // One launcher under our control. Until: end of the time limit of a ready launcher. Pending: the rails are to be loaded. Warm: after the load the warm-up
         // (the reload count) is to start - on the loaded rails. Unload/Started: our own unloading. Recharge: charge again after it. Btn: the button is ON (a demand).
-        sealed class Box { public double Until, NeedAt; public bool Pending, Unload, Recharge, Started, Warm, Btn, Need; }
+        sealed class Box { public double Until, NeedAt; public bool Pending, Unload, Recharge, Started, Warm, Btn, Need, Real; }
         static readonly ConditionalWeakTable<object, Box> _warmBox = new ConditionalWeakTable<object, Box>();
 
         void HookWarmUp(Harmony harmony, Assembly asm)
@@ -68,11 +68,33 @@ namespace AlternativeWeaponsControl
                 if (!CanWarm(ws) || R.B(R.F(ws, "_isReloading")) || IsEngaging(ws)) return null;
                 Box b; bool has = _warmBox.TryGetValue(ws, out b);
                 if (has && b.Unload) return Loc.T("st.unloading");
+                double left = PauseLeft(ws);
+                if (left > 0.5) { int sec = (int)Math.Ceiling(left); return Loc.F("st.unloadPause", (sec / 60).ToString("00") + ":" + (sec % 60).ToString("00")); }   // the pause after an unloading
                 if (has && b.Pending) return Loc.T("st.loading");
                 if (Idle(ws) && Loaded(ws) == 0 && MagazineCount(ws) > 0) return Loc.T("st.railsEmpty");
             }
             catch { }
             return null;
+        }
+
+        // The pause after an unloading is its own block: it starts when a real unloading ends (the Missile button, the Reload button, the time limit)
+        // and only holds the next load back. Unloading and loading do not depend on each other, they only wait for each other to end.
+        sealed class PauseBox { public double End; }
+        static readonly ConditionalWeakTable<object, PauseBox> _pause = new ConditionalWeakTable<object, PauseBox>();
+        static double PauseEnd(object ws) { PauseBox p; return _pause.TryGetValue(ws, out p) ? p.End : 0.0; }
+        static double PauseLeft(object ws) { return PauseEnd(ws) - MissionTime(); }
+        static void StartPause(object ws) { _pause.Remove(ws); _pause.Add(ws, new PauseBox { End = MissionTime() + LoadPause(ws) }); }
+
+        /// <summary>The launcher is unloading, in the pause after it, or loading: for the weapons list this is a reload (the same category and colour).</summary>
+        internal static bool SamBusy(object ws)
+        {
+            try
+            {
+                if (!CanWarm(ws) || IsEngaging(ws)) return false;
+                Box b; if (_warmBox.TryGetValue(ws, out b) && (b.Unload || b.Pending)) return true;
+                return PauseLeft(ws) > 0.5;
+            }
+            catch { return false; }
         }
 
         static int Loaded(object ws) { int n = 0; foreach (var b in Rails(ws)) if (b) n++; return n; }
@@ -147,7 +169,13 @@ namespace AlternativeWeaponsControl
                 if (IsEngaging(ws))
                 {
                     if (loaded > 0) b.Until = now + WarmSeconds();   // in use: the limit counts from the last use
-                    if (!b.Pending) return;                          // the game's own flow of the order
+                    if (!b.Pending)
+                    {
+                        // the game's order flow of a cold launcher counts first (on empty rails) and loads the rails after the count. The agreed order: the load
+                        // animation opens the reload, the count runs on / after it. The load is started now; the count goes on (the game does the same on a repeated salvo).
+                        if (reloading && loaded == 0 && Idle(ws) && R.F(ws, "_ammoForEngage") != null && MagazineCount(ws) > 0) R.Call(ws, "triggerLoadSystem");
+                        return;                                  // the rest is the game's own flow of the order
+                    }
                 }
                 if (reloading)
                 {
@@ -159,12 +187,20 @@ namespace AlternativeWeaponsControl
                         GoCold(ws);
                         if (wanted && MagazineCount(ws) > 0) Charge(ws);
                     }
+                    else if (b.Pending && now >= PauseEnd(ws) && loaded == 0 && Idle(ws) && MagazineCount(ws) > 0)
+                    {
+                        // the rails are to be loaded but a count is still running (the old one after our unloading, or the game's own warm-up on the empty rails):
+                        // the load animation must open the reload, so it starts now and the count goes on
+                        if (R.F(ws, "_ammoForEngage") == null) R.SetF(ws, "_ammoForEngage", PickAmmo(ws));
+                        if (R.F(ws, "_ammoForEngage") != null) R.Call(ws, "triggerLoadSystem");
+                    }
                     return;
                 }
                 bool need = Demand(ws, b, now, false);
                 if (!Idle(ws)) return;
                 if (b.Pending)
                 {
+                    if (now < PauseEnd(ws)) return;   // the pause after an unloading
                     var rails = Rails(ws);
                     if (loaded < rails.Count && MagazineCount(ws) > 0)
                     {
@@ -203,7 +239,10 @@ namespace AlternativeWeaponsControl
             if (IsEngaging(ws)) { b.Unload = false; b.Recharge = false; b.Started = false; R.SetF(ws, "_triggerShutDown", false); return; }
             if (!b.Started)
             {
+                // the game stops its load flow while the shut-down flag is up: a load animation in progress would freeze for good; wait until the launcher is free
+                if (!Idle(ws)) return;
                 b.Started = true;
+                b.Real = Loaded(ws) > 0 || R.F(ws, "_ammunitionOnWeapon") != null;   // an unloading of empty rails is no unloading: no pause after it
                 // rails loaded without the game's load system have no "ammunition on the weapon": the unload animation needs it
                 if (R.F(ws, "_ammunitionOnWeapon") == null)
                 {
@@ -216,10 +255,18 @@ namespace AlternativeWeaponsControl
             if (!R.B(R.F(ws, "_triggerShutDown")) && Idle(ws))
             {
                 bool again = b.Recharge || NeedHot(ws);
-                b.Unload = false; b.Started = false; b.Recharge = false;
+                if (b.Real) StartPause(ws);   // the missiles stay down for a while before they go up again
+                b.Unload = false; b.Started = false; b.Recharge = false; b.Real = false;
                 R.SetP(ws, "IsHot", false);
-                if (again && MagazineCount(ws) > 0) Charge(ws); else _warmBox.Remove(ws);
+                if (again && MagazineCount(ws) > 0) Charge(ws);
+                else _warmBox.Remove(ws);
             }
+        }
+
+        /// <summary>The pause between the end of an unloading and the next load: half of the launcher's reload cycle.</summary>
+        static double LoadPause(object ws)
+        {
+            try { return Math.Max(0.0, R.Fl(R.F(R.F(ws, "_vwp"), "_magazineReloadTime")) * 0.5); } catch { return 0.0; }
         }
 
         /// <summary>
@@ -427,13 +474,26 @@ namespace AlternativeWeaponsControl
             b.Pending = true; b.Until = 0.0; b.Warm = !hotBefore;
         }
 
+        /// <summary>The launcher is unloading, loading (the pause before it, the animation) or counting the warm-up: the Reload button is off for it.</summary>
+        internal static bool ReloadBusy(object ws)
+        {
+            try
+            {
+                Box b; if (_warmBox.TryGetValue(ws, out b) && (b.Unload || b.Pending)) return true;
+                return R.B(R.F(ws, "_isReloading")) || !Idle(ws) || R.B(R.F(ws, "_triggerShutDown"));
+            }
+            catch { return false; }
+        }
+
         /// <summary>Reload button: what is on the rails goes back, then the launcher is charged again (the button is ON).</summary>
         static void Recharge(object ws)
         {
             try
             {
                 if (IsEngaging(ws)) return;
-                StartUnload(ws, true);
+                if (ReloadBusy(ws)) return;   // a reload (or a separate unload / load) is already going: the button is grey, a press must not restart anything
+                bool onRails = Loaded(ws) > 0 || R.F(ws, "_ammunitionOnWeapon") != null;
+                if (onRails) StartUnload(ws, true); else if (MagazineCount(ws) > 0) Charge(ws);   // empty rails: nothing to unload, the load goes at once
                 Box b; if (_warmBox.TryGetValue(ws, out b)) b.Btn = true;
             }
             catch (Exception e) { Trace("recharge: " + e.Message); }

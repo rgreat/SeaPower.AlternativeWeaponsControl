@@ -66,7 +66,16 @@ namespace AlternativeWeaponsControl
                 var unit = R.F(__instance, "_baseObject");
                 if (unit == null || !R.Is(unit, _tVessel) || !R.B(R.P(unit, "IsPlayerObject"))) return;
                 var ws = R.F(unit, "_weaponStatus");
-                if (ws == null || ws.ToString() != "Free") return;
+                if (ws == null) return;
+                // Free: every contact hostile on the plot. Tight with "On Tight: engage hostile aircraft": the same, aircraft and helicopters only (the game's own rule
+                // for Tight is the same but looks at the true side). Hold: nothing.
+                bool tight = false;
+                if (ws.ToString() == "Tight")
+                {
+                    try { var it = R.P(R.P(unit, "TacticalDoctrine"), "ShipsOnWeaponsTightEngageHostileAircraft"); tight = it != null && R.B(R.P(it, "ResolvedValue")); } catch { }
+                    if (!tight) return;
+                }
+                else if (ws.ToString() != "Free") return;
                 var list = R.F(__instance, "_processedObjects") as IList;
                 var dict = R.F(__instance, "_possibleTargetsWithPriorities") as IDictionary;
                 var tf = R.V(unit, "_taskforce");
@@ -83,6 +92,7 @@ namespace AlternativeWeaponsControl
                 {
                     if (o == null || dict.Contains(o) || R.B(R.P(o, "IsDestroyed")) || !R.B(R.Call(o, "isUnit"))) continue;
                     if (!R.B(R.P(o, "IsAirUnit")) && !surfaceOk) continue;
+                    if (tight && !R.Is(o, _tAircraft) && !R.Is(o, _tHelicopter)) continue;
                     var mv = R.Call(o, "GetMapVehicle", tf);
                     if (mv == null || !(R.Call(mv, "CurrentRelationship") ?? "").ToString().Equals("Hostile")) continue;
                     (add ?? (add = new List<object>())).Add(o);

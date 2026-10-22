@@ -1095,7 +1095,7 @@ namespace AlternativeWeaponsControl
                 SetEnabled(cu.Cease, cease);
                 if (cu.Reload != null)
                 {
-                    bool can = cu.Scope.Exists(l => { try { return CanWarm(l.Ws) ? !IsEngaging(l.Ws) : R.B(R.Call(l.Ws, "CanForceReload")); } catch { return false; } });
+                    bool can = cu.Scope.Exists(l => { try { return CanWarm(l.Ws) ? !IsEngaging(l.Ws) && !ReloadBusy(l.Ws) : R.B(R.Call(l.Ws, "CanForceReload")); } catch { return false; } });
                     SetEnabled(cu.Reload, can);
                     Tip(cu.Reload.B, can ? cu.Reload.Tip : Loc.F("btn.nothingToReload", cu.Reload.Tip));
                 }
@@ -1452,6 +1452,7 @@ namespace AlternativeWeaponsControl
             if (R.B(R.F(ws, "_isOffline")) || R.B(R.F(ws, "_isEmpty"))) return 4;
             if (PinWait(ws) != null) return 5;
             if (R.B(R.F(ws, "_isReloading")) || R.Fl(R.F(ws, "_remainingReloadTime")) > 0f) return 2;
+            if (SamBusy(ws)) return 2;
             if (SensorsOff(ws)) return 6;
             if (R.B(R.F(ws, "_executingEngageTask")) || R.B(R.F(ws, "_isAutoEngaging"))) return 1;
             return 0;
@@ -1601,7 +1602,7 @@ namespace AlternativeWeaponsControl
             st = string.IsNullOrEmpty(st) ? CatName(c) : st;
             if (st.IndexOf("/10000)", StringComparison.Ordinal) > 0) st = System.Text.RegularExpressions.Regex.Replace(st, @"\((\d+)/10000\)", "($1)");   // the game's default capacity of a mount that has none of its own
             if (c == 2 && st.Length > 0 && !char.IsLetter(st[0])) st = Loc.F("st.reloading", st);
-            if (c == 0) { var sx = SamStatus(ws); if (sx != null) st = sx; }   // the game says "Ready" for a launcher whose rails are empty (it loads them at the next order)
+            if (c == 0 || c == 2) { var sx = SamStatus(ws); if (sx != null) st = sx; }   // the game says "Ready" for a launcher whose rails are empty (it loads them at the next order)
             if (c != 3 && c != 4)
             {
                 var t = R.F(ws, "_targetObject");

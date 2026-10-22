@@ -1,3 +1,34 @@
+ALTERNATIVE WEAPONS CONTROL 1.2.0 - CHANGE LIST
+
+CHANGES (since 1.1.0)
+
+New
+
+- SAM launchers work as one state machine: cold, loading, warming up, ready. Hot missiles are wanted when the readiness button is on, or the unit has an order with a live target, or the game’s own AI is preparing for an air threat, or an unidentified aircraft is closing in.
+- New SAM statuses: “Rails empty”, “Loading rails”, “Unloading rails” and “Unloading: mm:ss” (the pause after an unloading). They use the Reloading colour and count as reloading in the group summary.
+- Reload button on a SAM launcher: the rails are unloaded with the animation, then loaded again after a pause of half the reload cycle. With empty rails it loads at once. The button is grey while the launcher is busy, and repeated clicks do nothing.
+- Unloading with the missile button also starts the pause, and the next load waits for it.
+- A hot launcher that has fired its last missile loads the next ones by itself while they are needed. Otherwise it goes cold, with no pointless reload count.
+- The load animation always opens the reload.
+- The game’s own warm-up for an air target is no longer cancelled by the mod.
+- “Disable AI cheating” (AI tab, default on): your ships on Free engage contacts marked hostile on the plot regardless of their true side. On Tight with “On Tight: engage hostile aircraft” the same works for aircraft and helicopters only.
+- Section title rows with several groups have common Fire, Stop and Reload and target-type switches.
+- The Reload tooltip names the ammunition the game reloads.
+- Default section order is now SAM, GUNS, ANTI-SHIP, ASW; the other sections follow in the usual order.
+
+Changed
+
+- SAM auto-charge counts the closing speed against your ship’s own movement.
+- Less load on the game: cached reflection lookups, and SAM hooks skip launchers that cannot warm up.
+- Debug traces for SAM loading, the AI’s possible targets, Fire clicks and pinned launchers.
+
+Fixed
+
+- CIWS and machine guns now aim at targets beyond maximum range. The hook was looking in the wrong class.
+- The missile button no longer shows ready while the missiles are still loading.
+- “Rails empty” is shown instead of “Ready” for empty rails.
+
+
 ALTERNATIVE WEAPONS CONTROL 1.1.0 - CHANGE LIST
 
 NEW
@@ -29,7 +60,3 @@ FIXED
 
 - Machine-gun tracers stopping after about 1.1 s, and the gap in the middle of a long burst sound.
 - Missing explosion sound on some gun hits.
-- Статус «Рельсы пусты» вместо «Ready» у пустых рельс (SAM).
-- Пустая установка без нужды в горячих ракетах: бессмысленный отсчёт перезарядки после последнего пуска сразу прекращается.
-- ЗРК: единая модель состояний (холодная/загрузка/прогрев/готова), спрос = кнопка ИЛИ приказ ИЛИ угроза; перезарядка на пустых рельсах не стартует; статусы «Рельсы пусты/Загрузка/Разгрузка».
-- Корабли игрока на Free атакуют контакты, помеченные врагом на планшете, даже если их настоящая фракция нейтральна (настройка EngageByPlotRelation).

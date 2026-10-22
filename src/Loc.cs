@@ -63,7 +63,7 @@ namespace AlternativeWeaponsControl
             D("cat.ready", "ready"); D("cat.engaging", "engaging"); D("cat.reload", "reload"); D("cat.damaged", "damaged");
             D("cat.off", "off"); D("cat.waiting", "waiting"); D("cat.sensorsOff", "sensors off");
             D("st.queued", "Queued"); D("st.waitFcr", "Waiting for FCR channel"); D("st.reloading", "Reloading: {0}");
-            D("st.localControl", "Local control"); D("st.railsEmpty", "Rails empty"); D("st.loading", "Loading rails"); D("st.unloading", "Unloading rails");
+            D("st.localControl", "Local control"); D("st.railsEmpty", "Rails empty"); D("st.loading", "Loading rails"); D("st.unloading", "Unloading rails"); D("st.unloadPause", "Unloading: {0}");
             D("target.track", "Track {0} ({1})"); D("target.trackOnly", "Track {0}"); D("target.unknown", "unknown");
             // ---- buttons and tips
             D("btn.fire", "Fire");
@@ -171,7 +171,7 @@ namespace AlternativeWeaponsControl
             D("lbl.Ships/SamKeepLoaded", "Keep SAM missiles on the rails while hot");
             D("lbl.Ships/SamAnimFix", "Missile load / unload animation fix");
             D("lbl.Ships/SamAutoChargeRange", "Unknown aircraft distance to charge");
-            D("lbl.Fire/EngageByPlotRelation", "Ignore the true side of contacts"); D("lbl.Fire/UnknownAirMinKnots", "Engage unidentified aircraft faster than"); D("unit.Fire/UnknownAirMinKnots", "kn");
+            D("lbl.Fire/EngageByPlotRelation", "Disable AI cheating"); D("lbl.Fire/UnknownAirMinKnots", "Engage unidentified aircraft faster than"); D("unit.Fire/UnknownAirMinKnots", "kn");
             D("lbl.Fire/UnknownAirMaxNm", "Engage unidentified aircraft closer than"); D("lbl.Fire/UnknownAirDefaultOwn", "On Free by default: your and allied ships");
             D("lbl.Fire/UnknownAirDefaultEnemy", "On Free by default: enemy AI ships");
             D("lbl.Ships/NoRbuSurfaceChase", "No chasing surface targets with ASW mortars");

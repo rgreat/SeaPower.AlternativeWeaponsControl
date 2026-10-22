@@ -53,7 +53,8 @@ namespace AlternativeWeaponsControl
             var gun = asm.GetType("SeaPower.WeaponSystemGun");
             var at = gun == null ? null : gun.GetMethod("AlignTurret", inst | BindingFlags.DeclaredOnly);
             if (at != null) harmony.Patch(at, prefix: Hm("AlignPrefix"), postfix: Hm("AlignPostfix")); else Trace("WeaponSystemGun.AlignTurret not found: no aiming beyond max range");
-            var cf = ci == null ? null : ci.GetMethod("FireAtTarget", inst | BindingFlags.DeclaredOnly);
+            var wci = asm.GetType("SeaPower.WeaponSystemCIWS");   // the aiming logic is here (SeaPower.CIWS is the effects attachment: tracers, sound)
+            var cf = wci == null ? null : wci.GetMethod("FireAtTarget", inst | BindingFlags.DeclaredOnly, null, Type.EmptyTypes, null);
             if (cf != null) harmony.Patch(cf, prefix: Hm("CiwsAimPrefix")); else Trace("CIWS.FireAtTarget not found: CIWS / machine guns do not aim beyond max range");
             var ms = gun == null ? null : gun.GetMethod("GetMeasurementRangeSigma", inst | BindingFlags.DeclaredOnly);
             if (ms != null) harmony.Patch(ms, prefix: Hm("RangeSigmaPrefix"), finalizer: Hm("RangeSigmaFinalizer")); else Trace("WeaponSystemGun.GetMeasurementRangeSigma not found: no minimum range error option");
