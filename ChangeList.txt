@@ -3,7 +3,7 @@ ALTERNATIVE WEAPONS CONTROL 1.1.0 - CHANGE LIST
 NEW
 
 - Weapons tab for ground vehicles and land installations, and for aircraft and helicopters. Both can be turned off in the settings.
-- SAM readiness button: load the missiles onto the rails now, or put them away. They are put away automatically after 15 minutes. Missiles stay loaded after a launch.
+- SAM readiness button: load the missiles onto the rails now, or put them away. They are put away automatically after 15 minutes. Missiles stay loaded after a launch, and a hot launcher loads the next ones by itself while there are targets or an aircraft threat; with nothing on the rails and no need it goes cold.
 - SAM auto-charge when an unknown aircraft approaches. Works for AI ships too.
 - "On Free: engage unidentified aircraft" switch on each unit. It engages fast (500 kn+) unidentified aircraft heading towards the ship within 20 nm. The switch does not know whose aircraft it is. Default is off for your ships and on for enemy AI.
 - Fire button shows weapon firing arcs in red on the map and in 3D while the target is being picked. The game's own maximum-range circle is hidden for it, and the game's own Fire buttons keep their usual look.
@@ -29,3 +29,7 @@ FIXED
 
 - Machine-gun tracers stopping after about 1.1 s, and the gap in the middle of a long burst sound.
 - Missing explosion sound on some gun hits.
+- Статус «Рельсы пусты» вместо «Ready» у пустых рельс (SAM).
+- Пустая установка без нужды в горячих ракетах: бессмысленный отсчёт перезарядки после последнего пуска сразу прекращается.
+- ЗРК: единая модель состояний (холодная/загрузка/прогрев/готова), спрос = кнопка ИЛИ приказ ИЛИ угроза; перезарядка на пустых рельсах не стартует; статусы «Рельсы пусты/Загрузка/Разгрузка».
+- Корабли игрока на Free атакуют контакты, помеченные врагом на планшете, даже если их настоящая фракция нейтральна (настройка EngageByPlotRelation).

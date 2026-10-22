@@ -63,7 +63,7 @@ namespace AlternativeWeaponsControl
             D("cat.ready", "ready"); D("cat.engaging", "engaging"); D("cat.reload", "reload"); D("cat.damaged", "damaged");
             D("cat.off", "off"); D("cat.waiting", "waiting"); D("cat.sensorsOff", "sensors off");
             D("st.queued", "Queued"); D("st.waitFcr", "Waiting for FCR channel"); D("st.reloading", "Reloading: {0}");
-            D("st.localControl", "Local control");
+            D("st.localControl", "Local control"); D("st.railsEmpty", "Rails empty"); D("st.loading", "Loading rails"); D("st.unloading", "Unloading rails");
             D("target.track", "Track {0} ({1})"); D("target.trackOnly", "Track {0}"); D("target.unknown", "unknown");
             // ---- buttons and tips
             D("btn.fire", "Fire");
@@ -88,6 +88,8 @@ namespace AlternativeWeaponsControl
             D("tip.refWeapon", "Reference of the weapon");
             D("tip.refDirector", "Reference of the director");
             D("tip.switchesGroup", "{0}\n(switches the whole group)");
+            D("tip.switchesSection", "{0}\n(this target type on all the section's launchers - also for their other ammunition of it)");
+            D("tip.reloadCurrent", "{0}\n(the game reloads the ammunition the launcher holds ready)");
             // ---- SAM readiness button
             D("sam.away", "Missiles away. Click: load the missiles onto the rails");
             D("sam.loading", "Loading the missiles onto the rails... Click: cancel");
@@ -154,7 +156,7 @@ namespace AlternativeWeaponsControl
             D("grp.panel", "Panel"); D("grp.samButton", "SAM readiness button"); D("grp.sam", "SAM");
             D("grp.fireControl", "Fire control"); D("grp.chasing", "Chasing"); D("grp.accuracy", "Accuracy");
             D("grp.tracers", "Tracers and sound"); D("grp.binoculars", "Binoculars"); D("grp.flashes", "Flashes");
-            D("grp.freeAir", "On Free: unidentified aircraft"); D("grp.fires", "Fires"); D("grp.diagnostics", "Diagnostics"); D("grp.language", "Language");
+            D("grp.freeAir", "On Free: unidentified aircraft"); D("grp.targeting", "Target selection"); D("grp.fires", "Fires"); D("grp.diagnostics", "Diagnostics"); D("grp.language", "Language");
             D("lbl.UI/ClickVolume", "Click sound volume");
             D("unit.UI/ClickVolume", "0..1 · 0 = no sound");
             D("lbl.UI/SamReadyButton", "SAM readiness button");
@@ -169,7 +171,7 @@ namespace AlternativeWeaponsControl
             D("lbl.Ships/SamKeepLoaded", "Keep SAM missiles on the rails while hot");
             D("lbl.Ships/SamAnimFix", "Missile load / unload animation fix");
             D("lbl.Ships/SamAutoChargeRange", "Unknown aircraft distance to charge");
-            D("lbl.Fire/UnknownAirMinKnots", "Engage unidentified aircraft faster than"); D("unit.Fire/UnknownAirMinKnots", "kn");
+            D("lbl.Fire/EngageByPlotRelation", "Ignore the true side of contacts"); D("lbl.Fire/UnknownAirMinKnots", "Engage unidentified aircraft faster than"); D("unit.Fire/UnknownAirMinKnots", "kn");
             D("lbl.Fire/UnknownAirMaxNm", "Engage unidentified aircraft closer than"); D("lbl.Fire/UnknownAirDefaultOwn", "On Free by default: your and allied ships");
             D("lbl.Fire/UnknownAirDefaultEnemy", "On Free by default: enemy AI ships");
             D("lbl.Ships/NoRbuSurfaceChase", "No chasing surface targets with ASW mortars");

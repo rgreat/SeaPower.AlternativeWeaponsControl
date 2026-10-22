@@ -54,6 +54,9 @@ namespace AlternativeWeaponsControl
         /// <summary>The switches of one ammunition card: copies of the group's - they switch the whole group.</summary>
         sealed class AmmoChipsUI { public string Id; public int Dom; public ChipUI[] Chips; }
 
+        /// <summary>The common controls in a section's title row: Fire / Stop / Reload and the target switches for the ammunition that ALL the section's launchers have.</summary>
+        sealed class SecCtl { public List<Launcher> Ls; public List<string> Common; public List<GroupRow> Groups; public FireUI Fire; public List<int> LDom = new List<int>(); public int Dom; public ChipUI[] Chips = new ChipUI[5]; public GroupRow Tmp = new GroupRow(); }
+
         sealed class StockUI { public StackPanel P; public TextBlock Cur, Max, RailLab, RailCur, RailMax; public StackPanel Rail; }
 
         sealed class FireUI { public List<string> Ids; public Launcher Pin; public Border Box, Main, Arrow; public bool OverMain, OverArrow, Active; }
@@ -101,6 +104,7 @@ namespace AlternativeWeaponsControl
             public readonly Dictionary<string, object> Entries = new Dictionary<string, object>();
             public readonly List<FireUI> Fires = new List<FireUI>();
             public readonly List<CtrlUI> Ctrls = new List<CtrlUI>();
+            public readonly List<SecCtl> SecCtls = new List<SecCtl>();
             public readonly List<WarmUI> Warms = new List<WarmUI>();
             // the fire-control directors window: opens while the mouse is over a group's T/W badge, stays while it is over it or the window
                // frames left to re-measure the scroll area after it is shown (its extent could stay stale)
@@ -431,7 +435,17 @@ namespace AlternativeWeaponsControl
                 if (count > 1) foreach (var c in counts) subText.Append(subText.Length > 0 ? ", " : "").Append(Loc.F("count.format", c.Value, Loc.T("noun." + c.Key + (c.Value == 1 ? "" : "s"))));
                 var sub = T(subText.ToString(), WC.Dim2, 11f); sub.Margin = new Thickness(8f, 0f, 0f, 0f);
                 sh.Children.Add(sub);
-                card.Children.Add(sh);
+                var secLs = new List<Launcher>();
+                foreach (var gr in kv.Value) secLs.AddRange(gr.Ls);
+                // several groups (launchers that differ): the ammunition they all have gets controls in the title row
+                List<string> common = null;
+                if (secLs.Count > 1 && kv.Value.Count > 1)
+                {
+                    common = new List<string>(secLs[0].Ammo);
+                    common.RemoveAll(id => !secLs.TrueForAll(l => l.Ammo.Contains(id)));
+                    if (common.Count == 0) common = null;
+                }
+                card.Children.Add(common == null ? (UIElement)sh : SectionControls(v, sh, secLs, common, kv.Value));
                 MakeDraggable(v, cb, sh, kv.Key);
                 foreach (var gr in kv.Value)
                 {
@@ -453,6 +467,61 @@ namespace AlternativeWeaponsControl
             Refresh(v, true);
             StockWidth(v);
             return v;
+        }
+
+        /// <summary>The section's title row as a table row: the title in the name columns, Fire / Stop / Reload and the switches (only the target
+        /// types of the common ammunition) in the control columns.</summary>
+        Grid SectionControls(WeaponsView v, FrameworkElement sh, List<Launcher> ls, List<string> common, List<GroupRow> groups)
+        {
+            var row = Columns(true, v);
+            Grid.SetColumnSpan(sh, 4);
+            At(row, sh, 0);
+            At(row, Controls(v, ls, common, true, true, null), 4);
+            var sc = new SecCtl { Ls = ls, Common = common, Groups = groups, Fire = v.Fires[v.Fires.Count - 1] };
+            var cu = v.Ctrls[v.Ctrls.Count - 1];
+            if (cu.Reload != null) { cu.Reload.Tip = Loc.F("tip.reloadCurrent", cu.Reload.Tip); SetTip(cu.Reload.B, cu.Reload.Tip); }
+            sc.Tmp.Ls = ls;
+            foreach (var l in ls)
+            {
+                int ld = 0;
+                foreach (var id in common) { int ix = l.Ammo.IndexOf(id); if (ix >= 0 && ix < l.AmmoDom.Length) ld |= l.AmmoDom[ix]; }
+                sc.LDom.Add(ld); sc.Dom |= ld;
+            }
+            for (int i = 0; i < 5; i++)
+            {
+                var c = MakeChip(10f, Domains[i]);
+                int d = Domains[i];
+                Click(c.G, () => { if ((sc.Dom & d) != 0) ClickSection(v, sc, d); });
+                sc.Chips[i] = c;
+                ChipVisible(v, c.G, i);
+                At(row, c.G, 5 + i);
+            }
+            v.SecCtls.Add(sc);
+            return row;
+        }
+
+        static void SecPairs(object unit, SecCtl sc, int d, List<KeyValuePair<Launcher, int>> pairs, out Chip st)
+        {
+            st = AwcPlugin.Chip.None;
+            for (int k = 0; k < sc.Ls.Count; k++)
+            {
+                if ((sc.LDom[k] & d) == 0) continue;
+                var s = State(unit, sc.Ls[k], d);
+                if (s == AwcPlugin.Chip.None) continue;
+                if (pairs != null) pairs.Add(new KeyValuePair<Launcher, int>(sc.Ls[k], d));
+                st = st == AwcPlugin.Chip.None || st == s ? s : AwcPlugin.Chip.Mixed;
+            }
+        }
+
+        void ClickSection(WeaponsView v, SecCtl sc, int d)
+        {
+            var pairs = new List<KeyValuePair<Launcher, int>>(); Chip st;
+            SecPairs(v.Unit, sc, d, pairs, out st);
+            if (pairs.Count == 0) return;
+            bool anyOn = false;
+            foreach (var p in pairs) if (State(v.Unit, p.Key, d) == AwcPlugin.Chip.On) anyOn = true;
+            Switch(v.Unit, pairs, !anyOn);
+            Refresh(v, false);
         }
 
         // ------------------------------------------------------------------ the order of the sections (drag a section's title)
@@ -1053,7 +1122,11 @@ namespace AlternativeWeaponsControl
             main.MouseLeave += (s, e) => { fu.OverMain = false; PaintFire(fu); };
             arrow.MouseEnter += (s, e) => { fu.OverArrow = true; PaintFire(fu); };
             arrow.MouseLeave += (s, e) => { fu.OverArrow = false; PaintFire(fu); };
-            Click(main, () => { SetPending(v, pin, ids); FireNow(v, PickAmmo(ids, pin)); CheckTargeting(v); });
+            Click(main, () =>
+            {
+                if (_debug) { try { var all = R.F(R.F(v.Unit, "_obp"), "_weaponSystems") as IList; Trace("Fire clicked: " + PickAmmo(ids, pin) + ", launcher " + (pin == null ? "none (any)" : "#" + (all == null ? -1 : all.IndexOf(pin.Ws)))); } catch { } }
+                SetPending(v, pin, ids); FireNow(v, PickAmmo(ids, pin)); CheckTargeting(v);
+            });
             Click(arrow, () => { SetPending(v, pin, ids); OpenFireMenu(v, ids, fire); });
             return fire;
         }
@@ -1083,13 +1156,14 @@ namespace AlternativeWeaponsControl
         }
 
         /// <summary>The fire button whose ammunition the game is picking a target for (AttackingState of this unit) is red until the state ends.</summary>
+        static System.Reflection.FieldInfo _fMgvm;   // (looked up once: this runs every frame)
         static void CheckTargeting(WeaponsView v)
         {
             string id = null; bool ours = false;   // ours: the targeting was started by this mod's Fire (the zones are shown only for it)
             try
             {
-                var globals = GameAssemblyStatic().GetType("SeaPower.Globals");
-                var mgvm = globals == null ? null : globals.GetField("_mainGameViewModel", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic).GetValue(null);
+                if (_fMgvm == null) { var globals = GameAssemblyStatic().GetType("SeaPower.Globals"); if (globals != null) _fMgvm = globals.GetField("_mainGameViewModel", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic); }
+                var mgvm = _fMgvm == null ? null : _fMgvm.GetValue(null);
                 var st = R.Rv(R.P(R.P(mgvm, "StateManager"), "CurrentState"));
                 if (st != null && st.GetType().Name == "AttackingState" && ReferenceEquals(R.P(st, "Source"), v.Unit)) { id = R.S(R.P(st, "Ammunition")); ours = IsOurState(st); }
             }
@@ -1527,6 +1601,7 @@ namespace AlternativeWeaponsControl
             st = string.IsNullOrEmpty(st) ? CatName(c) : st;
             if (st.IndexOf("/10000)", StringComparison.Ordinal) > 0) st = System.Text.RegularExpressions.Regex.Replace(st, @"\((\d+)/10000\)", "($1)");   // the game's default capacity of a mount that has none of its own
             if (c == 2 && st.Length > 0 && !char.IsLetter(st[0])) st = Loc.F("st.reloading", st);
+            if (c == 0) { var sx = SamStatus(ws); if (sx != null) st = sx; }   // the game says "Ready" for a launcher whose rails are empty (it loads them at the next order)
             if (c != 3 && c != 4)
             {
                 var t = R.F(ws, "_targetObject");
@@ -1695,6 +1770,20 @@ namespace AlternativeWeaponsControl
             }
             v.ExpandText.Text = v.Groups.Exists(g => g.Expandable && !g.Open) ? Loc.T("tab.expandAll") : Loc.T("tab.collapseAll");
             RefreshCtrls(v);
+            foreach (var sc in v.SecCtls)
+            {
+                // Fire uses the ammunition chosen as active in the groups (if it is a common one), else the first common
+                string act = null;
+                foreach (var g in sc.Groups) if (g.ActiveAmmo != null && sc.Common.Contains(g.ActiveAmmo)) { act = g.ActiveAmmo; break; }
+                if (act != null && sc.Common[0] != act) { sc.Common.Remove(act); sc.Common.Insert(0, act); }
+                Tip(sc.Fire.Main, Loc.T("btn.fire") + ": " + (R.S(R.P(AmmoParams(v, sc.Common[0]), "_displayedName")) ?? sc.Common[0]));
+                for (int i = 0; i < 5; i++)
+                {
+                    Chip st; SecPairs(v.Unit, sc, Domains[i], null, out st);
+                    Paint(sc.Chips[i], st);
+                    Tip(sc.Chips[i].G, st == AwcPlugin.Chip.None ? null : Loc.F("tip.switchesSection", GroupTip(v.Unit, sc.Tmp, Domains[i], st)));
+                }
+            }
 
             foreach (var gr in v.Groups)
             {

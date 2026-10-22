@@ -9,14 +9,17 @@ namespace AlternativeWeaponsControl
 {
     /// <summary>
     /// SAM readiness button (Weapons tab). A launcher with a warm-up (WeaponSystemLauncher: _vwp._hasWarmUp) is "charged" by hand:
-    /// WarmUp() (IsHot + the reload time), then the game's load system puts the missiles onto the rails (triggerLoadSystem).
-    /// The time limit starts when the rails are loaded; when it ends and the launcher was not used, the missiles go back to the
+    /// the game's load system puts the missiles onto the rails (triggerLoadSystem), then WarmUp() (IsHot + the reload time) - the warm-up
+    /// runs on the rails, as in the game's own order of a fire order to a cold launcher (and as the real launcher does it).
+    /// The time limit starts when the warm-up is over; when it ends and the launcher was not used, the missiles go back to the
     /// magazine and the launcher cools down. A launch (rails empty) stops the count; it starts again when the rails are loaded again.
     /// Reload on such a launcher = unload the rails, charge again.
     /// </summary>
     public partial class AwcPlugin
     {
-        sealed class Box { public double Until; public bool Pending, Unload, Recharge, Started; }
+        // One launcher under our control. Until: end of the time limit of a ready launcher. Pending: the rails are to be loaded. Warm: after the load the warm-up
+        // (the reload count) is to start - on the loaded rails. Unload/Started: our own unloading. Recharge: charge again after it. Btn: the button is ON (a demand).
+        sealed class Box { public double Until, NeedAt; public bool Pending, Unload, Recharge, Started, Warm, Btn, Need; }
         static readonly ConditionalWeakTable<object, Box> _warmBox = new ConditionalWeakTable<object, Box>();
 
         void HookWarmUp(Harmony harmony, Assembly asm)
@@ -25,6 +28,8 @@ namespace AlternativeWeaponsControl
             var m = t == null ? null : t.GetMethod("OnUpdate", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly, null, Type.EmptyTypes, null);
             if (m == null) { Trace("WeaponSystemLauncher.OnUpdate not found: no SAM ready time limit"); return; }
             harmony.Patch(m, postfix: Hm("WarmPostfix"));
+            var lm = t == null ? null : t.GetMethod("launch", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+            if (lm != null) harmony.Patch(lm, postfix: Hm("LaunchPostfix")); else Trace("WeaponSystemLauncher.launch not found: the reload after the last missile is not skipped");
             var ai = asm.GetType("SeaPower.AI");
             var am = ai == null ? null : ai.GetMethod("OnUpdate", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, Type.EmptyTypes, null);
             if (am != null) harmony.Patch(am, postfix: Hm("AutoChargePostfix")); else Trace("AI.OnUpdate not found: no SAM auto charge");
@@ -55,48 +60,109 @@ namespace AlternativeWeaponsControl
         static bool Idle(object ws) { var s = R.F(ws, "_state"); return s == null || s.ToString() == "Idle"; }
         static bool IsEngaging(object ws) { return R.B(R.F(ws, "_executingEngageTask")) || R.B(R.F(ws, "_isAutoEngaging")); }
 
+        /// <summary>The state the game's own status does not tell: "Rails empty" (cold, missiles in the magazine), "Loading", "Unloading"; null: the game's text.</summary>
+        internal static string SamStatus(object ws)
+        {
+            try
+            {
+                if (!CanWarm(ws) || R.B(R.F(ws, "_isReloading")) || IsEngaging(ws)) return null;
+                Box b; bool has = _warmBox.TryGetValue(ws, out b);
+                if (has && b.Unload) return Loc.T("st.unloading");
+                if (has && b.Pending) return Loc.T("st.loading");
+                if (Idle(ws) && Loaded(ws) == 0 && MagazineCount(ws) > 0) return Loc.T("st.railsEmpty");
+            }
+            catch { }
+            return null;
+        }
+
         static int Loaded(object ws) { int n = 0; foreach (var b in Rails(ws)) if (b) n++; return n; }
 
-        /// <summary>Time limit and loading of a hand-charged launcher.</summary>
+        // ------------------------------------------------------------------ the model
+        // Cold: nothing on the rails. Loading / warming: the missiles go onto the rails, then the warm-up (the game's reload count) runs ON them.
+        // Ready: loaded, warm, idle. "Hot" means "warm missiles on the rails": a hot launcher with empty rails is cold. The demand (hot missiles are needed)
+        // is one thing: the button is ON, or an open order with a live target, or an unknown aircraft closing in. One function (Reconcile) moves a launcher
+        // between the states; it is called by the launcher's update (about 4 times a second, for the launchers under control only) and after a launch.
+
+        /// <summary>The demand for hot missiles (the need is asked once a second).</summary>
+        static bool Demand(object ws, Box b, double now, bool fresh)
+        {
+            if (b == null) return NeedHot(ws);
+            if (b.Btn) return true;
+            if (fresh || now >= b.NeedAt) { b.Need = NeedHot(ws); b.NeedAt = now + 1.0; }
+            return b.Need;
+        }
+
+        static void ResetReload(object ws) { R.SetF(ws, "_isReloading", false); R.SetF(ws, "_remainingReloadTime", 0f); R.SetF(ws, "_reloadStartTime", -1000.0); }
+
+        /// <summary>Cold: no reload count, not hot (the box goes with it).</summary>
+        static void GoCold(object ws)
+        {
+            // the reload clock is reset too: the game's load flow (InitiateLoading) sets _isReloading again and counts from the LAST StartReload, so the count
+            // of the launch would run once more during the load, and the warm-up on the rails after it (two counts in a row)
+            ResetReload(ws); R.SetP(ws, "IsHot", false);
+            _warmBox.Remove(ws);
+        }
+
+        /// <summary>After a launch the game counts a reload when the rails are empty. A count on empty rails is not a warm-up: it is dropped at once; with a
+        /// demand the rails are loaded now and the warm-up runs on them, without one the launcher is cold.</summary>
+        static void LaunchPostfix(object __instance)
+        {
+            try
+            {
+                var ws = __instance;
+                if (!R.B(R.F(ws, "_isReloading")) || !CanWarm(ws) || !Idle(ws) || Loaded(ws) != 0) return;
+                Box b; _warmBox.TryGetValue(ws, out b);
+                bool need = Demand(ws, b, MissionTime(), true), btn = b != null && b.Btn;
+                GoCold(ws);
+                if (need && MagazineCount(ws) > 0) { Charge(ws); Box nb; if (btn && _warmBox.TryGetValue(ws, out nb)) nb.Btn = true; }
+            }
+            catch (Exception e) { Trace("launch postfix: " + e.Message); }
+        }
+
+        /// <summary>Reconcile, from the launcher's update.</summary>
         static void WarmPostfix(object __instance)
         {
             try
             {
+                var ws = __instance;
                 Box b;
-                bool has = _warmBox.TryGetValue(__instance, out b);
-                if (has && b.Unload)
+                bool has = _warmBox.TryGetValue(ws, out b);
+                if (!has && !CanWarm(ws)) return;   // tubes, guns, launchers without a warm-up: nothing here (this runs for every launcher every frame)
+                if (_debug) WarmTrace(ws, has ? b : null);
+                if (has && b.Unload) { UnloadStep(ws, b); return; }
+                if (_inst != null && _inst._samKeep != null && _inst._samKeep.Value && R.B(R.F(ws, "_triggerShutDown")) && R.B(R.P(ws, "IsHot")) && Idle(ws))
+                    R.SetF(ws, "_triggerShutDown", false);   // the game's "idle: unload the rails" waits while the launcher is hot
+                int tick = UnityEngine.Time.frameCount + RuntimeHelpers.GetHashCode(ws);
+                if (has ? !b.Pending && tick % 15 != 0 : tick % 30 != 0) return;   // about 4 (2 for a launcher not yet taken) times a second
+                bool hot = R.B(R.P(ws, "IsHot"));
+                if (!has)
                 {
-                    // our own unload (the game's animated one): when it is done, charge again or cool down
-                    if (IsEngaging(__instance)) { b.Unload = false; b.Recharge = false; b.Started = false; R.SetF(__instance, "_triggerShutDown", false); return; }
-                    if (!b.Started)
+                    if (!hot) return;                    // cold and not asked: the game's business
+                    b = new Box(); _warmBox.Add(ws, b);   // the game made it hot (an order, a known hostile, the mission start): it is under our rules now
+                }
+                else if (!hot && !b.Pending) { _warmBox.Remove(ws); return; }
+                double now = MissionTime();
+                int loaded = Loaded(ws);
+                bool reloading = R.B(R.F(ws, "_isReloading"));
+                if (IsEngaging(ws))
+                {
+                    if (loaded > 0) b.Until = now + WarmSeconds();   // in use: the limit counts from the last use
+                    if (!b.Pending) return;                          // the game's own flow of the order
+                }
+                if (reloading)
+                {
+                    // a count on empty rails is not a warm-up (see LaunchPostfix); the demand is asked fresh: the game starts such a count for its own prep / order
+                    if (loaded == 0 && Idle(ws) && !IsEngaging(ws) && !b.Pending)
                     {
-                        b.Started = true;
-                        // rails loaded without the game's load system have no "ammunition on the weapon": the unload animation needs it
-                        if (R.F(__instance, "_ammunitionOnWeapon") == null)
-                        {
-                            var cs0 = R.F(__instance, "_containers") as IList;
-                            if (cs0 != null) foreach (var c0 in cs0) { var la = R.F(c0, "_loadedAmmunition"); var w0 = R.F(c0, "_weapons") as IList; if (la != null && w0 != null && w0.Count > 0) { R.SetF(__instance, "_ammunitionOnWeapon", la); break; } }
-                        }
-                        R.SetF(__instance, "_triggerShutDown", true);
-                        return;
-                    }
-                    if (!R.B(R.F(__instance, "_triggerShutDown")) && Idle(__instance))
-                    {
-                        b.Unload = false; b.Started = false;
-                        if (b.Recharge) { b.Recharge = false; R.SetP(__instance, "IsHot", false); Charge(__instance); }   // as a click on a cold launcher: the game's warm-up, then the load
-                        else { R.SetP(__instance, "IsHot", false); _warmBox.Remove(__instance); }
+                        bool wanted = Demand(ws, b, now, true);
+                        if (_debug && !wanted) Trace("sam cancel: a count on empty rails without a demand (" + R.S(R.F(ws, "_systemName")) + ")");
+                        GoCold(ws);
+                        if (wanted && MagazineCount(ws) > 0) Charge(ws);
                     }
                     return;
                 }
-                if (_inst != null && _inst._samKeep != null && _inst._samKeep.Value && R.B(R.F(__instance, "_triggerShutDown")) && R.B(R.P(__instance, "IsHot")) && Idle(__instance))
-                    R.SetF(__instance, "_triggerShutDown", false);   // the game's "idle: unload the rails" waits while the launcher is hot
-                if (!has) return;
-                var ws = __instance;
-                if (!R.B(R.P(ws, "IsHot"))) { _warmBox.Remove(ws); return; }
-                double now = MissionTime();
-                int loaded = Loaded(ws);
-                if (IsEngaging(ws)) { b.Pending = false; b.Until = loaded > 0 ? now + WarmSeconds() : 0.0; return; }
-                if (R.B(R.F(ws, "_isReloading")) || !Idle(ws)) return;
+                bool need = Demand(ws, b, now, false);
+                if (!Idle(ws)) return;
                 if (b.Pending)
                 {
                     var rails = Rails(ws);
@@ -106,13 +172,128 @@ namespace AlternativeWeaponsControl
                         var ae = R.F(ws, "_ammoForEngage");
                         if (ae != null) { R.Call(ws, "triggerLoadSystem"); if (!Idle(ws) || R.B(R.F(ws, "_isReloading"))) return; }
                     }
-                    b.Pending = false;
-                    b.Until = Loaded(ws) > 0 ? now + WarmSeconds() : 0.0;
+                    // the rails are loaded: the warm-up runs on them, the time limit starts when it is over
+                    if (b.Warm && Loaded(ws) > 0 && !R.B(R.P(ws, "IsHot"))) { b.Warm = false; R.Call(ws, "WarmUp"); return; }
+                    b.Warm = false; b.Pending = false;
+                    if (Loaded(ws) > 0) b.Until = now + WarmSeconds(); else _warmBox.Remove(ws);
                     return;
                 }
-                if (loaded == 0) { b.Until = 0.0; return; }      // launched: the count waits for the next load
+                if (loaded == 0)
+                {
+                    // hot with empty rails is cold; with a demand the rails are loaded and warmed
+                    if (hot) R.SetP(ws, "IsHot", false);
+                    if (need && MagazineCount(ws) > 0) { b.Pending = true; b.Warm = true; b.Until = 0.0; }
+                    else _warmBox.Remove(ws);
+                    return;
+                }
                 if (b.Until <= 0.0) { b.Until = now + WarmSeconds(); return; }
-                if (now >= b.Until) StartUnload(ws, false);
+                if (now >= b.Until)
+                {
+                    // the limit is over: the missiles go back; with a demand (not the button: it ends here) they are loaded and warmed again
+                    b.Btn = false;
+                    StartUnload(ws, Demand(ws, b, now, true));
+                }
+            }
+            catch { }
+        }
+
+        /// <summary>Our own unloading (the game's animated one); when it is done: charge again when asked or needed, else cold.</summary>
+        static void UnloadStep(object ws, Box b)
+        {
+            if (IsEngaging(ws)) { b.Unload = false; b.Recharge = false; b.Started = false; R.SetF(ws, "_triggerShutDown", false); return; }
+            if (!b.Started)
+            {
+                b.Started = true;
+                // rails loaded without the game's load system have no "ammunition on the weapon": the unload animation needs it
+                if (R.F(ws, "_ammunitionOnWeapon") == null)
+                {
+                    var cs0 = R.F(ws, "_containers") as IList;
+                    if (cs0 != null) foreach (var c0 in cs0) { var la = R.F(c0, "_loadedAmmunition"); var w0 = R.F(c0, "_weapons") as IList; if (la != null && w0 != null && w0.Count > 0) { R.SetF(ws, "_ammunitionOnWeapon", la); break; } }
+                }
+                R.SetF(ws, "_triggerShutDown", true);
+                return;
+            }
+            if (!R.B(R.F(ws, "_triggerShutDown")) && Idle(ws))
+            {
+                bool again = b.Recharge || NeedHot(ws);
+                b.Unload = false; b.Started = false; b.Recharge = false;
+                R.SetP(ws, "IsHot", false);
+                if (again && MagazineCount(ws) > 0) Charge(ws); else _warmBox.Remove(ws);
+            }
+        }
+
+        /// <summary>
+        /// Hot missiles are needed: the unit has open engage orders for the launcher's ammunition (a live target), or an unknown / hostile
+        /// aircraft is coming in within [Fire] SamAutoChargeRange (the same test as the automatic charging).
+        /// </summary>
+        static bool NeedHot(object ws)
+        {
+            try
+            {
+                var bo = R.F(ws, "_baseObject");
+                if (bo == null || R.B(R.P(bo, "IsDestroyed"))) return false;
+                var held = R.F(bo, "_weaponStatus"); if (held != null && held.ToString() == "Hold") return false;
+                // the game's own request to ready the launcher (AI.PrepareLaunchersForClosingThreats -> RequestPrep: a target is about to come into range)
+                var pAmmo = R.F(ws, "_prepAmmo"); var pTgt = R.F(ws, "_prepTarget");
+                if (pAmmo != null && pTgt != null && !R.B(R.P(pTgt, "IsDestroyed"))) return true;
+                // the game's AI (AI.cs ~705-726) warms up ALL launchers on every cycle while its list of possible targets holds an air unit or a missile
+                // aimed at a non-airborne target (no range test: the list is the contacts known as hostile). That is its own demand for hot missiles.
+                var ai0 = R.F(bo, "_ai");
+                var pt = ai0 == null ? null : R.F(ai0, "_possibleTargetsWithPriorities") as IDictionary;
+                if (pt != null)
+                    foreach (DictionaryEntry de in pt)
+                    {
+                        var k = de.Key;
+                        if (k == null || R.B(R.P(k, "IsDestroyed"))) continue;
+                        if (R.B(R.V(k, "IsAirUnit"))) return true;
+                        if (IsMissileAtSurface(k)) return true;
+                    }
+                var mag = Magazine(ws);
+                var list = mag == null ? null : R.F(mag, "_ammunitionList") as IList;
+                var names = new List<string>();
+                if (list != null) foreach (var a in list) { var n = R.S(R.F(R.F(a, "_ap"), "_ammunitionFileName")); if (n != null) names.Add(n); }
+                var tasks = R.F(bo, "_currentEngageTasks") as IList;
+                if (tasks != null)
+                    foreach (var t in tasks)
+                    {
+                        if (t == null || !names.Contains(R.S(R.F(t, "_ammoId")))) continue;
+                        var tg = R.F(t, "_targetObject");
+                        if (tg != null && !R.B(R.P(tg, "IsDestroyed"))) return true;
+                    }
+                var me = _inst;
+                var ai = R.F(bo, "_ai");
+                var procs = ai == null ? null : R.F(ai, "_processedObjects") as IList;
+                if (me != null && me._samAutoRange != null && procs != null && procs.Count > 0 && UnknownAirClosing(ai, bo, procs, me._samAutoRange.Value)) return true;
+            }
+            catch { }
+            return false;
+        }
+
+        /// <summary>A missile whose target is not airborne (the game's AI warms the launchers up for it too).</summary>
+        static bool IsMissileAtSurface(object o)
+        {
+            for (var ty = o.GetType(); ty != null; ty = ty.BaseType)
+                if (ty.Name == "Missile") return !R.B(R.F(o, "_isTargetAirborne"));
+            return false;
+        }
+
+        // Debug: every change of a SAM launcher's loading state is traced (to find out why the rails load before the reload ends)
+        static readonly ConditionalWeakTable<object, string[]> _warmSig = new ConditionalWeakTable<object, string[]>();
+        static void WarmTrace(object ws, Box b)
+        {
+            try
+            {
+                var st = R.F(ws, "_state");
+                string sig = (st == null ? "?" : st.ToString()) + " reloading=" + R.B(R.F(ws, "_isReloading")) + " left=" + (R.Fl(R.F(ws, "_remainingReloadTime")) > 0f ? "yes" : "no")
+                           + " hot=" + R.B(R.P(ws, "IsHot")) + " weapons=" + Loaded(ws) + "/" + Rails(ws).Count + " onWeapon=" + (R.F(ws, "_ammunitionOnWeapon") != null)
+                           + " engaging=" + IsEngaging(ws) + " shutDown=" + R.B(R.F(ws, "_triggerShutDown"))
+                           + (b == null ? " box=none" : " box(pending=" + b.Pending + " unload=" + b.Unload + " recharge=" + b.Recharge + ")");
+                string[] last;
+                if (!_warmSig.TryGetValue(ws, out last)) { last = new string[1]; _warmSig.Add(ws, last); }
+                if (last[0] == sig) return;
+                last[0] = sig;
+                int ix = -1; try { var all = R.F(R.F(R.F(ws, "_baseObject"), "_obp"), "_weaponSystems") as IList; if (all != null) ix = all.IndexOf(ws); } catch { }
+                Trace("sam load " + R.S(R.Call(R.F(ws, "_baseObject"), "getUIDAndName")) + " " + R.S(R.F(ws, "_systemName")) + " #" + ix + ": " + sig + " t=" + MissionTime().ToString("0.0"));
             }
             catch { }
         }
@@ -161,7 +342,6 @@ namespace AlternativeWeaponsControl
             return null;
         }
 
-        /// <summary>The rails are unloaded into the magazine at once; the launcher cools down.</summary>
         /// <summary>The game's own unloading (the missiles go back with the animation); then charge again (recharge) or cool down.</summary>
         static void StartUnload(object ws, bool recharge)
         {
@@ -180,15 +360,27 @@ namespace AlternativeWeaponsControl
         }
 
         /// <summary>The launcher can be charged (a SAM / missile launcher with a warm-up and a magazine).</summary>
+        sealed class Flag { public bool V; }
+        static readonly ConditionalWeakTable<object, Flag> _canWarm = new ConditionalWeakTable<object, Flag>();   // what a launcher is does not change: asked once
+
         static bool CanWarm(object ws)
         {
+            if (ws == null) return false;
+            Flag f;
+            if (_canWarm.TryGetValue(ws, out f)) return f.V;
+            bool r = false, known = false;
             try
             {
-                if (ws == null || !R.Is(ws, _tLauncher)) return false;
-                var vwp = R.F(ws, "_vwp");
-                return vwp != null && R.B(R.F(vwp, "_hasWarmUp")) && R.B(R.F(vwp, "_hasWarmUpAmmo")) && R.F(vwp, "_associatedMagazine") != null;
+                if (R.Is(ws, _tLauncher))
+                {
+                    var vwp = R.F(ws, "_vwp");
+                    if (vwp != null) { known = true; r = R.B(R.F(vwp, "_hasWarmUp")) && R.B(R.F(vwp, "_hasWarmUpAmmo")) && R.F(vwp, "_associatedMagazine") != null; }
+                }
+                else known = true;
             }
-            catch { return false; }
+            catch { }
+            if (known) _canWarm.Add(ws, new Flag { V = r });
+            return r;
         }
 
         internal sealed class WarmInfo { public int St; public List<bool> Rails; public float Left = -1f; }
@@ -200,44 +392,49 @@ namespace AlternativeWeaponsControl
             int loaded = 0; foreach (var b in wi.Rails) if (b) loaded++;
             bool hot = R.B(R.P(ws, "IsHot"));
             Box bx; bool has = _warmBox.TryGetValue(ws, out bx);
+            // the rails count the missiles the game has SPAWNED: the load animation spawns them at its start, and a reload can still be counting -
+            // not ready until the load state machine is idle and no reload is counting
+            bool busy = (hot || has && bx.Pending) && loaded > 0 && (has && bx.Pending || !Idle(ws) || R.B(R.F(ws, "_isReloading")));
             if (has && bx.Unload) wi.St = 1;
+            else if (busy && loaded >= wi.Rails.Count) { wi.St = 1; for (int i = 0; i < wi.Rails.Count; i++) wi.Rails[i] = false; }
             else if (loaded > 0 && loaded >= wi.Rails.Count) wi.St = 3;
             else if (loaded > 0) wi.St = 2;
-            else if (hot && (has && bx.Pending || R.B(R.F(ws, "_isReloading")) || !Idle(ws))) wi.St = 1;
+            else if (has && bx.Pending || hot && (R.B(R.F(ws, "_isReloading")) || !Idle(ws))) wi.St = 1;
             if (has && bx.Until > 0.0 && loaded > 0) wi.Left = (float)Math.Max(0.0, bx.Until - MissionTime());
             return wi;
         }
 
-        /// <summary>Click: charge, or unload and cool down (not during a fight).</summary>
+        /// <summary>Click: ON charges and is a demand (until the time limit ends); OFF is a single unload (a demand that is still there charges again).</summary>
         static void WarmToggle(object ws)
         {
             try
             {
                 var wi = WarmState(ws);
-                if (wi.St == 0) { Charge(ws); return; }
+                if (wi.St == 0) { Charge(ws); Box b; if (_warmBox.TryGetValue(ws, out b)) b.Btn = true; return; }
                 if (IsEngaging(ws)) return;
+                Box bx; if (_warmBox.TryGetValue(ws, out bx)) bx.Btn = false;
                 StartUnload(ws, false);
             }
             catch (Exception e) { Trace("warm: " + e.Message); }
         }
 
+        /// <summary>The missiles go onto the rails; the warm-up (the reload count) runs on the rails.</summary>
         static void Charge(object ws)
         {
             bool hotBefore = R.B(R.P(ws, "IsHot"));
-            if (!hotBefore) R.Call(ws, "WarmUp");
-            R.SetP(ws, "IsHot", true);
             Box b;
             if (!_warmBox.TryGetValue(ws, out b)) { b = new Box(); _warmBox.Add(ws, b); }
-            b.Pending = true; b.Until = 0.0;
+            b.Pending = true; b.Until = 0.0; b.Warm = !hotBefore;
         }
 
-        /// <summary>Reload: what is on the rails goes back, then the launcher is charged again.</summary>
+        /// <summary>Reload button: what is on the rails goes back, then the launcher is charged again (the button is ON).</summary>
         static void Recharge(object ws)
         {
             try
             {
                 if (IsEngaging(ws)) return;
                 StartUnload(ws, true);
+                Box b; if (_warmBox.TryGetValue(ws, out b)) b.Btn = true;
             }
             catch (Exception e) { Trace("recharge: " + e.Message); }
         }
@@ -305,6 +502,7 @@ namespace AlternativeWeaponsControl
                     if ((l.Domains & DAir) != 0 && CanWarm(l.Ws) && State(bo, l, DAir) != Chip.Off && WarmState(l.Ws).St == 0 && !R.B(R.P(l.Ws, "IsHot"))) launchers.Add(l);
                 if (launchers.Count == 0) return;
                 if (!UnknownAirClosing(__instance, bo, procs, me._samAutoRange.Value)) return;
+                if (_debug) Trace("auto charge: " + R.S(R.Call(bo, "getUIDAndName")) + " launchers=" + launchers.Count);
                 foreach (var l in launchers) Charge(l.Ws);
             }
             catch (Exception e) { Trace("auto charge: " + e.Message); }
@@ -319,17 +517,26 @@ namespace AlternativeWeaponsControl
             {
                 if (o == null || R.B(R.V(o, "IsDestroyed")) || !R.B(R.V(o, "IsAirUnit"))) continue;
                 object veh = null;
-                try { var args = new object[] { o, null }; if (table != null && (bool)table.GetType().GetMethod("TryGetValue").Invoke(table, args)) veh = args[1]; } catch { }
+                try { var td = table as System.Collections.IDictionary; if (td != null && td.Contains(o)) veh = td[o]; } catch { }
                 if (veh == null) continue;                               // not on the plot: nothing known about it
                 var rel = R.Call(veh, "CurrentRelationship");
                 string rs = rel == null ? "" : rel.ToString();
-                if (rs == "Friendly" || rs == "Neutral") continue;        // identified as not a threat
+                if (rs == "Friendly" || rs == "Neutral" || rs == "Hostile") continue;   // identified: not a threat, or a hostile one - as in the game, its engage order does the warm-up; this is for the unknown ones
                 var pos = (UnityEngine.Vector3)R.V(R.V(o, "transform"), "position");
-                var d = pos - myPos; d.y = 0f;
+                var d = pos - myPos; d.y = 0f;                          // from the ship to the aircraft
                 float nm = d.magnitude * NmPerUnit;
+                if (nm > rangeNm) continue;
+                // Charging is NOT engaging (its own setting: SamAutoChargeRange, nothing of the "On Free" settings): the range to the aircraft shrinks, i.e. its
+                // velocity RELATIVE to the ship points towards the ship (a slower aircraft on a parallel course does not close)
                 var vel = R.V(o, "_velocityVecInUnity");
-                bool closing = vel is UnityEngine.Vector3 && UnityEngine.Vector3.Dot((UnityEngine.Vector3)vel, d) < 0f;
-                if (nm <= rangeNm && closing) return true;
+                if (!(vel is UnityEngine.Vector3)) continue;
+                var rv = (UnityEngine.Vector3)vel;
+                var mv = R.V(bo, "_velocityVecInUnity");
+                if (mv is UnityEngine.Vector3) rv -= (UnityEngine.Vector3)mv;
+                rv.y = 0f;
+                if (UnityEngine.Vector3.Dot(rv, d) >= 0f) continue;
+                if (_debug) { try { Trace("sam demand: aircraft " + R.S(R.Call(o, "getUIDAndName")) + " " + rs + " " + nm.ToString("0.0") + " nm, closing at " + (rv.magnitude / 0.0076554087f).ToString("0") + " kn"); } catch { } }
+                return true;
             }
             return false;
         }

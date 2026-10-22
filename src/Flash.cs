@@ -145,14 +145,14 @@ namespace AlternativeWeaponsControl
         // missile launch: a light that follows the missile for as long as its booster burns (MissileSimulator.GetAccelerationTimes primary time)
         static void MissileLaunchPrefix(object __instance, ref bool __state) { try { __state = R.F(__instance, "_flightEffects") == null; } catch { __state = false; } }
 
+        static MethodInfo _mGetAccel;
         static void MissileLaunchFlash(object __instance, bool __state)
         {
             if (!__state || !FlashOn(2)) return;
             try
             {
                 var ap = R.F(__instance, "_ap"); if (ap == null) return;
-                var ms = _tObjectBase.Assembly.GetType("SeaPower.MissileSimulator");
-                var gm = ms.GetMethod("GetAccelerationTimes", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                var gm = _mGetAccel ?? (_mGetAccel = _tObjectBase.Assembly.GetType("SeaPower.MissileSimulator").GetMethod("GetAccelerationTimes", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic));
                 var tup = gm.Invoke(null, new object[] { ap, R.B(R.F(__instance, "_airLaunched")) });
                 float burn = R.Fl(tup.GetType().GetField("Item1").GetValue(tup));
                 if (!(burn > 0.2f)) burn = 1f;

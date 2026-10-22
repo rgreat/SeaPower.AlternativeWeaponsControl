@@ -433,3 +433,84 @@ SettingsWindow.cs: each Field has Tab + Group. Tabs: Weapons panel (Panel, SAM r
 - Flash duration also graded by the same strength: 100..300 % (muzzle 0.09..0.27 s; hits and detonations 0.39..1.18 s; autocannon/MG hits and CIWS shots stay at 100 %).
 - The max-range circle is hidden only for a targeting state started by the mod's Fire button / its menu (OurFireExecute wraps the command, OurFireDepth > 0 when the state first gets MaxRangeInLat; marked in RealMax). The game's own Fire keeps its circle.
 - Zones (wedges) are shown only for targeting started by the mod's Fire (IsOurState, the RealMax mark); the game's own Fire shows neither the zones nor hides its circle.
+- SAM readiness: a launcher made hot and loaded by the game itself (no Box) is adopted (WarmPostfix, 2x per second per launcher): Box with Until = now + SamReadyMinutes, so the button shows the timer and the missiles are put away at the end.
+
+## Performance audit (loops / reflection in hot paths)
+- `CheckTargeting` (every frame per visible Weapons tab): the `Globals._mainGameViewModel` FieldInfo is cached (was a type + field lookup by name each frame).
+- `UnknownAirClosing` (AutoCharge, every 3 s per AI): `LocalVehicles` is read through `IDictionary` instead of `GetMethod("TryGetValue").Invoke` per object.
+- `FreeAirPostfix`: the list of added aircraft is allocated only when there is something to add.
+- `MissileLaunchFlash`: `GetAccelerationTimes` MethodInfo cached.
+- Checked and left: AiEnter/AiLeave, ArcPostfix (O(1)); AutoCharge and warm-up adoption (throttled 3 s / 0.5 s); HetEnter/HetLeave (per distribution, not per frame); CiwsEnter (only units with a CIWS switched off; builds the skip set per AquireTarget call - a per-frame shared set is possible if profiling shows it); WeaponsTick refresh (0.3 s).
+- Not verified in game.
+
+## Section title row: common controls
+- (The first attempt, Fire / Stop / Reload in a launcher's own row, was taken back: the ammunition cards already have them.)
+- A section (SAM, GUNS ...) with 2+ launchers that differ (several groups, or a launcher with several ammunition types) gets controls in its title row, in the same columns as the rows below: Fire / Stop / Reload and the five target switches. They work for the ammunition that ALL the section's launchers have (intersection); none in common: the title row stays plain.
+- Stop (`Cease`) ends only what is fired with the common ammunition. Reload: as the ammunition cards' (the game's ForceReload works on the launcher's current ammunition `_ammoForEngage`; it cannot be aimed at one type). Fire without a pinned launcher uses the first common ammunition; the arrow opens the usual menu.
+- Switches: only the target types of the common ammunition (`SecCtl.LDom`); the game's switch is per launcher and target type, not per ammunition, so it covers every ammunition of that type on the launcher.
+- Revised after a UI review: shown ONLY when the section has more than one group (a single group's row already has the chips; the ammunition cards have Fire / Stop / Reload). Fire uses the ammunition chosen as active in the groups if it is a common one (else the first common) and its tooltip names it; the switch tooltip says it covers the target type on all the section's launchers (`tip.switchesSection`); the Reload tooltip says the game reloads the ammunition the launcher holds ready (`tip.reloadCurrent`). New keys are in ru.json / langs/*.txt (tools) and Release/lang.
+- Code: `SectionControls`, `SecPairs`, `ClickSection` (WeaponsView.cs), painted in `Refresh`. Not verified in game.
+
+## SAM button: ready only when the load is really done (bug report)
+- Reported: after Fire the missiles can show the load animation at once, not waiting for the reload to end; the missile button can be green (2 missiles) while the rails look empty and the reload is counting (after a lot of charge / unload games). Root cause NOT found yet; not reproduced.
+- Facts from the game code: `spawnWeapons` fills `_containers[i]._weapons` at the START of the load animation, so `Rails()` (our button) counts the missiles as loaded then; `WeaponSystemLauncher.updateLoadSystem` runs every update independently of the reload timer (the vanilla load state machine starts right after a salvo, line ~796 `triggerLoadSystem`), so the animation can precede the end of `_isReloading` even without the mod.
+- Display fix: `WarmState` shows "loading" (amber, rails dim) instead of ready/green while the load state is not Idle or `_isReloading` is true.
+- Debug trace: with [Debug] on, each change of a launcher's loading state is logged (`sam load ...`: state, reloading, hot, weapons/rails, onWeapon, engaging, shutDown, our box). To be read when the bug is reproduced.
+- Not verified in game.
+
+## SAM: a cold launcher loads before its warm-up (found in the trace, vanilla behaviour)
+- Trace: Unload with the missile button (hot=False, rails empty), then Fire: `InitiateLoading` at once (engaging=True, hot=False), rails 2/2 after 0.1 s, and only then `hot=True reloading=True` (the warm-up reload, 8 s), launch when it ends. The cause is not the unload: any cold launcher does it (also at the mission start, MK26 weapons=0/2 hot=False). `WeaponSystemLauncher.OnUpdate` waits for the guidance (`AcquisitionComplete`) with `ReadyUpWhileWaiting()`, which calls `getContainer()` -> `triggerLoadSystem()` (load at once); the warm-up (`IsHot = true; StartReload()`) comes later in the "WarmingUp" branch.
+- Decision (user): this is a feature of the launch procedure, not a bug. The fix (a prefix on `ReadyUpWhileWaiting` that starts the warm-up first for the player's cold launchers) was written and TAKEN OUT again; the vanilla order stays.
+- Not verified in game.
+
+## SAM button: warm-up on the rails (decision)
+- Real launcher: the missile is powered and warmed on the rail, not in the magazine; the game's own order for a fire order to a cold launcher is the same (load, then the warm-up count). The button now does the same: `Charge` only marks the box (`Pending`, `Warm`); the game's load system puts the missiles on the rails; when they are loaded and the state is Idle `WarmUp()` starts the reload count (IsHot); the time limit starts when it is over. Before: warm-up first, then the load.
+- While loading / warming the button shows "loading" (amber, rails dim): `WarmState` counts a `Pending` box as busy also when the launcher is not hot yet; the box is no longer dropped while `Pending` and cold.
+- Not verified in game. Watch: the game's idle "unload the rails" must not fire between the load animation and `WarmUp()` (one frame).
+
+## Trace for "Ready with empty rails / Fire goes to the other launcher" (bug report, not solved)
+- From the trace (build 2226): after the last missile of a launcher is launched the rails stay empty, the reload counts, then the launcher is idle/hot with weapons=0/2 (the game loads on demand when the next engage comes: `InitiateLoading` at the order). So "Ready" with empty rails is the game's state; the status text does not say that the rails are empty.
+- Which launcher fired could not be read: the lines of the two MK26 launchers have the same name. Added (Debug): `sam load` lines carry the launcher index (#n); `Fire clicked: <ammo>, launcher #n`; `pinned selector <ammo>: launcher #n pinned, the game offered #...` (and a note if the pinned one is not among them).
+
+## SAM: automatic reload of the rails after a salvo (decision)
+- The game keeps an emptied launcher hot and loads the rails only at the next order, so "Ready" showed with empty rails. Now a hot launcher that is emptied (Idle, not reloading, magazine has missiles) is loaded again by the same `Pending` load as the button's - but only while the hot missiles are needed (`NeedHot`): the unit has open engage orders for the launcher's ammunition with a live target, OR an unknown / hostile aircraft is coming in within [Fire] SamAutoChargeRange (`UnknownAirClosing`, as the auto charging). Not on "Hold". Launchers made hot by the game are covered by the adoption check (twice a second). The 15-minute count starts when the rails are loaded.
+- Not verified in game.
+- Cooling (user: "the warm-up is on the rails only"): a hot launcher with EMPTY rails, idle, not reloading, not engaging, when the hot missiles are NOT needed (`NeedHot` false) or the magazine is empty, goes cold (`IsHot=false`, box removed): status grey; the next Fire loads the rails and warms up again. Checked twice a second per launcher. Not verified in game.
+
+## Optimization of the SAM hooks
+- `WeaponSystemLauncher.OnUpdate` runs for EVERY launcher (tubes, RBU, guns' launchers) every frame: `CanWarm` is now cached per launcher (`_canWarm`), and a launcher that cannot warm up and has no box returns at once (before: ~6 reflection reads every 30 frames for each, and the samKeep field read every frame).
+- A launcher with a box (not loading / unloading) is checked about 4 times a second (15 frames), not every frame; loading / unloading steps stay per frame.
+- `MissionTime()` (asked every frame by every AI in `AutoChargePostfix` and by every launcher) was a type lookup + property lookup + reflection call; the getter is bound once as a delegate.
+- Not verified in game.
+
+## Статус «Ready» при пустых рельсах
+"Ready" берёт сама игра (WeaponSystem.GetStatus), и в ваниле она так пишет и для пустых рельс (рельсы грузятся при следующем приказе).
+В `StatusParts` для готовой (c==0) установки с прогревом, у которой рельсы пусты, нет перезарядки/боя и в погребе есть ракеты, текст заменён на «Рельсы пусты» (`SamRailsEmpty`, ключ `st.railsEmpty`). Охлаждение «горячей» пустой установки идёт как раньше (`WarmPostfix`). Не проверено в игре.
+
+## Перезарядка после последнего пуска без нужды
+После последней ракеты залпа игра считает reload и показывает «Перезарядка mm:ss», хотя рельсы пусты и горячие ракеты не нужны (установка всё равно остынет). В `WarmPostfix` (адопция, раз в 30 кадров): hot + reloading + рельсы пусты + `!NeedHot` → `_isReloading=false`, `_remainingReloadTime=0`, `IsHot=false`. Если нужда есть (приказ/угроза) — reload идёт как раньше, затем автозагрузка. Не проверено в игре.
+Дополнение: перезарядка не должна даже начинаться — `LaunchPostfix` (postfix `WeaponSystemLauncher.launch`, один раз на пуск): рельсы пусты, reload только что стартовал, `!NeedHot` → reload снят сразу, IsHot=false. Если нужда есть (открытая задача по живой цели), reload идёт; позже его снимет проверка в `WarmPostfix`, когда нужда пропадёт. Для OSA (ReloadsLowerDeck, state не Idle после launch) не трогается. Не проверено в игре.
+
+## Модель состояний ЗРК (WarmUp.cs) — единая, заменяет прежние заплатки
+Состояния: холодная (рельсы пусты) → загрузка → прогрев (reload игры, ракеты уже НА рельсах) → готова. «Горячая» = тёплые ракеты на рельсах; hot при пустых рельсах = холодная.
+Спрос = кнопка ON (Box.Btn) ИЛИ открытая задача по живой цели ИЛИ неопознанная воздушная цель на сближении (NeedHot, кэш 1 с).
+`WarmPostfix` (= Reconcile, только для установок под контролем: hot или есть Box; 4 раза/с): 
+- reload при пустых рельсах и покое — сбрасывается (`GoCold`), при спросе → Charge (загрузка → прогрев на рельсах); без спроса — холодная;
+- `LaunchPostfix` делает то же сразу после пуска (reload на пустых рельсах не стартует);
+- лимит времени вышел: Btn снимается; при спросе — разгрузка и перезарядка заново, иначе разгрузка и холодная;
+- кнопка OFF — разовая разгрузка; если спрос ещё есть, после неё зарядка повторится; Reload-кнопка = разгрузка + зарядка + Btn.
+Статус (`SamStatus`): «Рельсы пусты» / «Загрузка на рельсы» / «Разгрузка рельс», иначе текст игры. Не проверено в игре.
+Решение (не согласовано явно): Btn гаснет, когда истёк лимит времени.
+Находка по трассе (build 2302): загрузка рельс в игре (`InitiateLoading`) сама ставит `_isReloading=true` и считает от ПОСЛЕДНЕГО `StartReload` (время пуска) — после нашего `GoCold` получался второй отсчёт (пуск → загрузка с отсчётом 8 с → ещё прогрев 8 с на рельсах). `GoCold` теперь обнуляет и `_reloadStartTime=-1000`: отсчёт загрузки кончается сразу, остаётся один прогрев на рельсах. Не проверено в игре.
+Трасса 2320: после разгрузки (кнопка OFF во время прогрева) игровой отсчёт перезарядки доходит до конца на пустой холодной установке (31,3→36,1). Решение: оставить как есть (ожидание после отмены зарядки на середине — нормально). `ResetReload` используется только в `GoCold`.
+Автозарядка/спрос от воздушной цели (`UnknownAirClosing`) — НЕ смешивать с настройками «On Free» (зарядить ≠ вести огонь): своя настройка SamAutoChargeRange (30 нм); цель не Friendly/Neutral, дистанция сокращается по ОТНОСИТЕЛЬНОЙ скорости (самолёт − свой корабль, горизонталь). Прежний тест брал скорость относительно земли и заряжал пусковые от медленного неопознанного Боинга на параллельном курсе. Опознанный Hostile в НАШУ автозарядку не входит, но игра сама греет по нему: AI.cs 705-726 на каждом цикле вызывает WarmUp() у ВСЕХ пусковых, пока в `_possibleTargetsWithPriorities` есть воздушный юнит (или ракета по неавиационной цели), без проверки дальности. Это спрос игры, и `NeedHot` его учитывает (иначе мы гасили прогрев игры каждые 4 с: трасса 22.10 «reloading=True → False»). Игра: рельсы убираются при простое, IsHot гаснет через 1800 с после покоя. Порога скорости для зарядки нет (при необходимости — отдельная настройка). Не проверено в игре.
+Debug: `ai targets <unit>: <статус огня> | <цель> p<приоритет> <дист>nm;…` — что игровой AI своего юнита считает возможными целями (при изменении состава). В ваниле приоритет цели у корабля: угроза 1+, ракета 3+, надводные 2–5/10, самолёт без угрозы 9 — то есть известный враждебный самолёт идёт ПОСЛЕ надводных целей.
+
+## Не использовать настоящую сторону цели при выборе целей (Fire/EngageByPlotRelation, по умолчанию вкл; в интерфейсе: «Не учитывать настоящую сторону цели»)
+`AI.GetPossibleTargetsList` берёт контакт-юнит в цели, только если он враждебен на планшете (`IdentifiedAsHostile`) И его НАСТОЯЩАЯ фракция враждебна фракции корабля (`RelationshipTo`, AI.cs ~4915). Игрок настоящую сторону знать не может: нейтральный авиалайнер, помеченный вручную Hostile, в цели не попадал (подтверждено выключением мода: ваниль так же). `PlotHostilePostfix` (FreeAir.cs, postfix GetPossibleTargetsList): для кораблей игрока на Free добавляет юниты с отношением Hostile на планшете (поверхностные — только при доктрине AutoAttackSurface, как в игре), приоритет `GetEngagePriority`, список пересортирован (приоритет, дистанция). Настройка в AI-вкладке («Target selection»). Debug: `ai targets …` показывает итоговый список. Не проверено в игре.
+
+## Подготовка пусковых игрой (RequestPrep) — часть спроса
+Трасса 0017: игра сама греет пусковые под приближающуюся цель (`AI.PrepareLaunchersForClosingThreats` → `WeaponSystemLauncher.RequestPrep` → `UpdateSilentPrep`: окно 2 с, `IsHot=true` + `StartReload()` на ПУСТЫХ рельсах, затем загрузка). Мой Reconcile не считал это спросом и каждые ~4 с отменял этот отсчёт (мерцание «Перезарядка» 0,2 с на Fore), а сброс делал пусковую «свободной» для следующей задачи AI. Теперь `NeedHot` включает `_prepAmmo/_prepTarget` (живая цель), а в ветке «reloading на пустых рельсах» спрос спрашивается без кэша: игровой отсчёт заменяется загрузкой → прогревом на рельсах (Charge). Выбор пусковой для 2-й ракеты — игровой (по дугам обстрела, занятая `_executingEngageTask` пусковая недоступна); связь с отменой отсчёта — гипотеза, не проверено в игре.
+
+### Игровой прогрев по воздушным целям — часть спроса (22.10)
+AI.cs 705-726: после `GetPossibleTargetsList` игра вызывает `WarmUp()` у всех пусковых корабля, если в списке есть воздушный юнит или `Missile{_isTargetAirborne:false}`. Дальность не проверяется. Трасса 22.10 (Vincennes MK26 #0): каждые 4 с `reloading=True hot=True box=none` → через 0,1–0,4 с `reloading=False hot=False` — игра грела, мы гасили (спроса по приказам/prep не было). Теперь `NeedHot` читает `_ai._possibleTargetsWithPriorities` (кроме Hold). Debug: `sam cancel: …` пишется, когда счёт на пустых рельсах гасится из-за отсутствия спроса. Не проверено в игре.

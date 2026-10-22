@@ -40,6 +40,7 @@ namespace AlternativeWeaponsControl
             patch(ai == null ? null : ai.GetMethod("OnFixedUpdate", inst, null, Type.EmptyTypes, null), "AiEnter", null, "AiLeave");
             patch(_tObjectBase == null ? null : _tObjectBase.GetMethod("HandleEngageTasks", inst, null, Type.EmptyTypes, null), "HetEnter", null, "HetLeave");
             patch(ai == null ? null : ai.GetMethod("GetPossibleTargetsList", inst, null, Type.EmptyTypes, null), null, "FreeAirPostfix", null);
+            patch(ai == null ? null : ai.GetMethod("GetPossibleTargetsList", inst, null, Type.EmptyTypes, null), null, "PlotHostilePostfix", null);
             var sel = asm.GetType("SeaPower.WeaponSelector");
             MethodInfo gw = null;
             if (sel != null) foreach (var m in sel.GetMethods(BindingFlags.Static | BindingFlags.Public)) if (m.Name == "GetWeaponSystemsForAmmunition" && m.GetParameters().Length == 4) gw = m;
@@ -86,9 +87,19 @@ namespace AlternativeWeaponsControl
         sealed class PinBox { public object Ws; }
         static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, PinBox> Pins = new System.Runtime.CompilerServices.ConditionalWeakTable<object, PinBox>();
 
+        static Func<double> _missionTime;   // the getter is bound once (this is asked every frame by every AI and launcher)
         public static double MissionTime()
         {
-            try { var gt = _tObjectBase.Assembly.GetType("SeaPower.GameTime"); return (double)gt.GetProperty("missionElapsedTime").GetValue(null, null); } catch { return 0.0; }
+            try
+            {
+                if (_missionTime == null)
+                {
+                    var gt = _tObjectBase.Assembly.GetType("SeaPower.GameTime");
+                    _missionTime = (Func<double>)Delegate.CreateDelegate(typeof(Func<double>), gt.GetProperty("missionElapsedTime").GetGetMethod());
+                }
+                return _missionTime();
+            }
+            catch { return 0.0; }
         }
 
         static object PinOf(object task) { PinBox b; return task != null && Pins.TryGetValue(task, out b) ? b.Ws : null; }
@@ -655,6 +666,13 @@ namespace AlternativeWeaponsControl
                     _hetPin = pin;
                     if (pin != null)
                     {
+                        if (_debug)
+                        {
+                            var all = R.F(R.F(obj, "_obp"), "_weaponSystems") as IList;
+                            var sb = new System.Text.StringBuilder();
+                            foreach (var l in list) sb.Append(all == null ? -1 : all.IndexOf(l)).Append(' ');
+                            Trace("pinned selector " + ammoId + ": launcher #" + (all == null ? -1 : all.IndexOf(pin)) + " pinned, the game offered #" + sb.ToString().Trim() + (list.Contains(pin) ? "" : " - the pinned one is NOT among them"));
+                        }
                         for (int i = list.Count - 1; i >= 0; i--) if (!ReferenceEquals(list[i], pin)) list.RemoveAt(i);
                         return;
                     }

@@ -46,7 +46,7 @@ namespace AlternativeWeaponsControl
         internal ConfigEntry<string> _language; internal ConfigEntry<bool> _debugEntry, _gunChannels, _gunOneDirector, _noRbuSurfaceChase, _noAirChase, _mgBurstFix, _hitSoundFix, _mgSoundLoop;
         internal ConfigEntry<string> _secOrder;
         internal ConfigEntry<float> _clickVolume, _samMinutes, _samAutoRange, _gunMinError, _flashPower, _firePower;
-        internal ConfigEntry<bool> _tabAir, _tabLand, _flashMissile, _fireFlicker, _optNormal, _optDayOnly, _flashMuzzle, _flashHit, _samButton, _zoneFire, _samAuto, _samKeep, _samAnim, _gunAimBeyond;
+        internal ConfigEntry<bool> _plotHostile, _tabAir, _tabLand, _flashMissile, _fireFlicker, _optNormal, _optDayOnly, _flashMuzzle, _flashHit, _samButton, _zoneFire, _samAuto, _samKeep, _samAnim, _gunAimBeyond;
         public static string UserDir { get; private set; }
 
         /// <summary>The settings the window shows (in this order).</summary>
@@ -136,7 +136,7 @@ namespace AlternativeWeaponsControl
             _samAnim = Cfg.Bind("Ships", "SamAnimFix", true,
                 "Missiles move on load and unload (up from / down under the deck) even when the ammunition file has no position data " +
                 "under the launcher's exact system name (e.g. SA-N-1A with an SA-N-1 ammunition): the nearest matching entry is used.");
-            _samAutoRange = Cfg.Bind("Ships", "SamAutoChargeRange", 30f, "Distance (nm) of an approaching unknown aircraft that charges the SAM launchers.");
+            _samAutoRange = Cfg.Bind("Ships", "SamAutoChargeRange", 30f, "Distance (nm) of an approaching unidentified aircraft (its range to the ship is shrinking) that charges the SAM launchers.");
             _noRbuSurfaceChase = Cfg.Bind("Ships", "NoRbuSurfaceChase", true,
                 "A ship attacking a surface target with ASW mortars (RBU) does not run after it to get into the mortars' range - " +
                 "it keeps its course and fires once the target comes into range. All ships, the enemy's too.");
@@ -150,6 +150,8 @@ namespace AlternativeWeaponsControl
                 "Speed (knots) above which an unidentified aircraft coming towards the ship (within the distance of UnknownAirMaxNm) is engaged by the Weapons tab's \"On Free: engage unidentified aircraft\". " +
                 "Airliners of the game cruise at about 460-480 knots and reach 560 at most.");
             _freeAirNm = Cfg.Bind("Fire", "UnknownAirMaxNm", 20f, "Distance (nm) within which an unidentified fast aircraft coming towards the ship is engaged by the Weapons tab's \"On Free: engage unidentified aircraft\".");
+            _plotHostile = Cfg.Bind("Fire", "EngageByPlotRelation", true,
+                "The game's AI takes a contact for a target only if it is hostile on the plot AND its true side is hostile too. The true side is what the player cannot know, so a contact the player marked hostile (e.g. a neutral airliner) is never engaged by the player's ships on Free. On: the player's ships go by the plot only - the contacts marked hostile are engaged, the true side is ignored (no cheating). Off = as in the game.");
             _freeAirOwn = Cfg.Bind("Fire", "UnknownAirDefaultOwn", false, "The starting state of the Weapons tab's \"On Free: engage unidentified aircraft\" for your ships and your allies' ships (a switch set on a unit is kept with it).");
             _freeAirEnemy = Cfg.Bind("Fire", "UnknownAirDefaultEnemy", true, "The same for the enemy's AI ships (their AI engages such aircraft by itself).");
             _zoneFire = Cfg.Bind("UI", "FireShowsZones", true,
@@ -180,7 +182,7 @@ namespace AlternativeWeaponsControl
                 "Verbose logging and BepInEx/AlternativeWeaponsControl.trace.txt.");
             _language = Cfg.Bind("General", "Language", "",
                 "Language of the mod's texts: a code of a game language (en, ru ...); empty = the game's own language. The texts are in the files lang/<code>.ini in the mod folder - edit them to translate.");
-            Entries.Add(_clickVolume); Entries.Add(_samButton); Entries.Add(_zoneFire); Entries.Add(_freeAirKnots); Entries.Add(_freeAirNm); Entries.Add(_freeAirOwn); Entries.Add(_freeAirEnemy); Entries.Add(_tabLand); Entries.Add(_tabAir); Entries.Add(_samAuto); Entries.Add(_samKeep); Entries.Add(_samAnim); Entries.Add(_samAutoRange); Entries.Add(_samMinutes); Entries.Add(_gunOneDirector); Entries.Add(_gunChannels); Entries.Add(_noRbuSurfaceChase); Entries.Add(_noAirChase); Entries.Add(_gunAimBeyond); Entries.Add(_optNormal); Entries.Add(_optDayOnly); Entries.Add(_fireFlicker); Entries.Add(_firePower); Entries.Add(_flashMuzzle); Entries.Add(_flashMissile); Entries.Add(_flashHit); Entries.Add(_flashPower); Entries.Add(_gunMinError); Entries.Add(_mgBurstFix); Entries.Add(_mgSoundLoop); Entries.Add(_hitSoundFix); Entries.Add(_debugEntry); Entries.Add(_language);
+            Entries.Add(_clickVolume); Entries.Add(_samButton); Entries.Add(_zoneFire); Entries.Add(_plotHostile); Entries.Add(_freeAirKnots); Entries.Add(_freeAirNm); Entries.Add(_freeAirOwn); Entries.Add(_freeAirEnemy); Entries.Add(_tabLand); Entries.Add(_tabAir); Entries.Add(_samAuto); Entries.Add(_samKeep); Entries.Add(_samAnim); Entries.Add(_samAutoRange); Entries.Add(_samMinutes); Entries.Add(_gunOneDirector); Entries.Add(_gunChannels); Entries.Add(_noRbuSurfaceChase); Entries.Add(_noAirChase); Entries.Add(_gunAimBeyond); Entries.Add(_optNormal); Entries.Add(_optDayOnly); Entries.Add(_fireFlicker); Entries.Add(_firePower); Entries.Add(_flashMuzzle); Entries.Add(_flashMissile); Entries.Add(_flashHit); Entries.Add(_flashPower); Entries.Add(_gunMinError); Entries.Add(_mgBurstFix); Entries.Add(_mgSoundLoop); Entries.Add(_hitSoundFix); Entries.Add(_debugEntry); Entries.Add(_language);
             Loc.Trace = Trace; Loc.Forced = () => _language == null ? "" : _language.Value;
             foreach (var en in Entries) Loc.Register("help." + en.Definition.Section + "/" + en.Definition.Key, en.Description == null ? "" : en.Description.Description);
 
