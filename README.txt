@@ -47,7 +47,7 @@ Settings and languages
 
 COMPATIBILITY
 
-- Supports Sea Power version 0.8.6.
+- Supports Sea Power versions 0.8.6 – 0.8.7.
 - Requires Anchor Chain.
 - Can be switched on/off in the game's Mods menu.
 

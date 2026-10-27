@@ -110,7 +110,11 @@ namespace AlternativeWeaponsControl
         {
             if (b == null) return NeedHot(ws);
             if (b.Btn) return true;
-            if (fresh || now >= b.NeedAt) { b.Need = NeedHot(ws); b.NeedAt = now + 1.0; }
+            if (fresh || now >= b.NeedAt)
+            {
+                b.Need = NeedHot(ws);
+                b.NeedAt = now + 1.0;
+            }
             return b.Need;
         }
 
@@ -132,6 +136,7 @@ namespace AlternativeWeaponsControl
             try
             {
                 var ws = __instance;
+                if (_debug && Loaded(ws) == 0) TraceOrders(ws, "launch: rails empty");
                 if (!R.B(R.F(ws, "_isReloading")) || !CanWarm(ws) || !Idle(ws) || Loaded(ws) != 0) return;
                 Box b; _warmBox.TryGetValue(ws, out b);
                 bool need = Demand(ws, b, MissionTime(), true), btn = b != null && b.Btn;
@@ -273,6 +278,50 @@ namespace AlternativeWeaponsControl
         /// Hot missiles are needed: the unit has open engage orders for the launcher's ammunition (a live target), or an unknown / hostile
         /// aircraft is coming in within [Fire] SamAutoChargeRange (the same test as the automatic charging).
         /// </summary>
+        /// <summary>Debug: the unit's open engage orders for this launcher's ammunition (what makes NeedHot true).</summary>
+        static void TraceOrders(object ws, string why)
+        {
+            try
+            {
+                var bo = R.F(ws, "_baseObject");
+                var tasks = R.F(bo, "_currentEngageTasks") as IList;
+                var sb = new System.Text.StringBuilder();
+                if (tasks != null)
+                    foreach (var t in tasks)
+                    {
+                        if (t == null) continue;
+                        var tg = R.F(t, "_targetObject");
+                        sb.Append(" [uid " + R.I(R.F(t, "_uid")) + " " + R.S(R.F(t, "_ammoId")) + " shots=" + R.I(R.F(t, "_shotsToFire")) + " target=" + (tg == null ? "-" : R.S(R.Call(tg, "getUIDAndName"))) + (tg != null && R.B(R.P(tg, "IsDestroyed")) ? " destroyed" : "") + "]");
+                    }
+                var taken = R.F(ws, "_takenEngageTask");
+                Trace("sam orders (" + why + ") " + R.S(R.F(ws, "_systemName")) + ": list=" + (tasks == null ? 0 : tasks.Count) + sb + " taken=" + (taken == null ? "none" : "uid " + R.I(R.F(taken, "_uid")) + " shots=" + R.I(R.F(taken, "_shotsToFire"))) + " needHot=" + NeedHot(ws));
+            }
+            catch (Exception e) { Trace("sam orders: " + e.Message); }
+        }
+
+        /// <summary>The live target of an open engage order for this launcher's ammunition (null: none).</summary>
+        static object EngageTarget(object ws)
+        {
+            try
+            {
+                var bo = R.F(ws, "_baseObject");
+                var mag = Magazine(ws);
+                var list = mag == null ? null : R.F(mag, "_ammunitionList") as IList;
+                var names = new List<string>();
+                if (list != null) foreach (var a in list) { var n = R.S(R.F(R.F(a, "_ap"), "_ammunitionFileName")); if (n != null) names.Add(n); }
+                var tasks = bo == null ? null : R.F(bo, "_currentEngageTasks") as IList;
+                if (tasks != null)
+                    foreach (var t in tasks)
+                    {
+                        if (t == null || !names.Contains(R.S(R.F(t, "_ammoId")))) continue;
+                        var tg = R.F(t, "_targetObject");
+                        if (tg != null && !R.B(R.P(tg, "IsDestroyed"))) return tg;
+                    }
+            }
+            catch { }
+            return null;
+        }
+
         static bool NeedHot(object ws)
         {
             try
@@ -341,6 +390,7 @@ namespace AlternativeWeaponsControl
                 last[0] = sig;
                 int ix = -1; try { var all = R.F(R.F(R.F(ws, "_baseObject"), "_obp"), "_weaponSystems") as IList; if (all != null) ix = all.IndexOf(ws); } catch { }
                 Trace("sam load " + R.S(R.Call(R.F(ws, "_baseObject"), "getUIDAndName")) + " " + R.S(R.F(ws, "_systemName")) + " #" + ix + ": " + sig + " t=" + MissionTime().ToString("0.0"));
+                if (IsEngaging(ws) || Loaded(ws) == 0) TraceOrders(ws, "state change");
             }
             catch { }
         }

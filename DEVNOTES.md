@@ -547,3 +547,21 @@ SettingsWindow.cs: each Field has Tab + Group. Tabs: Weapons panel (Panel, SAM r
 
 ## Default settings (from the user's cfg)
 All values in the user's cfg already matched the defaults in the code except `[UI] SectionOrder`: the default is now `SAM,GUNS,ANTI-SHIP,ASW` (the other sections follow in the usual order). The keys `DebugFilter` and `AlertsClickThrough` in that cfg are leftovers without a description and are not set in the code.
+
+## Sea Power 0.8.7 (beta 261026) — совместимость с 0.8.6 сохраняется (1.2.1)
+* Репозиторий содержал устаревший дубль `src/Diagnostics.cs` (релизная DLL собрана без него, `AwcPlugin` вызывает `HookGunFixes`); с ним проект не собирается — файл надо удалить из репозитория.
+* `WeaponSelector.GetWeaponSystemsForAmmunition`: в 0.8.7 есть перегрузка `(obj, pos, ammoId, target, List vwsList) : bool`, через неё идут почти все вызовы ИИ и HandleEngageTasks, а старая 4-параметровая вызывает её. Патчится ровно одна: новая, если есть (`SelectorPostfix5`, меняет vwsList на месте, при пустом списке result=false), иначе старая (`SelectorPostfix`). Общая логика — `SelectorCore`.
+* `MissileSimulator.GetAccelerationTimes`: две перегрузки (AmmunitionParameters / in MissileParams) → `GetMethod` по типам аргументов (иначе AmbiguousMatchException).
+* `WeaponSystem.targetIsInFiringArc` стал virtual; override в WeaponSystemCIWS вызывает base для надводных юнитов — патч базового метода достаточен, для самолётов CIWS (не вызывает base) не действует.
+* Не проверено в игре: SAM warm-up (WeaponSystemLauncher.OnUpdate сильно изменён, `launch` теперь возвращает bool).
+
+
+## Заметки по итогам теста 1.2.1 на 0.8.7 (для продолжения работы над AWC)
+* Проверено в игре на 0.8.7: вспышка при пуске — ок; переключатели вкладки Weapons — вроде ок (проверка: выключить группу у юнита ИИ, смотреть трейс `ai targets …` / `pinned selector …`; в логе не должно быть «Weapons tab: N AI / save hook(s) not found»); SAM warm-up работает.
+* **Исправлено:** Fire в карточке боеприпаса (`AmmoCard`, WeaponsView.cs ~1360) для группы из ОДНОЙ установки передавал `pin = null` → «any launcher»; при пустой/холодной установке игра отдавала заказ заряженной другой (трейс: `Fire clicked … launcher none (any)`). Теперь `scope.Count == 1 ? scope[0] : null`. Подтверждено пользователем. Не проверено: что делает закреплённый заказ к ПУСТОЙ установке (правильно — зарядить её и стрелять из неё, не перекладывать на другую).
+* **SAM: «одну перезарядило, вторую нет» — разобрано, это не заказы.** Гипотезы «остаточный заказ в `_currentEngageTasks`» и «память цели» проверены и ОТКЛОНЕНЫ (память цели откатана). Код игры: заказ принимается установкой по одной ракете (`_shotsToFire--`, на последней удаляется из списка) — после последнего пуска его там нет; Salvo 2 = один заказ (uid, shots=1 в списке и у установки `_takenEngageTask`). Трейс `sam orders (launch: rails empty)` везде `list=0 … needHot=False`, а `box(pending=True)` появляется сразу после опустошения → источник — флаг `Box.Btn` (кнопка готовности ON / Reload): `LaunchPostfix` переносит его в новый box, `Demand` при `Btn` всегда «да» (до конца лимита SamMinutes или выключения кнопки). Асимметрия 14:43 (#0 холодная, #1 перезарядилась) — у #1 `Btn` был (её перед этим выгрузили/зарядили кнопкой), у #0 нет.
+* **Открытый вопрос (решение за пользователем):** должен ли `Btn` переживать последнюю ракету («они все время перезаряжаются» в тесте 16:10 — установки были заряжены кнопкой/автозарядом). Варианты: оставить; сбрасывать `Btn` после последней ракеты; перезаряжать только по реальной потребности. Нужно уточнить, нажимал ли пользователь кнопки готовности перед тестом. Для проверки добавить `Btn` в строку `sam load` и трейс нажатия кнопки.
+* Добавлены отладочные трейсы: `sam orders (state change | launch: rails empty)` (заказы корабля по боеприпасу, взятый заказ, итог `NeedHot`), `fire menu item: <пункт>`. Недостаток трейса: `Fire clicked` пишет только основная кнопка, пункт подменю — теперь отдельной строкой.
+* Шум в трейсе: `pinned selector …` пишется ~80 раз в секунду на каждый Fire по закреплённой установке (новые вызовы селектора 0.8.7) — стоит ограничить (дедуп по uid заказа / раз в N мс).
+* `sam demand: aircraft` пишется раз в секунду на каждую установку; при желании ограничить.
+* Strict loadouts в Task Force Builder — это Smart Windows, не AWC (ведётся в чате SW).

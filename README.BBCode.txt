@@ -1,4 +1,4 @@
-Version 1.2.0.
+Version 1.2.1.
 
 Adds a new [b]Weapons[/b] tab in the Unit Status window of your units, and a set of combat and visual improvements.
 
@@ -52,7 +52,7 @@ Drag a section title (SAM, GUNS, …) to reorder the sections.
 
 [h1]Compatibility[/h1]
 [list]
-[*]Supports Sea Power version 0.8.6.
+[*]Supports Sea Power versions 0.8.6 – 0.8.7.
 [*]Requires Anchor Chain.
 [*]Can be switched on/off in the game's Mods menu.
 [/list]

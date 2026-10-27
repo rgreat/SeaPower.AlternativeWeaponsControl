@@ -152,7 +152,7 @@ namespace AlternativeWeaponsControl
             try
             {
                 var ap = R.F(__instance, "_ap"); if (ap == null) return;
-                var gm = _mGetAccel ?? (_mGetAccel = _tObjectBase.Assembly.GetType("SeaPower.MissileSimulator").GetMethod("GetAccelerationTimes", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic));
+                var gm = _mGetAccel ?? (_mGetAccel = _tObjectBase.Assembly.GetType("SeaPower.MissileSimulator").GetMethod("GetAccelerationTimes", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic, null, new[] { ap.GetType(), typeof(bool) }, null));   // 0.8.7 has a second overload (in MissileParams): by the argument types
                 var tup = gm.Invoke(null, new object[] { ap, R.B(R.F(__instance, "_airLaunched")) });
                 float burn = R.Fl(tup.GetType().GetField("Item1").GetValue(tup));
                 if (!(burn > 0.2f)) burn = 1f;

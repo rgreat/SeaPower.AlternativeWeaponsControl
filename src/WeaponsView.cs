@@ -1357,7 +1357,7 @@ namespace AlternativeWeaponsControl
             At(g, stock.P, 2);
             gr.AmmoStocks.Add(new KeyValuePair<string, StockUI>(id, stock));
             var scope = gr.Ls.FindAll(x => x.Ammo.Contains(id));
-            At(g, Controls(v, scope, new List<string> { id }, true, true, null), 3);
+            At(g, Controls(v, scope, new List<string> { id }, true, true, scope.Count == 1 ? scope[0] : null), 3);   // one launcher: the order is tied to it
             // copies of the group's switches (they switch the whole group), for the domains this ammunition can engage
             var ac = new AmmoChipsUI { Id = id, Chips = new ChipUI[5] };
             foreach (var l in scope) { int ix = l.Ammo.IndexOf(id); if (ix >= 0 && ix < l.AmmoDom.Length) ac.Dom |= l.AmmoDom[ix]; }
@@ -2500,7 +2500,7 @@ namespace AlternativeWeaponsControl
                 else
                 {
                     var cmd = R.P(ci, "Command");
-                    if (cmd != null) mi.Click += (s, ev) => { try { OurFireExecute(cmd); } catch (Exception ex) { Trace("fire menu: " + ex.Message); } };
+                    if (cmd != null) mi.Click += (s, ev) => { try { if (_debug) Trace("fire menu item: " + (mi.Header as string)); OurFireExecute(cmd); } catch (Exception ex) { Trace("fire menu: " + ex.Message); } };
                 }
                 target.Add(mi);
             }
