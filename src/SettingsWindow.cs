@@ -74,6 +74,8 @@ namespace AlternativeWeaponsControl
             Add(T4, "grp.flashes", "Effects/HitFlashLight", "Light flash when shells hit", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T4, "grp.flashes", "Effects/MissileLaunchFlashLight", "Light of missile boosters at launch", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T4, "grp.flashes", "Effects/FlashPower", "Flash brightness", "x", Kind.Number, 0.1f, 0.1f, 5f);
+            Add(T4, "grp.flashes", "Effects/FlashLimit", "Limit flash glare", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T4, "grp.flashes", "Effects/DayBrightness", "Flash and fire brightness by day", "x", Kind.Number, 0.05f, 0.1f, 1f);
             Add(T4, "grp.fires", "Effects/FireFlicker", "Fire light flicker", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T4, "grp.fires", "Effects/FireLightPower", "Fire light brightness", "x", Kind.Number, 0.1f, 0.1f, 10f);
             Add(T5, "grp.diagnostics", "General/Debug", "Debug trace", "", Kind.Bool, 0, 0, 0);

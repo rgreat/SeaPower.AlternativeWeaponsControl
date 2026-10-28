@@ -18,12 +18,12 @@ Adds a new **Weapons** tab in the Unit Status window of your units, and a set of
 
 1. **Readiness button:** load the missiles onto the rails now, or put them away. They are put away automatically after 15 minutes if unused. Missiles stay loaded after a launch, and a hot launcher loads the next ones by itself while they are needed; otherwise it goes cold.
 2. **Reload button:** unloads the rails, waits a moment, then loads them again. It is grey while the launcher is busy.
-3. **Clear statuses:** Rails empty, Loading rails, Unloading rails, and a countdown of the pause after an unloading.
+3. **Clear statuses:** Rails empty, Loading rails, Unloading rails, a countdown of the pause after an unloading, and Empty (grey) for a launcher out of missiles.
 4. **Auto-charge** when an unknown aircraft approaches. Works for AI ships too.
 
 ### Fire and guns
 
-1. **Fire shows the weapon's firing arcs** in red on the map and in 3D while the target is being picked.
+1. **Fire shows the weapon's firing arcs** in red, with a weak red fill, on the map (Sea Power 0.8.7) and in 3D while the target is being picked.
 2. **Aim beyond maximum range:** guns, CIWS and machine guns turn towards a target out of range without firing.
 3. **Disable AI cheating:** the game's AI engages only contacts whose true side is hostile, which you cannot know. Your ships now engage the contacts you marked hostile on the plot (on Tight: aircraft only).
 4. **Close-range accuracy:** option for the best accuracy of guns (default 5 m).
@@ -36,7 +36,7 @@ Adds a new **Weapons** tab in the Unit Status window of your units, and a set of
 
 ### Visual and optics
 
-1. **Light effects:** gunfire, hits, missile launches and detonations light up their surroundings in 3D, and the bigger the weapon, the brighter and longer the flash. Fires on ships flicker. Every effect can be switched off, and brightness is adjustable.
+1. **Light effects:** gunfire, hits, missile launches and detonations light up their surroundings in 3D, and the bigger the weapon, the brighter and longer the flash. Fires on ships flicker. By day the lights are dimmed (option, default 0.5) and the flashes alive at once share a total brightness limit, so the picture does not blow out into white and pink. Every effect can be switched off, and brightness is adjustable.
 2. **Machine guns:** tracers and the muzzle burst sound now last for the whole burst.
 3. **Binoculars** start in the normal view at maximum zoom, with no night or thermal filter by default (option: only by day).
 
@@ -47,7 +47,7 @@ Adds a new **Weapons** tab in the Unit Status window of your units, and a set of
 
 # Compatibility
 
-- Supports Sea Power version 0.8.6.
+- Supports Sea Power versions 0.8.6 – 0.8.7.
 - Requires Anchor Chain.
 - Can be switched on/off in the game's Mods menu.
 

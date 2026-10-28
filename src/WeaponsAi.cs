@@ -42,9 +42,18 @@ namespace AlternativeWeaponsControl
             patch(ai == null ? null : ai.GetMethod("GetPossibleTargetsList", inst, null, Type.EmptyTypes, null), null, "FreeAirPostfix", null);
             patch(ai == null ? null : ai.GetMethod("GetPossibleTargetsList", inst, null, Type.EmptyTypes, null), null, "PlotHostilePostfix", null);
             var sel = asm.GetType("SeaPower.WeaponSelector");
-            MethodInfo gw = null;
-            if (sel != null) foreach (var m in sel.GetMethods(BindingFlags.Static | BindingFlags.Public)) if (m.Name == "GetWeaponSystemsForAmmunition" && m.GetParameters().Length == 4) gw = m;
-            patch(gw, null, "SelectorPostfix", null);
+            // 0.8.6: GetWeaponSystemsForAmmunition(obj, position, ammoId, target) returns the list. 0.8.7: the game's callers (AI, HandleEngageTasks) use
+            // the new overload (..., List vwsList) that fills the list and returns bool; the old one just calls it. Exactly one of them is patched
+            // (the new one when it exists, else the old one), else the old overload's callers would be filtered twice.
+            MethodInfo gw = null, gw5 = null;
+            if (sel != null) foreach (var m in sel.GetMethods(BindingFlags.Static | BindingFlags.Public))
+                {
+                    if (m.Name != "GetWeaponSystemsForAmmunition") continue;
+                    var ps = m.GetParameters();
+                    if (ps.Length == 4) gw = m;
+                    else if (ps.Length == 5 && m.ReturnType == typeof(bool) && ps[4].Name == "vwsList") gw5 = m;
+                }
+            if (gw5 != null) patch(gw5, null, "SelectorPostfix5", null); else patch(gw, null, "SelectorPostfix", null);
             patch(_tCiws == null ? null : _tCiws.GetMethod("AquireTarget", inst | BindingFlags.DeclaredOnly), "CiwsEnter", null, "CiwsLeave");
             var ws = asm.GetType("SeaPower.WeaponSystem");
             patch(ws == null ? null : ws.GetMethod("targetIsInFiringArc", inst, null, new[] { typeof(Vector3) }, null), null, "ArcPostfix", null);
@@ -643,10 +652,24 @@ namespace AlternativeWeaponsControl
             return found;
         }
 
+        /// <summary>The game 0.8.6 selector (4 arguments): the list is the result.</summary>
         static void SelectorPostfix(object obj, string ammoId, object targetObject, object __result)
         {
+            SelectorCore(obj, ammoId, targetObject, __result as IList);
+        }
+
+        /// <summary>The game 0.8.7 selector (the list is filled in place, the result tells whether it found any launcher).</summary>
+        static void SelectorPostfix5(object obj, string ammoId, object targetObject, object vwsList, ref bool __result)
+        {
+            var list = vwsList as IList;
+            int before = list == null ? 0 : list.Count;
+            SelectorCore(obj, ammoId, targetObject, list);
+            if (__result && before > 0 && list != null && list.Count == 0) __result = false;   // nothing left: "no launcher", as the game itself says it
+        }
+
+        static void SelectorCore(object obj, string ammoId, object targetObject, IList list)
+        {
             if (!Enabled) return;
-            var list = __result as IList;
             if (obj != null && ReferenceEquals(_hetUnit, obj)) _hetPin = null;
             if (list == null || list.Count == 0 || obj == null) return;
             if (ReferenceEquals(_hetUnit, obj))
@@ -671,7 +694,8 @@ namespace AlternativeWeaponsControl
                             var all = R.F(R.F(obj, "_obp"), "_weaponSystems") as IList;
                             var sb = new System.Text.StringBuilder();
                             foreach (var l in list) sb.Append(all == null ? -1 : all.IndexOf(l)).Append(' ');
-                            Trace("pinned selector " + ammoId + ": launcher #" + (all == null ? -1 : all.IndexOf(pin)) + " pinned, the game offered #" + sb.ToString().Trim() + (list.Contains(pin) ? "" : " - the pinned one is NOT among them"));
+                            string msg = "pinned selector " + ammoId + ": launcher #" + (all == null ? -1 : all.IndexOf(pin)) + " pinned, the game offered #" + sb.ToString().Trim() + (list.Contains(pin) ? "" : " - the pinned one is NOT among them");
+                            TraceLimited(System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj) + msg, 10f, msg);   // the same line: once per 10 s (a change of the offer is a new line at once)
                         }
                         for (int i = list.Count - 1; i >= 0; i--) if (!ReferenceEquals(list[i], pin)) list.RemoveAt(i);
                         return;

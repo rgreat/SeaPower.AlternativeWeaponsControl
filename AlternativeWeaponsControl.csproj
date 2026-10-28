@@ -13,7 +13,7 @@
     <DebugType>none</DebugType>
     <Deterministic>true</Deterministic>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
-    <Version>1.2.0</Version>
+    <Version>1.2.1</Version>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <!-- build number written to the log (UTC time of the build): tells which dll is actually running -->
     <BuildStamp Condition="'$(BuildStamp)' == ''">$([System.DateTime]::UtcNow.ToString("yyyyMMdd.HHmm"))</BuildStamp>

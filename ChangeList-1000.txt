@@ -1,0 +1,16 @@
+Alternative Weapons Control
+
+Version 1.2.2:
+
+New
+- Fire zones are red with a weak red fill on the Tactical Display map (Sea Power 0.8.7) and in 3D.
+- Status "Empty" (grey) for missile launchers out of missiles.
+- Effects/FlashLimit: all flashes alive at once share a total brightness limit (no white/pink over-exposure).
+- Effects/DayBrightness (default 0.5): flashes and fire light are dimmer by day.
+
+Changed
+- SAM: the ready and Reload buttons no longer keep a launcher reloading after its last missile; rails reload only on a real demand.
+- Less memory churn in the Weapons tab.
+
+Fixed
+- Fire zones flickered with a second unit window open.
