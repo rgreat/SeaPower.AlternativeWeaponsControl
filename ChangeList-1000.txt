@@ -1,4 +1,6 @@
-ALTERNATIVE WEAPONS CONTROL 1.2.2
+Alternative Weapons Control
+
+Version 1.2.2:
 
 New
 - Fire zones are red with a weak red fill on the Tactical Display map (Sea Power 0.8.7) and in 3D.
