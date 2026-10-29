@@ -13,12 +13,21 @@ namespace AlternativeWeaponsControl
     /// </summary>
     public partial class AwcPlugin
     {
-        static object _zoneInfo, _zoneKeyPin; static string _zoneKeyId; static readonly object _zoneOwner = new object();
+        static object _zoneInfo, _zoneKeyPin, _zoneUnit; static string _zoneKeyId; static readonly object _zoneOwner = new object();
         static Type _tHoverMgr, _tHoverInfo;
         static PropertyInfo _pHovered;
 
         void HookZones(Harmony harmony, Assembly asm)
         {
+            _zonesHarmony = harmony;
+            try
+            {
+                var t3 = asm.GetType("SeaPower.WeaponArc3DRenderer");
+                var m3 = t3 == null ? null : t3.GetMethod("Show", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                _fArcObjs = t3 == null ? null : t3.GetField("_arcObjects", BindingFlags.Static | BindingFlags.NonPublic);
+                if (m3 != null && _fArcObjs != null) harmony.Patch(m3, postfix: Hm("Arc3DShowPostfix"));
+            }
+            catch (Exception e) { Trace("arc3d patch: " + e.Message); }
             _tHoverMgr = asm.GetType("SeaPower.WeaponArcHoverManager");
             _tHoverInfo = asm.GetType("SeaPower.WeaponArcHoverManager+HoverInfo");
             var m = _tHoverMgr == null ? null : _tHoverMgr.GetMethod("Reconcile", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
@@ -79,48 +88,147 @@ namespace AlternativeWeaponsControl
             if (RealMax.TryGetValue(__instance, out real) && HideRing) _fMaxRange.SetValue(__instance, 0.0);
         }
 
-        // The wedges are orange by the map theme's resource Map_FiringArc (MapDayTheme / MapNightTheme, merged into the map by ThemeDictionarySwapper
-        // when the map loads and when the day / night theme changes). After each such swap the resource is replaced by a red brush in the dictionary
-        // just merged: DynamicResource users (the wedges, created later or already there) take it. Nothing is scanned.
-        // The wedges are orange by the map theme's resource Map_FiringArc (MapDayTheme / MapNightTheme, merged into the MapBase itself by the game's
-        // ThemeDictionarySwapper, so it is not visible from the status views). When the zones start, the resource in the map's merged dictionaries is
-        // replaced by a red brush (a no-op when it already is). The map is looked up in the UI tree once and remembered; no scan afterwards.
-        // (A Harmony patch of ThemeDictionarySwapper.ApplyTheme crashed the game at start.)
-        static WeakReference _mapRef; static Noesis.Brush _arcBrush;
+        // ---- the colour of the wedges on the 2D map (Sea Power 0.8.7) -------------------------------------------------------------------------------------------------
+        // 0.8.7 draws the wedge through the map's geometry store: WeaponArcSegmentViewModel.Render opens a Pie slot with ctx.Palette.Stroke(MapColor.FiringArc, thickness).
+        // The colour is the palette's (MapPalette, public Override(MapColor, day, night) raises Changed and the map redraws). While the zones of our Fire are shown
+        // FiringArc is overridden with red on the palette(s) of the map(s) and put back when they end. A weak red fill is added by a postfix of Render (a second Pie
+        // slot with the same geometry and a Fill), made at the first Fire. Older versions (0.8.6: MapPie with a theme brush) have no such class: nothing is done.
+        static readonly List<WeakReference> _maps = new List<WeakReference>();
+        sealed class PaletteSave { public object Palette; public object Day, Night; }
+        static readonly List<PaletteSave> _paletteSaves = new List<PaletteSave>();
+        static Harmony _zonesHarmony; static bool _fillPatched, _fillFailed;
 
-        static void ArcColorOnce()
+        static void ArcColor(bool red)
         {
             try
             {
-                var map = _mapRef == null ? null : _mapRef.Target as Noesis.FrameworkElement;
-                if (map == null)
+                if (!red) { RestorePalettes(); return; }
+                if (_paletteSaves.Count > 0) return;
+                var asm = _tHoverMgr.Assembly;
+                var tMapBase = asm.GetType("MapControl.MapBase"); var tColor = asm.GetType("SeaPower.LiveMap.MapColor");
+                if (tMapBase == null || tColor == null) { TraceLimited("arc0", 5f, "arc colour: MapBase / MapColor not found (an older game version): the wedge colour is not changed"); return; }
+                var getPalette = tMapBase.GetMethod("GetPalette", BindingFlags.Static | BindingFlags.Public);
+                var colour = Enum.Parse(tColor, "FiringArc");
+                _maps.RemoveAll(w => !w.IsAlive);
+                if (_maps.Count == 0)
                 {
                     Noesis.DependencyObject root = null;
                     lock (StatusViews) { foreach (var w in StatusViews) { var v = w.Target as Noesis.FrameworkElement; if (v != null && v.IsVisible) { root = Noesis.VisualTreeHelper.GetRoot(v); break; } } }
-                    if (root == null) return;
-                    var stack = new Stack<Noesis.DependencyObject>();
-                    stack.Push(root);
-                    int budget = 60000;
-                    while (stack.Count > 0 && --budget > 0 && map == null)
+                    if (root == null) { Trace("arc colour: no visible status view to find the map from"); return; }
+                    var st = new Stack<Noesis.DependencyObject>(); st.Push(root);
+                    int budget = 80000;
+                    while (st.Count > 0 && --budget > 0)
                     {
-                        var e = stack.Pop();
+                        var e = st.Pop();
                         var fe = e as Noesis.FrameworkElement;
-                        if (fe != null && fe.GetType().Name == "MapBase") { map = fe; break; }
+                        if (fe != null && fe.GetType().Name == "MapBase") _maps.Add(new WeakReference(fe));
                         int n = Noesis.VisualTreeHelper.GetChildrenCount(e);
-                        for (int k = n - 1; k >= 0; k--) { var c = Noesis.VisualTreeHelper.GetChild(e, k); if (c != null) stack.Push(c); }
+                        for (int k = n - 1; k >= 0; k--) { var c = Noesis.VisualTreeHelper.GetChild(e, k); if (c != null) st.Push(c); }
                     }
-                    if (map == null) return;
-                    _mapRef = new WeakReference(map);
+                    Trace("arc colour: maps found " + _maps.Count + " (once; the maps are remembered)");
                 }
-                if (_arcBrush == null) _arcBrush = new Noesis.SolidColorBrush(Noesis.Color.FromArgb(0xDD, 235, 45, 45));
-                foreach (var d in map.Resources.MergedDictionaries)
+                var red4 = Noesis.Color.FromArgb(0xE6, 235, 45, 45);
+                foreach (var w in _maps)
                 {
-                    if (d == null) continue;
-                    var cur = d["Map_FiringArc"] as Noesis.Brush;
-                    if (cur != null && !ReferenceEquals(cur, _arcBrush)) d["Map_FiringArc"] = _arcBrush;
+                    var map = w.Target as Noesis.DependencyObject; if (map == null) continue;
+                    var pal = getPalette.Invoke(null, new object[] { map });
+                    if (pal == null) continue;
+                    bool known = false; foreach (var sv in _paletteSaves) if (ReferenceEquals(sv.Palette, pal)) known = true;
+                    if (known) continue;
+                    var pair = pal.GetType().GetMethod("Pair").Invoke(pal, new object[] { colour });   // (Color Day, Color Night)
+                    var pt = pair.GetType();
+                    var save = new PaletteSave { Palette = pal, Day = pt.GetField("Item1").GetValue(pair), Night = pt.GetField("Item2").GetValue(pair) };
+                    pal.GetType().GetMethod("Override").Invoke(pal, new object[] { colour, red4, red4 });
+                    _paletteSaves.Add(save);
                 }
+                Trace("arc colour: FiringArc overridden with red on " + _paletteSaves.Count + " palette(s)");
+                PatchFill();
             }
             catch (Exception e) { Trace("arc colour: " + e.Message); }
+        }
+
+        // 3D wedges: after WeaponArc3DRenderer.Show the vertex colours of the meshes are set to the same weak red as the map fill (only while our zones are shown).
+        static FieldInfo _fArcObjs;
+        static void Arc3DShowPostfix()
+        {
+            if (_zoneInfo == null) return;
+            try
+            {
+                var list = _fArcObjs.GetValue(null) as System.Collections.IEnumerable; if (list == null) return;
+                var col = new UnityEngine.Color32(235, 45, 45, 0x30);
+                foreach (var o in list)
+                {
+                    var go = o as UnityEngine.GameObject; if (go == null) continue;
+                    var mf = go.GetComponent<UnityEngine.MeshFilter>(); var mesh = mf == null ? null : mf.sharedMesh; if (mesh == null) continue;
+                    var cs = new UnityEngine.Color32[mesh.vertexCount]; for (int i = 0; i < cs.Length; i++) cs[i] = col;
+                    mesh.colors32 = cs;
+                }
+            }
+            catch (Exception e) { TraceLimited("a3d", 5f, "arc3d: " + e.Message); }
+        }
+
+        static void RestorePalettes()
+        {
+            if (_paletteSaves.Count == 0) return;
+            try
+            {
+                var tColor = _tHoverMgr.Assembly.GetType("SeaPower.LiveMap.MapColor");
+                var colour = Enum.Parse(tColor, "FiringArc");
+                foreach (var sv in _paletteSaves) sv.Palette.GetType().GetMethod("Override").Invoke(sv.Palette, new object[] { colour, sv.Day, sv.Night });
+                Trace("arc colour: restored on " + _paletteSaves.Count + " palette(s)");
+            }
+            catch (Exception e) { Trace("arc colour restore: " + e.Message); }
+            _paletteSaves.Clear();
+        }
+
+        // ---- the weak red fill: a postfix of WeaponArcSegmentViewModel.Render adds a second Pie slot (same geometry) with a Fill, only while our zones are shown ----------
+        static void PatchFill()
+        {
+            if (_fillPatched || _fillFailed || _zonesHarmony == null) return;
+            try
+            {
+                var t = _tHoverMgr.Assembly.GetType("SeapowerUI.WeaponArcSegmentViewModel");
+                var m = t == null ? null : t.GetMethod("Render", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+                if (m == null) { _fillFailed = true; Trace("arc fill: WeaponArcSegmentViewModel.Render not found (an older game version): no fill"); return; }
+                _fArcShown = t.GetField("_shown", BindingFlags.Instance | BindingFlags.NonPublic); _fArcGeom = t.GetField("_geometry", BindingFlags.Instance | BindingFlags.NonPublic);
+                _fArcLayer = t.GetField("_gizmoLayer", BindingFlags.Instance | BindingFlags.NonPublic);
+                if (_fArcShown == null || _fArcGeom == null || _fArcLayer == null) { _fillFailed = true; Trace("arc fill: fields of the wedge not found: no fill"); return; }
+                _zonesHarmony.Patch(m, postfix: Hm("ArcFillPostfix"));
+                _fillPatched = true; Trace("arc fill: patched WeaponArcSegmentViewModel.Render");
+            }
+            catch (Exception e) { _fillFailed = true; Trace("arc fill patch: " + e.Message); }
+        }
+
+        static FieldInfo _fArcShown, _fArcGeom, _fArcLayer; static MethodInfo _mPie, _mSlotLayer, _mSlotFill, _mSlotVisible, _mFillFrom; static MethodInfo[] _mSlotGeoms; static bool _fillInit;
+
+        static void ArcFillPostfix(object __instance, object ctx)
+        {
+            if (_zoneInfo == null) return;   // only while the zones of our Fire are shown
+            try
+            {
+                if (!(bool)_fArcShown.GetValue(__instance)) return;
+                var geom = _fArcGeom.GetValue(__instance); if (geom == null) return;   // Nullable<PieGeometry>: boxed value or null
+                if (!_fillInit)
+                {
+                    var asm = _tHoverMgr.Assembly;
+                    var tCtx = ctx.GetType(); var tSlot = asm.GetType("MapControl.MapSlot"); var tFill = asm.GetType("MapControl.MapFill");
+                    _mPie = tCtx.GetMethod("Pie", new[] { typeof(byte) });
+                    _mSlotLayer = tSlot.GetMethod("GizmoLayer"); _mSlotFill = tSlot.GetMethod("Fill"); _mSlotVisible = tSlot.GetMethod("Visible");
+                    var gl = new List<MethodInfo>(); foreach (var mi in tSlot.GetMethods()) if (mi.Name == "Geometry") gl.Add(mi); _mSlotGeoms = gl.ToArray();
+                    foreach (var mi in tFill.GetMethods(BindingFlags.Static | BindingFlags.Public)) if (mi.Name == "From" && mi.GetParameters().Length == 2) _mFillFrom = mi;
+                    _fillInit = true;
+                }
+                var weak = Noesis.Color.FromArgb(0x30, 235, 45, 45);
+                var fill = _mFillFrom.Invoke(null, new object[] { weak, weak });
+                object slot = _mPie.Invoke(ctx, new object[] { (byte)128 });
+                slot = _mSlotLayer.Invoke(slot, new object[] { _fArcLayer.GetValue(__instance) });
+                slot = _mSlotFill.Invoke(slot, new object[] { fill });
+                MethodInfo geomM = null; foreach (var mi in _mSlotGeoms) if (mi.GetParameters()[0].ParameterType.GetElementType() == geom.GetType()) geomM = mi;
+                if (geomM == null) { TraceLimited("fill0", 5f, "arc fill: no Geometry overload for " + geom.GetType().Name); return; }
+                slot = geomM.Invoke(slot, new object[] { geom });
+                _mSlotVisible.Invoke(slot, new object[] { true });
+            }
+            catch (Exception e) { TraceLimited("fill1", 5f, "arc fill: " + e.Message); }
         }
 
         static bool ZoneReconcile()
@@ -146,16 +254,17 @@ namespace AlternativeWeaponsControl
             try
             {
                 if (a == null || !Enabled || a._zoneFire == null || !a._zoneFire.Value || _tHoverInfo == null || _pHovered == null) id = null;
+                if (id != null && _debug) TraceLimited("zonesTry", 5f, "zones: Fire targeting " + id + " pin=" + (pin != null) + " enabled=" + Enabled + " cfg=" + (a != null && a._zoneFire != null && a._zoneFire.Value) + " hover=" + (_tHoverInfo != null && _pHovered != null));
                 if (id == null)
                 {
-                    if (_zoneInfo != null) { _zoneInfo = null; _zoneKeyId = null; _zoneKeyPin = null; _tHoverMgr.GetMethod("ClearCandidate").Invoke(null, new object[] { _zoneOwner }); }
+                    if (_zoneInfo != null && ReferenceEquals(unit, _zoneUnit)) { ArcColor(false); _zoneInfo = null; _zoneKeyId = null; _zoneKeyPin = null; _tHoverMgr.GetMethod("ClearCandidate").Invoke(null, new object[] { _zoneOwner }); }
                     return;
                 }
-                if (_zoneInfo != null && _zoneKeyId == id && ReferenceEquals(_zoneKeyPin, pin)) return;
+                if (_zoneInfo != null && _zoneKeyId == id && ReferenceEquals(_zoneKeyPin, pin) && ReferenceEquals(_zoneUnit, unit)) return;
                 var wsT = unit.GetType().Assembly.GetType("SeaPower.WeaponSystem");
                 var list = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(wsT));
                 if (pin != null) list.Add(pin); else foreach (var s in systemsOfAmmo) if (s != null && wsT.IsInstanceOfType(s)) list.Add(s);
-                if (list.Count == 0) return;
+                if (list.Count == 0) { Trace("zones: no launchers for " + id); return; }
                 float range = 0f;
                 var am = R.Call(unit, "getAmmunitionByName", id);
                 if (am != null) { var lr = R.F(R.F(am, "_ap"), "_launchRangesInUnity"); if (lr is UnityEngine.Vector2) range = ((UnityEngine.Vector2)lr).y; }
@@ -163,8 +272,9 @@ namespace AlternativeWeaponsControl
                 _tHoverInfo.GetField("Unit").SetValue(info, unit);
                 _tHoverInfo.GetField("Systems").SetValue(info, list);
                 _tHoverInfo.GetField("MapRangeInUnity").SetValue(info, range);
-                ArcColorOnce();
-                _zoneInfo = info; _zoneKeyId = id; _zoneKeyPin = pin;
+                Trace("zones: start " + id + " launchers=" + list.Count + " range=" + range);
+                ArcColor(true);
+                _zoneInfo = info; _zoneKeyId = id; _zoneKeyPin = pin; _zoneUnit = unit;
                 _tHoverMgr.GetMethod("SetCandidate").Invoke(null, new object[] { _zoneOwner, unit, list, range });   // starts the manager's tick
             }
             catch (Exception e) { Trace("zones update: " + e.Message); _zoneInfo = null; }

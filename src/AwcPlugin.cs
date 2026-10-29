@@ -29,7 +29,7 @@ namespace AlternativeWeaponsControl
     {
         public const string PluginGuid = "com.rgreat.seapower.alternativeweaponscontrol";
         public const string PluginName = "Alternative Weapons Control";
-        public const string PluginVersion = "1.2.1";
+        public const string PluginVersion = "1.2.2";
 
         public static readonly string BuildId = ReadBuildId();
 
@@ -45,8 +45,8 @@ namespace AlternativeWeaponsControl
         public ConfigFile Cfg;
         internal ConfigEntry<string> _language; internal ConfigEntry<bool> _debugEntry, _gunChannels, _gunOneDirector, _noRbuSurfaceChase, _noAirChase, _mgBurstFix, _hitSoundFix, _mgSoundLoop;
         internal ConfigEntry<string> _secOrder;
-        internal ConfigEntry<float> _clickVolume, _samMinutes, _samAutoRange, _gunMinError, _flashPower, _firePower;
-        internal ConfigEntry<bool> _plotHostile, _tabAir, _tabLand, _flashMissile, _fireFlicker, _optNormal, _optDayOnly, _flashMuzzle, _flashHit, _samButton, _zoneFire, _samAuto, _samKeep, _samAnim, _gunAimBeyond;
+        internal ConfigEntry<float> _clickVolume, _samMinutes, _samAutoRange, _gunMinError, _flashPower, _firePower, _dayBright;
+        internal ConfigEntry<bool> _flashLimit, _plotHostile, _tabAir, _tabLand, _flashMissile, _fireFlicker, _optNormal, _optDayOnly, _flashMuzzle, _flashHit, _samButton, _zoneFire, _samAuto, _samKeep, _samAnim, _gunAimBeyond;
         public static string UserDir { get; private set; }
 
         /// <summary>The settings the window shows (in this order).</summary>
@@ -68,6 +68,18 @@ namespace AlternativeWeaponsControl
             if (!_debug) return;
             try { File.AppendAllText(_traceFile, DateTime.Now.ToString("HH:mm:ss.fff") + "  " + msg + Environment.NewLine); }
             catch { }
+        }
+
+        // A trace line that repeats (the same key) is written once per `sec` seconds of real time: the selector and the demand test run many times a second.
+        static readonly Dictionary<string, float> _traceAt = new Dictionary<string, float>();
+        static void TraceLimited(string key, float sec, string msg)
+        {
+            if (!_debug) return;
+            float now = UnityEngine.Time.realtimeSinceStartup, last;
+            if (_traceAt.TryGetValue(key, out last) && now - last < sec) return;
+            if (_traceAt.Count > 2000) _traceAt.Clear();
+            _traceAt[key] = now;
+            Trace(msg);
         }
 
         void Verbose(string msg) { if (_debug) Logger.LogInfo(msg); }
@@ -164,7 +176,9 @@ namespace AlternativeWeaponsControl
             _flashMuzzle = Cfg.Bind("Effects", "MuzzleFlashLight", true, "A short light flash at the muzzle when guns, CIWS and machine guns fire (visible at night).");
             _flashMissile = Cfg.Bind("Effects", "MissileLaunchFlashLight", true, "A light follows a missile for as long as its booster burns after launch (the booster burn time of the missile).");
             _flashHit = Cfg.Bind("Effects", "HitFlashLight", true, "A short light flash where a gun shell hits (not in the water).");
+            _dayBright = Cfg.Bind("Effects", "DayBrightness", 0.5f, "Brightness of the flashes and of the fire light by day, 1 = no dimming. In full sun the lights are multiplied by this (at night they are not changed): the sun and a bright light add up and blow out into white and pink.");
             _flashPower = Cfg.Bind("Effects", "FlashPower", 1f, "Brightness and size of the flashes, 1 = default.");
+            _flashLimit = Cfg.Bind("Effects", "FlashLimit", true, "All the flashes alive at once share a total brightness limit, so many hits together do not over-expose the picture.");
             _gunAimBeyond = Cfg.Bind("Guns", "AimBeyondMaxRange", true,
                 "The player's guns, CIWS and machine guns turn and elevate towards a target beyond their maximum range (up to 1.5 x the range, at least 5 nm) " +
                 "without firing, as if it were at the maximum range. Off = as in the game: the turret stays still until the target is in range.");
@@ -182,7 +196,7 @@ namespace AlternativeWeaponsControl
                 "Verbose logging and BepInEx/AlternativeWeaponsControl.trace.txt.");
             _language = Cfg.Bind("General", "Language", "",
                 "Language of the mod's texts: a code of a game language (en, ru ...); empty = the game's own language. The texts are in the files lang/<code>.ini in the mod folder - edit them to translate.");
-            Entries.Add(_clickVolume); Entries.Add(_samButton); Entries.Add(_zoneFire); Entries.Add(_plotHostile); Entries.Add(_freeAirKnots); Entries.Add(_freeAirNm); Entries.Add(_freeAirOwn); Entries.Add(_freeAirEnemy); Entries.Add(_tabLand); Entries.Add(_tabAir); Entries.Add(_samAuto); Entries.Add(_samKeep); Entries.Add(_samAnim); Entries.Add(_samAutoRange); Entries.Add(_samMinutes); Entries.Add(_gunOneDirector); Entries.Add(_gunChannels); Entries.Add(_noRbuSurfaceChase); Entries.Add(_noAirChase); Entries.Add(_gunAimBeyond); Entries.Add(_optNormal); Entries.Add(_optDayOnly); Entries.Add(_fireFlicker); Entries.Add(_firePower); Entries.Add(_flashMuzzle); Entries.Add(_flashMissile); Entries.Add(_flashHit); Entries.Add(_flashPower); Entries.Add(_gunMinError); Entries.Add(_mgBurstFix); Entries.Add(_mgSoundLoop); Entries.Add(_hitSoundFix); Entries.Add(_debugEntry); Entries.Add(_language);
+            Entries.Add(_clickVolume); Entries.Add(_samButton); Entries.Add(_zoneFire); Entries.Add(_plotHostile); Entries.Add(_freeAirKnots); Entries.Add(_freeAirNm); Entries.Add(_freeAirOwn); Entries.Add(_freeAirEnemy); Entries.Add(_tabLand); Entries.Add(_tabAir); Entries.Add(_samAuto); Entries.Add(_samKeep); Entries.Add(_samAnim); Entries.Add(_samAutoRange); Entries.Add(_samMinutes); Entries.Add(_gunOneDirector); Entries.Add(_gunChannels); Entries.Add(_noRbuSurfaceChase); Entries.Add(_noAirChase); Entries.Add(_gunAimBeyond); Entries.Add(_optNormal); Entries.Add(_optDayOnly); Entries.Add(_fireFlicker); Entries.Add(_firePower); Entries.Add(_flashMuzzle); Entries.Add(_flashMissile); Entries.Add(_flashHit); Entries.Add(_flashPower); Entries.Add(_flashLimit); Entries.Add(_dayBright); Entries.Add(_gunMinError); Entries.Add(_mgBurstFix); Entries.Add(_mgSoundLoop); Entries.Add(_hitSoundFix); Entries.Add(_debugEntry); Entries.Add(_language);
             Loc.Trace = Trace; Loc.Forced = () => _language == null ? "" : _language.Value;
             foreach (var en in Entries) Loc.Register("help." + en.Definition.Section + "/" + en.Definition.Key, en.Description == null ? "" : en.Description.Description);
 

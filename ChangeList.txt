@@ -1,10 +1,21 @@
-ALTERNATIVE WEAPONS CONTROL 1.2.1 - CHANGE LIST
+ALTERNATIVE WEAPONS CONTROL 1.2.2 - CHANGE LIST
 
-CHANGES (since 1.2.0)
+CHANGES (since 1.2.1)
+
+New
+
+- Fire zones are drawn red. When you click Fire, the firing arcs are red with a weak red fill, on the Tactical Display map and in the 3D view. (The map colour needs Sea Power 0.8.7; on 0.8.6 only the 3D fill changes.)
+- New status "Empty" for missile launchers that are out of missiles. It is grey, like a disabled launcher. Before, such a launcher kept saying "Ready" or "Reloading".
+- New option Effects / FlashLimit (on by default): all the gun, missile and hit flashes alive at once share a total brightness limit, so many flashes together no longer blow out into white and pink glare.
+- New option Effects / DayBrightness (0.1 - 1, default 0.5): flashes and fire light are dimmed by the sun, so they do not over-expose by day. Night is not affected.
+
+Changed
+
+- SAM: the "ready" and Reload buttons no longer keep a launcher reloading after its last missile. The rails are loaded again only for a real reason (an order with a live target, the game's own preparation, an unidentified aircraft closing in, or auto charge).
+- Less memory churn and smaller load on the interface: the Weapons tab no longer creates new brushes and transforms on every refresh, and per-frame lookups in the mod no longer allocate.
 
 Fixed
 
-- Sea Power 0.8.7: the launcher switches of the Weapons tab (and the Fire button of one launcher) were applied only to some of the game's target selections, because the game now picks launchers through a new method. They apply everywhere again.
-- Sea Power 0.8.7: the light that follows a launched missile no longer fails because of a changed game method.
-- Fire in an ammunition card of a single launcher now fires from that launcher (it could fire from another one when the launcher was empty).
-- The mod works with Sea Power 0.8.6 as before.
+- Fire zones flickered when a second unit status window was open.
+
+All new texts are translated into the 9 game languages.

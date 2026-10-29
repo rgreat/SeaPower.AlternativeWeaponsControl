@@ -10,14 +10,25 @@ namespace AlternativeWeaponsControl
     public sealed class AwcFlash : MonoBehaviour
     {
         public static int Alive;
-        public float Life = 0.1f, Peak = 3f, Hold = 0f, Range = 5f; float _t; Light _l;
+        public float Life = 0.1f, Peak = 3f, Hold = 0f, Range = 5f, DayK = 1f; float _t; Light _l;
+        // the brightness of all the flashes alive at once (as they ask for it, before the limit): last frame's sum, this frame's sum so far
+        static int _frame; static float _sumPrev, _sumNext;
+        internal static float SumPrev { get { return _sumPrev; } }
+        internal static float Budget = 20f;   // the total the flashes may reach together (before FlashPower)
         void Awake() { _l = GetComponent<Light>(); Alive++; }
         void OnDestroy() { Alive--; }
         void Update()
         {
             _t += Time.deltaTime;
             if (_t >= Life) { Destroy(gameObject); return; }
-            if (_l != null) { float k = AwcPlugin.FlashK(); _l.range = Range * k; float u = _t / Life; _l.intensity = Peak * k * (u <= Hold ? 1f : 1f - (u - Hold) / (1f - Hold)); }
+            if (_l != null)
+            {
+                float k = AwcPlugin.FlashK(); _l.range = Range * k; float u = _t / Life;
+                float want = Peak * k * DayK * (u <= Hold ? 1f : 1f - (u - Hold) / (1f - Hold));
+                if (Time.frameCount != _frame) { _frame = Time.frameCount; _sumPrev = _sumNext; _sumNext = 0f; }
+                _sumNext += want;
+                _l.intensity = AwcPlugin.LimitFlash(want, _sumPrev);
+            }
         }
     }
 
@@ -37,13 +48,14 @@ namespace AlternativeWeaponsControl
         void Update()
         {
             if (_l == null) return;
-            if (!AwcPlugin.FlickerOn()) { _l.intensity = _i; _l.range = _r; return; }
+            float day = AwcPlugin.DayDim();
+            if (!AwcPlugin.FlickerOn()) { _l.intensity = _i * day; _l.range = _r; return; }
             float pw = AwcPlugin.FirePower();
             float t = Time.time * (3f + 3f * Strength) + _seed;
             float n = Mathf.PerlinNoise(t, _seed) * 0.6f + Mathf.PerlinNoise(t * 2.7f, _seed + 7f) * 0.4f;   // 0..1
             float depth = Mathf.Clamp01(0.18f * Strength + 0.07f);
             float f = 1f - depth + 2f * depth * n;
-            _l.intensity = Mathf.Max(_i, 0.5f) * pw * f * (0.8f + 0.2f * Strength);
+            _l.intensity = Mathf.Max(_i, 0.5f) * pw * f * (0.8f + 0.2f * Strength) * day;
             _l.range = Mathf.Max(_r, 3f) * (1f + 0.5f * (pw - 1f)) * (0.92f + 0.08f * f);
         }
     }
@@ -51,6 +63,45 @@ namespace AlternativeWeaponsControl
     public partial class AwcPlugin
     {
         internal static float FlashK() { var a = Active; return a != null && a._flashPower != null ? Mathf.Max(a._flashPower.Value, 0.1f) : 1f; }
+        // Over-exposure: by day the sun and a bright flash add up on light hulls and the sea, the colour channels clip and the glare turns white and pink.
+        // The flashes are dimmed with the sun (DayK) and all the flashes alive at once share one total (AwcFlash.Budget x FlashPower): when their sum is over it,
+        // every flash is scaled down by the same factor. Checked when a flash starts and in its own update: no timer, no polling.
+        static float _dayK = 1f; static int _dayFrame = -1;
+        internal static float DayDim()
+        {
+            if (Time.frameCount == _dayFrame) return _dayK;
+            _dayFrame = Time.frameCount;
+            var a = Active; if (a == null || a._dayBright == null) { _dayK = 1f; return 1f; }
+            float sun = SunLight();
+            _dayK = sun < 0f ? 1f : 1f - (1f - Mathf.Clamp(a._dayBright.Value, 0.1f, 1f)) * Mathf.Clamp01(sun);   // night 1, full sun = DayBrightness
+            return _dayK;
+        }
+        internal static float LimitFlash(float want, float sumPrev)
+        {
+            var a = Active; if (a == null || a._flashLimit == null || !a._flashLimit.Value) return want;
+            float cap = AwcFlash.Budget * FlashK() * _dayK;
+            return sumPrev > cap && sumPrev > 0f ? want * cap / sumPrev : want;
+        }
+        static MethodInfo _mSun; static object _sunInst; static bool _sunTried;
+        /// <summary>The sunlight of the game's sky, 0..1 (-1: not known).</summary>
+        static float SunLight()
+        {
+            try
+            {
+                if (!_sunTried)
+                {
+                    _sunTried = true;
+                    var asm = _tObjectBase.Assembly;
+                    var ds = asm.GetType("SeaPower.DynamicSky");
+                    var sg = asm.GetType("SeaPower.Singleton`1").MakeGenericType(ds);
+                    _sunInst = sg.GetProperty("Instance", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic).GetValue(null, null);
+                    _mSun = ds.GetMethod("getSunlightIntensity", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, Type.EmptyTypes, null);
+                }
+                if (_sunInst == null || _mSun == null) { _sunTried = _sunInst != null; return -1f; }
+                return R.Fl(_mSun.Invoke(_sunInst, null));
+            }
+            catch { return -1f; }
+        }
         internal static float FirePower() { var a = Active; return a != null && a._firePower != null ? Mathf.Max(a._firePower.Value, 0.1f) : 1f; }
         internal static bool FlickerOn() { var a = Active; return a != null && a._fireFlicker != null && a._fireFlicker.Value; }
 
@@ -101,8 +152,9 @@ namespace AlternativeWeaponsControl
                 go.transform.position = pos;
                 if (parent != null) go.transform.SetParent(parent, true);
                 var l = go.AddComponent<Light>();
-                l.type = LightType.Point; l.color = col; l.range = range * k; l.intensity = peak * k; l.shadows = LightShadows.None;
-                var f = go.AddComponent<AwcFlash>(); f.Life = life; f.Peak = peak; f.Range = range; f.Hold = hold;
+                float dk = DayDim();
+                l.type = LightType.Point; l.color = col; l.range = range * k; l.intensity = LimitFlash(peak * k * dk, AwcFlash.SumPrev + peak * k * dk); l.shadows = LightShadows.None;
+                var f = go.AddComponent<AwcFlash>(); f.Life = life; f.Peak = peak; f.Range = range; f.Hold = hold; f.DayK = dk;
             }
             catch (Exception e) { Trace("flash: " + e.Message); }
         }

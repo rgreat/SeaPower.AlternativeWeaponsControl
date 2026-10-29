@@ -1,4 +1,4 @@
-Version 1.2.1.
+Version 1.2.2.
 
 Adds a new [b]Weapons[/b] tab in the Unit Status window of your units, and a set of combat and visual improvements.
 
@@ -18,13 +18,13 @@ Drag a section title (SAM, GUNS, …) to reorder the sections.
 [olist]
 [*][b]Readiness button:[/b] load the missiles onto the rails now, or put them away. They are put away automatically after 15 minutes if unused. Missiles stay loaded after a launch, and a hot launcher loads the next ones by itself while they are needed; otherwise it goes cold.
 [*][b]Reload button:[/b] unloads the rails, waits a moment, then loads them again. It is grey while the launcher is busy.
-[*][b]Clear statuses:[/b] Rails empty, Loading rails, Unloading rails, and a countdown of the pause after an unloading.
+[*][b]Clear statuses:[/b] Rails empty, Loading rails, Unloading rails, a countdown of the pause after an unloading, and Empty (grey) for a launcher out of missiles.
 [*][b]Auto-charge[/b] when an unknown aircraft approaches. Works for AI ships too.
 [/olist]
 
 [h3]Fire and guns[/h3]
 [olist]
-[*][b]Fire shows the weapon's firing arcs[/b] in red on the map and in 3D while the target is being picked.
+[*][b]Fire shows the weapon's firing arcs[/b] in red, with a weak red fill, on the map (Sea Power 0.8.7) and in 3D while the target is being picked.
 [*][b]Aim beyond maximum range:[/b] guns, CIWS and machine guns turn towards a target out of range without firing.
 [*][b]Disable AI cheating:[/b] the game's AI engages only contacts whose true side is hostile, which you cannot know. Your ships now engage the contacts you marked hostile on the plot (on Tight: aircraft only).
 [*][b]Close-range accuracy:[/b] option for the best accuracy of guns (default 5 m).
@@ -39,7 +39,7 @@ Drag a section title (SAM, GUNS, …) to reorder the sections.
 
 [h3]Visual and optics[/h3]
 [olist]
-[*][b]Light effects:[/b] gunfire, hits, missile launches and detonations light up their surroundings in 3D, and the bigger the weapon, the brighter and longer the flash. Fires on ships flicker. Every effect can be switched off, and brightness is adjustable.
+[*][b]Light effects:[/b] gunfire, hits, missile launches and detonations light up their surroundings in 3D, and the bigger the weapon, the brighter and longer the flash. Fires on ships flicker. By day the lights are dimmed (option, default 0.5) and the flashes alive at once share a total brightness limit, so the picture does not blow out into white and pink. Every effect can be switched off, and brightness is adjustable.
 [*][b]Machine guns:[/b] tracers and the muzzle burst sound now last for the whole burst.
 [*][b]Binoculars[/b] start in the normal view at maximum zoom, with no night or thermal filter by default (option: only by day).
 [/olist]

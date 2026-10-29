@@ -139,9 +139,10 @@ namespace AlternativeWeaponsControl
                 if (_debug && Loaded(ws) == 0) TraceOrders(ws, "launch: rails empty");
                 if (!R.B(R.F(ws, "_isReloading")) || !CanWarm(ws) || !Idle(ws) || Loaded(ws) != 0) return;
                 Box b; _warmBox.TryGetValue(ws, out b);
-                bool need = Demand(ws, b, MissionTime(), true), btn = b != null && b.Btn;
+                if (b != null && b.Btn) { b.Btn = false; if (_debug) Trace("sam button: ready ON dropped, the last missile is gone " + SamName(ws)); }   // the button holds the missiles on the rails, not the reloading
+                bool need = Demand(ws, b, MissionTime(), true);
                 GoCold(ws);
-                if (need && MagazineCount(ws) > 0) { Charge(ws); Box nb; if (btn && _warmBox.TryGetValue(ws, out nb)) nb.Btn = true; }
+                if (need && MagazineCount(ws) > 0) Charge(ws, "launch: demand");
             }
             catch (Exception e) { Trace("launch postfix: " + e.Message); }
         }
@@ -171,6 +172,11 @@ namespace AlternativeWeaponsControl
                 double now = MissionTime();
                 int loaded = Loaded(ws);
                 bool reloading = R.B(R.F(ws, "_isReloading"));
+                if (b.Btn && loaded == 0 && !b.Pending && !b.Unload && !IsEngaging(ws))
+                {
+                    b.Btn = false;   // empty rails and no load asked for: the button's demand is over (what loads them again is a real demand only)
+                    if (_debug) Trace("sam button: ready ON dropped, rails empty " + SamName(ws));
+                }
                 if (IsEngaging(ws))
                 {
                     if (loaded > 0) b.Until = now + WarmSeconds();   // in use: the limit counts from the last use
@@ -190,7 +196,7 @@ namespace AlternativeWeaponsControl
                         bool wanted = Demand(ws, b, now, true);
                         if (_debug && !wanted) Trace("sam cancel: a count on empty rails without a demand (" + R.S(R.F(ws, "_systemName")) + ")");
                         GoCold(ws);
-                        if (wanted && MagazineCount(ws) > 0) Charge(ws);
+                        if (wanted && MagazineCount(ws) > 0) Charge(ws, "count on empty rails: demand");
                     }
                     else if (b.Pending && now >= PauseEnd(ws) && loaded == 0 && Idle(ws) && MagazineCount(ws) > 0)
                     {
@@ -223,7 +229,7 @@ namespace AlternativeWeaponsControl
                 {
                     // hot with empty rails is cold; with a demand the rails are loaded and warmed
                     if (hot) R.SetP(ws, "IsHot", false);
-                    if (need && MagazineCount(ws) > 0) { b.Pending = true; b.Warm = true; b.Until = 0.0; }
+                    if (need && MagazineCount(ws) > 0) { if (_debug) Trace("sam charge " + SamName(ws) + " src=hot with empty rails: demand"); b.Pending = true; b.Warm = true; b.Until = 0.0; }
                     else _warmBox.Remove(ws);
                     return;
                 }
@@ -263,7 +269,7 @@ namespace AlternativeWeaponsControl
                 if (b.Real) StartPause(ws);   // the missiles stay down for a while before they go up again
                 b.Unload = false; b.Started = false; b.Recharge = false; b.Real = false;
                 R.SetP(ws, "IsHot", false);
-                if (again && MagazineCount(ws) > 0) Charge(ws);
+                if (again && MagazineCount(ws) > 0) Charge(ws, "after unload");
                 else _warmBox.Remove(ws);
             }
         }
@@ -375,6 +381,17 @@ namespace AlternativeWeaponsControl
 
         // Debug: every change of a SAM launcher's loading state is traced (to find out why the rails load before the reload ends)
         static readonly ConditionalWeakTable<object, string[]> _warmSig = new ConditionalWeakTable<object, string[]>();
+        /// <summary>"unit system #n" for the trace lines.</summary>
+        static string SamName(object ws)
+        {
+            try
+            {
+                int ix = -1; var all = R.F(R.F(R.F(ws, "_baseObject"), "_obp"), "_weaponSystems") as IList; if (all != null) ix = all.IndexOf(ws);
+                return R.S(R.Call(R.F(ws, "_baseObject"), "getUIDAndName")) + " " + R.S(R.F(ws, "_systemName")) + " #" + ix;
+            }
+            catch { return "?"; }
+        }
+
         static void WarmTrace(object ws, Box b)
         {
             try
@@ -383,7 +400,7 @@ namespace AlternativeWeaponsControl
                 string sig = (st == null ? "?" : st.ToString()) + " reloading=" + R.B(R.F(ws, "_isReloading")) + " left=" + (R.Fl(R.F(ws, "_remainingReloadTime")) > 0f ? "yes" : "no")
                            + " hot=" + R.B(R.P(ws, "IsHot")) + " weapons=" + Loaded(ws) + "/" + Rails(ws).Count + " onWeapon=" + (R.F(ws, "_ammunitionOnWeapon") != null)
                            + " engaging=" + IsEngaging(ws) + " shutDown=" + R.B(R.F(ws, "_triggerShutDown"))
-                           + (b == null ? " box=none" : " box(pending=" + b.Pending + " unload=" + b.Unload + " recharge=" + b.Recharge + ")");
+                           + (b == null ? " box=none" : " box(pending=" + b.Pending + " unload=" + b.Unload + " recharge=" + b.Recharge + " btn=" + b.Btn + ")");
                 string[] last;
                 if (!_warmSig.TryGetValue(ws, out last)) { last = new string[1]; _warmSig.Add(ws, last); }
                 if (last[0] == sig) return;
@@ -507,8 +524,9 @@ namespace AlternativeWeaponsControl
             try
             {
                 var wi = WarmState(ws);
-                if (wi.St == 0) { Charge(ws); Box b; if (_warmBox.TryGetValue(ws, out b)) b.Btn = true; return; }
-                if (IsEngaging(ws)) return;
+                if (wi.St == 0) { if (_debug) Trace("sam button: ready ON " + SamName(ws)); Charge(ws, "button"); Box b; if (_warmBox.TryGetValue(ws, out b)) b.Btn = true; return; }
+                if (IsEngaging(ws)) { if (_debug) Trace("sam button: ready OFF ignored, engaging " + SamName(ws)); return; }
+                if (_debug) Trace("sam button: ready OFF " + SamName(ws));
                 Box bx; if (_warmBox.TryGetValue(ws, out bx)) bx.Btn = false;
                 StartUnload(ws, false);
             }
@@ -516,8 +534,9 @@ namespace AlternativeWeaponsControl
         }
 
         /// <summary>The missiles go onto the rails; the warm-up (the reload count) runs on the rails.</summary>
-        static void Charge(object ws)
+        static void Charge(object ws, string src = null)
         {
+            if (_debug) Trace("sam charge " + SamName(ws) + " src=" + (src ?? "?"));
             bool hotBefore = R.B(R.P(ws, "IsHot"));
             Box b;
             if (!_warmBox.TryGetValue(ws, out b)) { b = new Box(); _warmBox.Add(ws, b); }
@@ -540,10 +559,11 @@ namespace AlternativeWeaponsControl
         {
             try
             {
-                if (IsEngaging(ws)) return;
-                if (ReloadBusy(ws)) return;   // a reload (or a separate unload / load) is already going: the button is grey, a press must not restart anything
+                if (IsEngaging(ws)) { if (_debug) Trace("sam button: Reload ignored, engaging " + SamName(ws)); return; }
+                if (ReloadBusy(ws)) { if (_debug) Trace("sam button: Reload ignored, busy " + SamName(ws)); return; }   // a reload (or a separate unload / load) is already going: the button is grey, a press must not restart anything
                 bool onRails = Loaded(ws) > 0 || R.F(ws, "_ammunitionOnWeapon") != null;
-                if (onRails) StartUnload(ws, true); else if (MagazineCount(ws) > 0) Charge(ws);   // empty rails: nothing to unload, the load goes at once
+                if (_debug) Trace("sam button: Reload " + SamName(ws) + (onRails ? " (unload, then load)" : " (rails empty: load)"));
+                if (onRails) StartUnload(ws, true); else if (MagazineCount(ws) > 0) Charge(ws, "Reload button");   // empty rails: nothing to unload, the load goes at once
                 Box b; if (_warmBox.TryGetValue(ws, out b)) b.Btn = true;
             }
             catch (Exception e) { Trace("recharge: " + e.Message); }
@@ -613,7 +633,7 @@ namespace AlternativeWeaponsControl
                 if (launchers.Count == 0) return;
                 if (!UnknownAirClosing(__instance, bo, procs, me._samAutoRange.Value)) return;
                 if (_debug) Trace("auto charge: " + R.S(R.Call(bo, "getUIDAndName")) + " launchers=" + launchers.Count);
-                foreach (var l in launchers) Charge(l.Ws);
+                foreach (var l in launchers) Charge(l.Ws, "auto-charge");
             }
             catch (Exception e) { Trace("auto charge: " + e.Message); }
         }
@@ -645,7 +665,7 @@ namespace AlternativeWeaponsControl
                 if (mv is UnityEngine.Vector3) rv -= (UnityEngine.Vector3)mv;
                 rv.y = 0f;
                 if (UnityEngine.Vector3.Dot(rv, d) >= 0f) continue;
-                if (_debug) { try { Trace("sam demand: aircraft " + R.S(R.Call(o, "getUIDAndName")) + " " + rs + " " + nm.ToString("0.0") + " nm, closing at " + (rv.magnitude / 0.0076554087f).ToString("0") + " kn"); } catch { } }
+                if (_debug) { try { TraceLimited("demand" + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(bo) + "/" + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(o), 10f, "sam demand: aircraft " + R.S(R.Call(o, "getUIDAndName")) + " " + rs + " " + nm.ToString("0.0") + " nm, closing at " + (rv.magnitude / 0.0076554087f).ToString("0") + " kn"); } catch { } }   // once per 10 s per ship and aircraft
                 return true;
             }
             return false;

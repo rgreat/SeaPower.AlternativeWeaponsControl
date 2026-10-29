@@ -37,7 +37,15 @@ namespace AlternativeWeaponsControl
                                          BtnHover = Color.FromRgb(58, 66, 77),
                                          CeaseBg = Color.FromRgb(70, 34, 32), CeaseHover = Color.FromRgb(112, 46, 42), CeaseLine = Color.FromRgb(140, 64, 58), CeaseInk = Color.FromRgb(240, 176, 166),
                                          ReloadBg = Color.FromRgb(30, 50, 68), ReloadHover = Color.FromRgb(42, 76, 104), ReloadLine = Color.FromRgb(62, 108, 140), ReloadInk = Color.FromRgb(168, 212, 240), BandBg = Color.FromArgb(22, 79, 179, 217), BandLine = Color.FromArgb(70, 79, 179, 217);
-            public static SolidColorBrush B(Color c) { return new SolidColorBrush(c); }
+            static readonly List<KeyValuePair<Color, SolidColorBrush>> _brushes = new List<KeyValuePair<Color, SolidColorBrush>>();
+            // one brush per colour: the tab is refreshed every 0.3 s and made a native Noesis brush for every call (nothing changes a brush after it is set)
+            public static SolidColorBrush B(Color c)
+            {
+                for (int i = 0; i < _brushes.Count; i++) if (_brushes[i].Key == c) return _brushes[i].Value;
+                var b = new SolidColorBrush(c); _brushes.Add(new KeyValuePair<Color, SolidColorBrush>(c, b)); return b;
+            }
+            static RotateTransform _rot90;
+            public static RotateTransform Rot90 { get { return _rot90 ?? (_rot90 = new RotateTransform(90f)); } }
             public static readonly SolidColorBrush Clear = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0));
         }
 
@@ -1165,7 +1173,7 @@ namespace AlternativeWeaponsControl
                 if (_fMgvm == null) { var globals = GameAssemblyStatic().GetType("SeaPower.Globals"); if (globals != null) _fMgvm = globals.GetField("_mainGameViewModel", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic); }
                 var mgvm = _fMgvm == null ? null : _fMgvm.GetValue(null);
                 var st = R.Rv(R.P(R.P(mgvm, "StateManager"), "CurrentState"));
-                if (st != null && st.GetType().Name == "AttackingState" && ReferenceEquals(R.P(st, "Source"), v.Unit)) { id = R.S(R.P(st, "Ammunition")); ours = IsOurState(st); }
+                if (st != null && st.GetType().Name == "AttackingState" && ReferenceEquals(R.P(st, "Source"), v.Unit)) { id = R.S(R.P(st, "Ammunition")); ours = IsOurState(st); if (!ours && _debug) TraceLimited("notours", 5f, "zones: targeting of " + id + " is not ours (no mark from the mod's Fire)"); }
             }
             catch { }
             // the launcher tie of a Fire ends 3 s after the game's target picking for that unit is over (30 s if it never began)
@@ -1446,10 +1454,17 @@ namespace AlternativeWeaponsControl
 
         // ------------------------------------------------------------------ state
 
-        static int Cat(object ws)
+        /// <summary>Not a gun and nothing left in it (rails and magazine): the game sets _isEmpty only for guns, chaff and hardpoints.</summary>
+        static bool NoAmmo(Launcher l)
+        {
+            return l != null && !IsGun(l) && Stock(new List<Launcher> { l }) == 0;
+        }
+
+        static int Cat(object ws, Launcher l = null)
         {
             if (R.B(R.Rv(R.P(ws, "Inoperable")))) return 3;
             if (R.B(R.F(ws, "_isOffline")) || R.B(R.F(ws, "_isEmpty"))) return 4;
+            if (NoAmmo(l) && !R.B(R.F(ws, "_executingEngageTask"))) return 4;
             if (PinWait(ws) != null) return 5;
             if (R.B(R.F(ws, "_isReloading")) || R.Fl(R.F(ws, "_remainingReloadTime")) > 0f) return 2;
             if (SamBusy(ws)) return 2;
@@ -1587,7 +1602,7 @@ namespace AlternativeWeaponsControl
 
         /// <summary>The status ("Reloading: mm:ss" - the game's English text has no word before the time) and the target
         /// (engaging, aiming, reloading between shots of a salvo; null without one).</summary>
-        static void StatusParts(object ws, int c, out string st, out string tgt)
+        static void StatusParts(object ws, int c, out string st, out string tgt, Launcher l = null)
         {
             st = null; tgt = null;
             if (c == 5)
@@ -1602,7 +1617,9 @@ namespace AlternativeWeaponsControl
             st = string.IsNullOrEmpty(st) ? CatName(c) : st;
             if (st.IndexOf("/10000)", StringComparison.Ordinal) > 0) st = System.Text.RegularExpressions.Regex.Replace(st, @"\((\d+)/10000\)", "($1)");   // the game's default capacity of a mount that has none of its own
             if (c == 2 && st.Length > 0 && !char.IsLetter(st[0])) st = Loc.F("st.reloading", st);
-            if (c == 0 || c == 2) { var sx = SamStatus(ws); if (sx != null) st = sx; }   // the game says "Ready" for a launcher whose rails are empty (it loads them at the next order)
+            if (c == 0 || c == 2) { var sx = SamStatus(ws); if (sx != null) st = sx; }
+            // not a gun, nothing left (rails and magazine): the game keeps saying "Ready" / "Reloading" for such a launcher
+            if (c == 4 && l != null && !R.B(R.F(ws, "_isOffline")) && !R.B(R.F(ws, "_isEmpty")) && NoAmmo(l)) st = Loc.T("st.empty");   // the game says "Ready" for a launcher whose rails are empty (it loads them at the next order)
             if (c != 3 && c != 4)
             {
                 var t = R.F(ws, "_targetObject");
@@ -1789,7 +1806,7 @@ namespace AlternativeWeaponsControl
             foreach (var gr in v.Groups)
             {
                 bool open = gr.Open && gr.Expandable;
-                gr.Chevron.RenderTransform = open ? new RotateTransform(90f) : null;
+                var rot = open ? WC.Rot90 : null; if (!ReferenceEquals(gr.Chevron.RenderTransform, rot)) gr.Chevron.RenderTransform = rot;
                 if (open && !gr.DetailBuilt) BuildDetail(v, gr);
                 gr.Detail.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
                 // open with a row per launcher: those rows show the states - the group's own would repeat them
@@ -1844,9 +1861,9 @@ namespace AlternativeWeaponsControl
                 }
                 foreach (var m in gr.Members)
                 {
-                    int c = Cat(m.L.Ws);
+                    int c = Cat(m.L.Ws, m.L);
                     string mst, mtgt;
-                    StatusParts(m.L.Ws, c, out mst, out mtgt);
+                    StatusParts(m.L.Ws, c, out mst, out mtgt, m.L);
                     var full = string.IsNullOrEmpty(mtgt) ? mst : mst + " → " + mtgt;
                     var s = Shown(m.State, mst, mtgt, 1);
                     SetText(m.State, s, CatColor(c));
@@ -2151,8 +2168,8 @@ namespace AlternativeWeaponsControl
             string n0 = null;
             for (int i = 0; i < n; i++)
             {
-                cs[i] = Cat(gr.Ls[i].Ws);
-                StatusParts(gr.Ls[i].Ws, cs[i], out sts[i], out tgts[i]);
+                cs[i] = Cat(gr.Ls[i].Ws, gr.Ls[i]);
+                StatusParts(gr.Ls[i].Ws, cs[i], out sts[i], out tgts[i], gr.Ls[i]);
                 float ti;
                 var ni = NoTimer(sts[i], out ti);
                 if (i == 0) { n0 = ni; t0 = ti; }

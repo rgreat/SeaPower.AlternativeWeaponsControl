@@ -13,27 +13,34 @@ namespace AlternativeWeaponsControl
     static class R
     {
         const BindingFlags All = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
-        static readonly Dictionary<string, FieldInfo> Fields = new Dictionary<string, FieldInfo>();
-        static readonly Dictionary<string, PropertyInfo> Props = new Dictionary<string, PropertyInfo>();
-        static readonly Dictionary<string, MethodInfo[]> Methods = new Dictionary<string, MethodInfo[]>();
+        // type -> name -> member: no key string is built per call (these run every frame)
+        static readonly Dictionary<Type, Dictionary<string, FieldInfo>> Fields = new Dictionary<Type, Dictionary<string, FieldInfo>>();
+        static readonly Dictionary<Type, Dictionary<string, PropertyInfo>> Props = new Dictionary<Type, Dictionary<string, PropertyInfo>>();
+        static readonly Dictionary<Type, Dictionary<string, MethodInfo[]>> Methods = new Dictionary<Type, Dictionary<string, MethodInfo[]>>();
+        static Dictionary<string, T> Of<T>(Dictionary<Type, Dictionary<string, T>> d, Type t)
+        {
+            Dictionary<string, T> m;
+            if (!d.TryGetValue(t, out m)) d[t] = m = new Dictionary<string, T>();
+            return m;
+        }
 
         static FieldInfo Fi(Type t, string n)
         {
-            var k = t.FullName + "#" + n;
+            var m = Of(Fields, t);
             FieldInfo f;
-            if (Fields.TryGetValue(k, out f)) return f;
+            if (m.TryGetValue(n, out f)) return f;
             for (var ty = t; ty != null && f == null; ty = ty.BaseType) f = ty.GetField(n, All);
-            Fields[k] = f;
+            m[n] = f;
             return f;
         }
 
         static PropertyInfo Pi(Type t, string n)
         {
-            var k = t.FullName + "#" + n;
+            var m = Of(Props, t);
             PropertyInfo p;
-            if (Props.TryGetValue(k, out p)) return p;
+            if (m.TryGetValue(n, out p)) return p;
             for (var ty = t; ty != null && p == null; ty = ty.BaseType) p = ty.GetProperty(n, All);
-            Props[k] = p;
+            m[n] = p;
             return p;
         }
 
@@ -78,15 +85,15 @@ namespace AlternativeWeaponsControl
         {
             if (o == null) return null;
             var t = o.GetType();
-            var k = t.FullName + "#" + n;
+            var mm = Of(Methods, t);
             MethodInfo[] ms;
-            if (!Methods.TryGetValue(k, out ms))
+            if (!mm.TryGetValue(n, out ms))
             {
                 var l = new List<MethodInfo>();
                 for (var ty = t; ty != null; ty = ty.BaseType)
                     foreach (var m in ty.GetMethods(All)) if (m.Name == n && !m.ContainsGenericParameters) l.Add(m);
                 ms = l.ToArray();
-                Methods[k] = ms;
+                mm[n] = ms;
             }
             foreach (var m in ms)
             {

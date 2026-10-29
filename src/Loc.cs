@@ -63,7 +63,7 @@ namespace AlternativeWeaponsControl
             D("cat.ready", "ready"); D("cat.engaging", "engaging"); D("cat.reload", "reload"); D("cat.damaged", "damaged");
             D("cat.off", "off"); D("cat.waiting", "waiting"); D("cat.sensorsOff", "sensors off");
             D("st.queued", "Queued"); D("st.waitFcr", "Waiting for FCR channel"); D("st.reloading", "Reloading: {0}");
-            D("st.localControl", "Local control"); D("st.railsEmpty", "Rails empty"); D("st.loading", "Loading rails"); D("st.unloading", "Unloading rails"); D("st.unloadPause", "Unloading: {0}");
+            D("st.localControl", "Local control"); D("st.railsEmpty", "Rails empty"); D("st.empty", "Empty"); D("st.loading", "Loading rails"); D("st.unloading", "Unloading rails"); D("st.unloadPause", "Unloading: {0}");
             D("target.track", "Track {0} ({1})"); D("target.trackOnly", "Track {0}"); D("target.unknown", "unknown");
             // ---- buttons and tips
             D("btn.fire", "Fire");
@@ -187,7 +187,7 @@ namespace AlternativeWeaponsControl
             D("lbl.Effects/FireFlicker", "Fire light flicker");
             D("lbl.Effects/FireLightPower", "Fire light brightness");
             D("lbl.Effects/MuzzleFlashLight", "Light flash when guns fire");
-            D("lbl.Effects/MissileLaunchFlashLight", "Light of missile boosters at launch");
+            D("lbl.Effects/MissileLaunchFlashLight", "Light of missile boosters at launch"); D("lbl.Effects/FlashLimit", "Limit flash glare"); D("lbl.Effects/DayBrightness", "Flash and fire brightness by day");
             D("lbl.Effects/HitFlashLight", "Light flash when shells hit");
             D("lbl.Effects/FlashPower", "Flash brightness");
             D("lbl.General/Debug", "Debug trace");

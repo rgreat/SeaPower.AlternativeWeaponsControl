@@ -694,7 +694,8 @@ namespace AlternativeWeaponsControl
                             var all = R.F(R.F(obj, "_obp"), "_weaponSystems") as IList;
                             var sb = new System.Text.StringBuilder();
                             foreach (var l in list) sb.Append(all == null ? -1 : all.IndexOf(l)).Append(' ');
-                            Trace("pinned selector " + ammoId + ": launcher #" + (all == null ? -1 : all.IndexOf(pin)) + " pinned, the game offered #" + sb.ToString().Trim() + (list.Contains(pin) ? "" : " - the pinned one is NOT among them"));
+                            string msg = "pinned selector " + ammoId + ": launcher #" + (all == null ? -1 : all.IndexOf(pin)) + " pinned, the game offered #" + sb.ToString().Trim() + (list.Contains(pin) ? "" : " - the pinned one is NOT among them");
+                            TraceLimited(System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj) + msg, 10f, msg);   // the same line: once per 10 s (a change of the offer is a new line at once)
                         }
                         for (int i = list.Count - 1; i >= 0; i--) if (!ReferenceEquals(list[i], pin)) list.RemoveAt(i);
                         return;
