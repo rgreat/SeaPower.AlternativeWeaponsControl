@@ -1,6 +1,6 @@
 # Alternative Weapons Control
 
-Adds a new **Weapons** tab in the Unit Status window of your units, and a set of combat and visual improvements.
+Adds a new **Weapons** tab in the Unit Status window of your units, and a set of combat improvements.
 
 # Features
 
@@ -27,23 +27,23 @@ Adds a new **Weapons** tab in the Unit Status window of your units, and a set of
 2. **Aim beyond maximum range:** guns, CIWS and machine guns turn towards a target out of range without firing.
 3. **Disable AI cheating:** the game's AI engages only contacts whose true side is hostile, which you cannot know. Your ships now engage the contacts you marked hostile on the plot (on Tight: aircraft only).
 4. **Close-range accuracy:** option for the best accuracy of guns (default 5 m).
-5. **Ship chase options:** a ship keeps its course instead of running after RBU targets or aircraft to get them into range.
+5. **Ammunition pack:** the accuracy and warhead power of 47 gun ammunition types are taken from the author's pack (ammunition_fix.txt in the mod folder). The table in the Guns tab of the settings window lists them with the game's names and the game's own values; you can edit every value and reset it to the game's. Option, on by default; applied to ammunition loaded after Apply (a mission start).
+6. **Ship chase options:** a ship keeps its course instead of running after RBU targets or aircraft to get them into range.
 
 ### Fire control (optional)
 
 1. **Guns take one director,** not all of them as in the game, so the others stay free for other guns and for missiles. On by default.
 2. **Guns without a free channel aim on local control** (less accurate, worse at night) until a channel frees. Off by default.
 
-### Visual and optics
+### Special effects
 
-1. **Light effects:** gunfire, hits, missile launches and detonations light up their surroundings in 3D, and the bigger the weapon, the brighter and longer the flash. Fires on ships flicker. By day the lights are dimmed (option, default 0.5) and the flashes alive at once share a total brightness limit, so the picture does not blow out into white and pink. Every effect can be switched off, and brightness is adjustable.
-2. **Machine guns:** tracers and the muzzle burst sound now last for the whole burst.
-3. **Binoculars** start in the normal view at maximum zoom, with no night or thermal filter by default (option: only by day).
+Special effects (flashes, fire light, binoculars normal view, machine gun and hit sound fixes) moved to the mod Alternative Special Effects; install it to keep them. Settings are taken over on its first start.
 
 ### Settings and languages
 
-1. Settings window in the game with tabs: Weapons panel, Fire Control, AI, Guns, Visual effects, Debug, Language.
-2. Localized into 9 languages (en, ru, cn, de, es, fr, ko, ja, vn). The **lang/<code>.ini** files can be edited to translate or change texts.
+1. Settings can be opened from the main menu and the pause menu; with several of the author's mods installed there is one shared "Alternative Mods" entry.
+2. Settings window in the game with tabs: Weapons panel, Fire Control, AI, Guns, Debug, Language.
+3. Localized into 9 languages (en, ru, cn, de, es, fr, ko, ja, vn). The **lang/<code>.ini** files can be edited to translate or change texts.
 
 # Compatibility
 

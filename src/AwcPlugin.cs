@@ -29,7 +29,7 @@ namespace AlternativeWeaponsControl
     {
         public const string PluginGuid = "com.rgreat.seapower.alternativeweaponscontrol";
         public const string PluginName = "Alternative Weapons Control";
-        public const string PluginVersion = "1.2.2";
+        public const string PluginVersion = "1.4.0";
 
         public static readonly string BuildId = ReadBuildId();
 
@@ -43,10 +43,10 @@ namespace AlternativeWeaponsControl
 
         // ------------------------------------------------------------ settings
         public ConfigFile Cfg;
-        internal ConfigEntry<string> _language; internal ConfigEntry<bool> _debugEntry, _gunChannels, _gunOneDirector, _noRbuSurfaceChase, _noAirChase, _mgBurstFix, _hitSoundFix, _mgSoundLoop;
+        internal ConfigEntry<string> _language; internal ConfigEntry<bool> _debugEntry, _gunChannels, _gunOneDirector, _noRbuSurfaceChase, _noAirChase;
         internal ConfigEntry<string> _secOrder;
-        internal ConfigEntry<float> _clickVolume, _samMinutes, _samAutoRange, _gunMinError, _flashPower, _firePower, _dayBright;
-        internal ConfigEntry<bool> _flashLimit, _plotHostile, _tabAir, _tabLand, _flashMissile, _fireFlicker, _optNormal, _optDayOnly, _flashMuzzle, _flashHit, _samButton, _zoneFire, _samAuto, _samKeep, _samAnim, _gunAimBeyond;
+        internal ConfigEntry<float> _clickVolume, _samMinutes, _samAutoRange, _gunMinError;
+        internal ConfigEntry<bool> _ammoFix, _plotHostile, _tabAir, _tabLand, _samButton, _zoneFire, _samAuto, _samKeep, _samAnim, _gunAimBeyond;
         public static string UserDir { get; private set; }
 
         /// <summary>The settings the window shows (in this order).</summary>
@@ -169,16 +169,6 @@ namespace AlternativeWeaponsControl
             _zoneFire = Cfg.Bind("UI", "FireShowsZones", true,
                 "While the target is being picked after Fire, the firing arcs and range of the weapons are shown on the map and in 3D " +
                 "(as the game does with Alt held over a weapon in the unit's status line).");
-            _optNormal = Cfg.Bind("Optics", "BinocularsNormalView", true, "Binoculars at the maximum magnification start with the normal view (the game starts them with its night / thermal filter on). The game's filter key switches the filter on.");
-            _optDayOnly = Cfg.Bind("Optics", "NormalViewDayOnly", true, "The normal view is the default only by day; at night the game's own default filter stays.");
-            _fireFlicker = Cfg.Bind("Effects", "FireFlicker", true, "The light of a fire on a ship flickers, deeper and faster the stronger the fire (small / moderate / severe).");
-            _firePower = Cfg.Bind("Effects", "FireLightPower", 3f, "Brightness of the fire light on ships (the game's own fire light multiplied; its range grows too). 1 = the game's.");
-            _flashMuzzle = Cfg.Bind("Effects", "MuzzleFlashLight", true, "A short light flash at the muzzle when guns, CIWS and machine guns fire (visible at night).");
-            _flashMissile = Cfg.Bind("Effects", "MissileLaunchFlashLight", true, "A light follows a missile for as long as its booster burns after launch (the booster burn time of the missile).");
-            _flashHit = Cfg.Bind("Effects", "HitFlashLight", true, "A short light flash where a gun shell hits (not in the water).");
-            _dayBright = Cfg.Bind("Effects", "DayBrightness", 0.5f, "Brightness of the flashes and of the fire light by day, 1 = no dimming. In full sun the lights are multiplied by this (at night they are not changed): the sun and a bright light add up and blow out into white and pink.");
-            _flashPower = Cfg.Bind("Effects", "FlashPower", 1f, "Brightness and size of the flashes, 1 = default.");
-            _flashLimit = Cfg.Bind("Effects", "FlashLimit", true, "All the flashes alive at once share a total brightness limit, so many hits together do not over-expose the picture.");
             _gunAimBeyond = Cfg.Bind("Guns", "AimBeyondMaxRange", true,
                 "The player's guns, CIWS and machine guns turn and elevate towards a target beyond their maximum range (up to 1.5 x the range, at least 5 nm) " +
                 "without firing, as if it were at the maximum range. Off = as in the game: the turret stays still until the target is in range.");
@@ -186,17 +176,13 @@ namespace AlternativeWeaponsControl
                 "Best (maximum) accuracy of guns against surface targets, in metres: the floor of the fire-control range error. The game uses about 40 m, so at close range " +
                 "(up to ~1.4 nm) guns are relatively less accurate than at medium range. The scaling with distance (1.5 % of range) stays. " +
                 "Set about 40 for the game's behaviour.");
-            _mgBurstFix = Cfg.Bind("Guns", "MachineGunBurstFix", true,
-                "Machine guns show their muzzle burst on every shot: a pooled burst effect that is still playing is restarted.");
-            _mgSoundLoop = Cfg.Bind("Guns", "MachineGunSoundLoopFix", true,
-                "The looped fire sound of machine guns skips the silent part of its clip (a gap in the middle of a long burst).");
-            _hitSoundFix = Cfg.Bind("Guns", "HitSoundFix", true,
-                "Gun hits always play their explosion sound: an effect whose sound did not start (pooled instance) is made to play it.");
+            _ammoFix = Cfg.Bind("Guns", "AmmunitionFix", true,
+                "Accuracy (circular error probable) and warhead power of gun ammunition are taken from the author's pack (ammunition_fix.txt in the mod folder) and from the values you set in the table below. Off = the game's own ammunition values. Applied to ammunition loaded after Apply (a mission start).");
             _debugEntry = Cfg.Bind("General", "Debug", false,
                 "Verbose logging and BepInEx/AlternativeWeaponsControl.trace.txt.");
             _language = Cfg.Bind("General", "Language", "",
                 "Language of the mod's texts: a code of a game language (en, ru ...); empty = the game's own language. The texts are in the files lang/<code>.ini in the mod folder - edit them to translate.");
-            Entries.Add(_clickVolume); Entries.Add(_samButton); Entries.Add(_zoneFire); Entries.Add(_plotHostile); Entries.Add(_freeAirKnots); Entries.Add(_freeAirNm); Entries.Add(_freeAirOwn); Entries.Add(_freeAirEnemy); Entries.Add(_tabLand); Entries.Add(_tabAir); Entries.Add(_samAuto); Entries.Add(_samKeep); Entries.Add(_samAnim); Entries.Add(_samAutoRange); Entries.Add(_samMinutes); Entries.Add(_gunOneDirector); Entries.Add(_gunChannels); Entries.Add(_noRbuSurfaceChase); Entries.Add(_noAirChase); Entries.Add(_gunAimBeyond); Entries.Add(_optNormal); Entries.Add(_optDayOnly); Entries.Add(_fireFlicker); Entries.Add(_firePower); Entries.Add(_flashMuzzle); Entries.Add(_flashMissile); Entries.Add(_flashHit); Entries.Add(_flashPower); Entries.Add(_flashLimit); Entries.Add(_dayBright); Entries.Add(_gunMinError); Entries.Add(_mgBurstFix); Entries.Add(_mgSoundLoop); Entries.Add(_hitSoundFix); Entries.Add(_debugEntry); Entries.Add(_language);
+            Entries.Add(_clickVolume); Entries.Add(_samButton); Entries.Add(_zoneFire); Entries.Add(_plotHostile); Entries.Add(_freeAirKnots); Entries.Add(_freeAirNm); Entries.Add(_freeAirOwn); Entries.Add(_freeAirEnemy); Entries.Add(_tabLand); Entries.Add(_tabAir); Entries.Add(_samAuto); Entries.Add(_samKeep); Entries.Add(_samAnim); Entries.Add(_samAutoRange); Entries.Add(_samMinutes); Entries.Add(_gunOneDirector); Entries.Add(_gunChannels); Entries.Add(_noRbuSurfaceChase); Entries.Add(_noAirChase); Entries.Add(_gunAimBeyond); Entries.Add(_gunMinError); Entries.Add(_ammoFix); Entries.Add(_debugEntry); Entries.Add(_language);
             Loc.Trace = Trace; Loc.Forced = () => _language == null ? "" : _language.Value;
             foreach (var en in Entries) Loc.Register("help." + en.Definition.Section + "/" + en.Definition.Key, en.Description == null ? "" : en.Description.Description);
 
@@ -287,10 +273,9 @@ namespace AlternativeWeaponsControl
             var harmony = new Harmony(PluginGuid);
             const BindingFlags all = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
             try { HookStatusTabs(harmony, asm); } catch (Exception e) { Warn("Unit Status hooks failed: " + e.Message); Trace(e.ToString()); }
-            try { HookFireFlicker(harmony, asm); } catch (Exception e) { Warn("Fire flicker failed: " + e.Message); }
-            try { HookOptics(harmony, asm); } catch (Exception e) { Warn("Binocular view failed: " + e.Message); }
             try { HookZones(harmony, asm); } catch (Exception e) { Warn("Fire zones failed: " + e.Message); }
             try { HookWarmUp(harmony, asm); } catch (Exception e) { Warn("SAM ready button failed: " + e.Message); }
+            try { HookAmmoFix(harmony, asm); } catch (Exception e) { Warn("Ammunition fix failed: " + e.Message); }
             try { HookGunFixes(harmony, asm); } catch (Exception e) { Warn("Gun fixes failed: " + e.Message); }
             try { HookWeapons(harmony, asm); } catch (Exception e) { Warn("Weapons hooks failed: " + e.Message); Trace(e.ToString()); }
             try
@@ -309,6 +294,14 @@ namespace AlternativeWeaponsControl
                         }
             }
             catch (Exception e) { Warn("Mods menu hooks failed: " + e.Message); }
+            try
+            {
+                // the shared settings entry of the author's mods in the main and the pause menu (Rgreat.Hub, SettingsHub.cs is the same file in every mod)
+                Rgreat.Hub.SettingsHub.Register("alternative-weapons-control", () => Loc.T("menu.button"), PluginVersion, 20,
+                    anchor => SettingsWindow.Open(anchor as Noesis.UIElement, null), () => Enabled);
+                Rgreat.Hub.SettingsHub.Install(harmony, asm, Trace, () => Loc.Language);
+            }
+            catch (Exception e) { Warn("Settings menu entry failed: " + e.Message); }
         }
 
         // ------------------------------------------------------------ the Weapons tab in Unit Status

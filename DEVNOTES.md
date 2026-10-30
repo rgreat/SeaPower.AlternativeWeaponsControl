@@ -244,22 +244,9 @@ Alternative Damage Model: настройки — шестерёнка на кн�
   воздушная (`isAirTarget`: самолёты, вертолёты, ракеты) — `_goingIntoFiringRange = false`, дуг нет (null): корабль держит курс.
   Разворот от слишком близкой цели и наведение дуги пусковой на цель в дальности — как в игре. Только при включённом моде.
 
-## Орудия: опции [Guns] (GunFixes.cs)
-* Пулемёты (14.5mm_2M-5 и др.) — Type=CIWS (`CIWS.cs`), не GunBarrel. Видимые трассеры — системы частиц эффекта
-  (`CIWS._tracers`, дочерняя «Tracers» с rateOverTime = FireRate/60/5) с duration 1.1 с и loop=false: через 1.1 с после
-  `startFire()` эмиссия прекращалась, очередь «через раз». MachineGunBurstFix: postfix `CIWS.startFire` — `main.loop = true`
-  у всех играющих систем эффекта (белые и синие трассеры идут вместе). Emit(1) в начале очереди давал только синий — убран.
-* Звук попаданий (HitSoundFix): у префабов `missile_hit_ship_small`, `_2`, `_4` (+ `missile_hit_air*`, `Bomb_cluster` и др.)
-  нет AudioSource; postfix `EffectsManager.spawnEffect` внутри `Projectile.ProcessCollision` добавляет AudioSource с клипом
-  explosion*/flak* «донора» (из `_effectsDictionary`), maxDistance >= 50 юн. Приоритет звуков не меняется. В сцене играет
-  60-70 источников при 32 real voices (virtual 512).
-* Звук пулемёта: пауза между очередями на слух — реальная пауза в стрельбе (дисциплина огня), а не ошибка; визуально трассеры
-  цельные только потому, что летят до 12 с. Звук гаснет через 0.3 с после последнего выстрела (игра) — оставлен как есть.
-  Пробовали продлевать звук через паузу — отвергнуто: звук должен идти только пока пулемёт стреляет.
-* Trace: звук очереди — клип `tripleA` 2.16 с, loop=true, playing/virtual False/громкость 1 всю очередь (3 с) → пауза
-  в середине = тихая часть самого клипа при зацикливании (позиция 1.98 → 0.03). MachineGunSoundLoopFix: громкость клипа
-  меряется окнами 50 мс (`AudioClip.GetData`), позиция воспроизведения перепрыгивает с конца громкой части на её начало
-  (postfix `CIWS.update`). Если клип не читается (compressed) — ничего не делает, пишет в trace. 
+## Gun effects (machine gun tracers / sound, hit sound): moved to Alternative Special Effects
+
+## Кнопки внизу вкладки Weapons
 * Кнопки внизу вкладки Weapons перестали не нажиматься сами; `AddClickProbe` (Debug) оставлен.
 
 ## Очередь задач (следующий релиз, от пользователя, Oct 20)
@@ -314,33 +301,7 @@ Alternative Damage Model: настройки — шестерёнка на кн�
 - Z-порядок на карте: клин сектора (`WeaponArcSegmentViewModel`, `MapPie`) лежит на слое 1 (UNASSIGNED_INFO), кольцо дальности выбранного юнита (`RangeOnMapViewModel`) - на слое 19 (UNIT_MAP_RANGE); `GizmoLayer.AddGizmo` берёт Z-index = номер слоя, поэтому кольцо перекрывало сектор. `ArcZStep` (Zones.cs, из `Update`): после старта Fire ищет `MapPie` с DataContext `WeaponArcSegmentViewModel` в дереве UI (корень - от видимого статус-вью) и ставит Z-index 20 (между 19 и конусами ГСН 21); слой/видимость не меняются, до 25 попыток с шагом 0.2 с. НЕ делать Harmony-патч `GizmoHost.UpdateHost` - игра падала на старте. Alt-подсветка не затронута. Не проверено в игре.
 - Пусковая/орудие с Fire на одной пусковой - зона только её (`Pending.Ws`), иначе все системы боеприпаса (`WeaponEntry.WeaponSystems`).
 
-## Вспышки света (Flash.cs, [Effects] MuzzleFlashLight/HitFlashLight=false, FlashPower=1) - пункт 6, СДЕЛАН (не проверено в игре)
-- Дульная вспышка: postfix `GunBarrel.LaunchProjectile` -> точечный Light в `_gunObject.TransformPoint(_effectPosition)`; CIWS/пулемёты: в `CiwsUpdate` пока `_isFiring`, ~8 вспышек/с у `_tracers`.
-- Попадание: в `HitEffect` (spawnEffect во время `Projectile.ProcessCollision`), пропуск эффектов с water/splash/wake в имени.
-- Light живёт `AwcFlash` (MonoBehaviour: затухание, самоудаление); не более 10 одновременно, камера дальше ~10 nm - пропуск. 1 unit = 67 м.
-
-## Обычный вид в бинокле на макс. увеличении (Optics.cs, [Optics] BinocularsNormalView=true, NormalViewDayOnly=true (по умолчанию)) - пункт 7, СДЕЛАН (не проверено в игре)
-- `CameraManager` на профиль бинокля (`binocular_7x50`, `bridge_binocular_20x120_stab`) вешает `FullscreenShaderToggleCycle.Configure(...)`: фильтр (ночной/тепловой) включён сразу (`effectEnabled=true`), `toggleKey=None`.
-- Postfix `CameraManager.ApplyOpticalPostProcessProfile`: если режим Binoculars, профиль последний в `_availableOpticalViewProfiles` (макс. увеличение), есть материалы фильтра, (опция DayOnly: `DynamicSky.getSunlightIntensity() >= 0.5`) -> `effectEnabled=false`, `toggleKey` = исходный (`originalToggleKey`, KeypadDivide) - игровая клавиша включает фильтр обратно.
-- Профили `optical_views/*.ini` в распакованных файлах не нашёл (внутри игры) - какие именно фильтры у профилей, не проверено.
-
-## Правка: вспышки и огонь
-- Вспышка попадания теперь 0.28 с (было 0.14).
-- Мерцание пожара ([Effects] FireFlicker=true, Flash.cs `AwcFireFlicker`): postfix `Compartments.CreateFireEffect` вешает компонент на игровой `pointlight` эффекта пожара; модуляция intensity/range шумом Перлина, глубина и частота зависят от силы (small 0.5 / moderate 1 / severe 1.6 - по сравнению effect с `_obp._small/_moderate/_severeFireEffect`). Базовые значения света берутся из префаба игры. Не проверено в игре.
-
-## Свет при пуске ракет ([Effects] MissileLaunchFlashLight=false, Flash.cs)
-- Prefix/postfix `Missile.ScheduleFlightEffects` (только первый вызов: `_flightEffects==null` до вызова) -> Light, прикреплённый к ракете (идёт за ней), живёт `MissileSimulator.GetAccelerationTimes(ap, airLaunched).primaryTime` (время работы стартового ускорителя; максимум 20 с), яркость держится 70% времени, затем гаснет.
-- Время есть у всех ракет: для Kinematics=Full это `AccelerationTime` (в ini задан у 96 из 163 ракет, иначе по умолчанию 6 с), для остальных считается из max velocity / ускорения. `BoosterEffect` (дым/пламя) нет только у pla_yj-6 и usn_aim-54a - свет у них всё равно будет. Лимит одновременных огней для ракет: 18.
-
-## Правка: ярче взрывы и пожары
-- Вспышка попадания: пик 8 (было 4), 0.56 с (было 0.28), радиус 10.
-- Пожары: свет НЕ наш - игровой `pointlight` эффекта пожара отсека (`Compartments.CreateFireEffect`: позиция = `_obp._compartmentEffectPositions[i] + effect._position`). Мерцание его модулирует; добавлен [Effects] FireLightPower=3 (множитель яркости, радиус растёт на 50% множителя-1), минимумы базы 0.5 / 3.
-
-## Вспышки на все взрывы ([Effects] HitFlashLight)
-- Postfix `EffectsManager.spawnEffect(ep)` (`HitEffect(__result, ep)`): `ExplosionFlash` смотрит `ep._effect._effectClassName/_name`: содержит explosion / impact_ / blast / detonat -> вспышка; water / splash / underwater / wake / starshell исключены. Размер по Tiny/Small/Medium/Large/VeryLarge (0.4..2.4), flak x0.7; яркость 8*sqrt(k)*1.2, радиус 10*k, время 0.56*(0.6+0.4k). Не только снаряды орудий, но и ракеты, боевые части, бомбы, взрывы боезапаса.
-
-## Яркость применяется сразу
-- `AwcFlash` каждый кадр читает [Effects] FlashPower (`FlashK`) и пересчитывает range/intensity (хранит базовые Peak/Range); `AwcFireFlicker` уже читал FireLightPower каждый кадр. Окно настроек работает на копии - значения вступают в силу по Apply/OK, уже горящие огни и текущие вспышки меняются без перезапуска.
+## Flashes, fire light, binoculars normal view: moved to Alternative Special Effects
 
 ## Всплывающие сообщения игры блокируют клики - вынесено в Smart Windows
 - Причина «кнопки не нажимаются» (подтверждена пользователем): `ItemsControl` над `MainGameViewModel.TopAlerts` (правый нижний угол) ловит клики погасшими сообщениями (hit-test не учитывает Opacity); Smart Windows 1.5.2 с отрицательным ZIndex окон поставил его над окнами. Исправление (IsHitTestVisible по сообщению: `AlertTextOpacity > 0.05`) перенесено в Smart Windows; из AWC убрано. Код был в коммите «Next release work…» (AwcPlugin.cs `AlertsStep`).
@@ -361,11 +322,8 @@ Alternative Damage Model: настройки — шестерёнка на кн�
 - Порядок общий для всех юнитов, строка имён секций через запятую в [UI] SectionOrder (скрыт из окна настроек); пустая = по умолчанию; секции, которых нет в списке, идут после, по умолчанию.
 ## Очередь: все 9 пунктов сделаны.
 
-## Бинокль (Optics.cs): пользователь сообщил «всё ещё термальный вид при макс. увеличении»
-- Причина по коду не найдена: `effectEnabled=false` в `FullscreenShaderToggleCycle` даёт обычное изображение (OnRenderImage), других мест включения нет. Добавлена трассировка (Debug) `optics ...`: профиль, режим, число профилей, последний ли, материалы/фильтры, DefaultFilter. Нужен лог с Debug. Исправлено: `toggleKey` - ПОЛЕ (SetF, а не SetP).
-
 ## Settings window tabs
-SettingsWindow.cs: each Field has Tab + Group. Tabs: Weapons panel (Panel, SAM readiness button), Fire Control (SAM, Fire control), AI (On Free: unidentified aircraft, Chasing), Guns (Accuracy, Tracers and sound), Visual effects (Binoculars, Flashes, Fires), Debug. Tab bar is row 1 of the window; a yellow dot on a tab = unapplied changes inside it. Current tab is kept while the game runs.
+SettingsWindow.cs: each Field has Tab + Group. Tabs: Weapons panel (Panel, SAM readiness button), Fire Control (SAM, Fire control), AI (On Free: unidentified aircraft, Chasing), Guns (Accuracy), Debug. Tab bar is row 1 of the window; a yellow dot on a tab = unapplied changes inside it. Current tab is kept while the game runs.
 
 ## Локализация (Loc.cs, Release/lang/*.ini)
 - Все тексты мода - в таблице `D(key, en)` в Loc.cs; в коде `Loc.T(key)` / `Loc.F(key, args)` (`{0}`...). Тексты .cfg-описаний (подсказки окна настроек) регистрируются в рантайме как `help.Section/Key` (`Loc.Register`), подписи полей окна - `lbl.Section/Key`, вкладки `tabs.*`, группы `grp.*`.
@@ -417,7 +375,7 @@ SettingsWindow.cs: each Field has Tab + Group. Tabs: Weapons panel (Panel, SAM r
 - Settings window: height 805 screen pixels (converted by the UI scale at the first opening); language is a ComboBox as in ADM; Apply rebuilds the whole window (title, tabs, buttons) so a new language shows at once.
 - Apply: rebuild of the whole window is delayed by 2 frames (SettingsWindow.Tick from Update), not done inside the Apply click.
 - Fire: the game's max-range circle (AttackingState MapEllipse with SemiMajorAxis == MaxRangeInLat) is collapsed by RingHideStep (UI-tree scan every 0.25 s while zones are active); the firing-arc wedges get a red Stroke (235,45,45) in ArcZStep.
-- Defaults changed to the user's cfg: Muzzle/MissileLaunch/HitFlashLight=true, UnknownAirMaxNm=20, SamAutoChargeRange=30, ClickVolume=0.5.
+- Defaults changed to the user's cfg: UnknownAirMaxNm=20, SamAutoChargeRange=30, ClickVolume=0.5.
 - Fire zones scan (Zones.cs ArcZStep): every frame for 90 frames after the zones start, then 4/s; all visible roots; hides AttackingState max-range ellipse, wedges red + Z 20 re-applied on every scan (they are rebuilt when the hovered weapon changes).
 - Fire zones: Harmony postfix on AttackingState ctor starts a per-frame scan (120 frames) that collapses the max-range circle; the wedges' orange is replaced by changing the colour of the game's resource Map_FiringArc (ArcColorStep, every 1 s, found via FindResource); the per-wedge Stroke is only a fallback if that fails.
 - Fire zones, range circle (replaces the scan): Harmony prefix on AttackingState.set_MaxRangeInLat stores the real value (ConditionalWeakTable) and passes 0 (FireShowsZones on) - the MapEllipse never gets a radius, the max label hides with it; prefix/postfix of UpdateBearingPreview put the real value into _maxRangeInLat for the call (line ~742 uses it). The scan of ArcZStep now only sets the wedges' Z-index 20.
@@ -426,11 +384,6 @@ SettingsWindow.cs: each Field has Tab + Group. Tabs: Weapons panel (Panel, SAM r
 - Fire zones, FINAL (no scanning): zero-radius max-range circle (set_MaxRangeInLat prefix + UpdateBearingPreview swap) and red wedges via Harmony postfix of ThemeDictionarySwapper.ApplyTheme, which replaces Map_FiringArc in the dictionary just merged into the map (the theme is local to the map, so FindResource from the status view never saw it). The UI-tree scan and the wedges' Z-index step are gone (the circle was what covered them). Takes effect when the map loads / theme changes, so FireShowsZones is read then. Patching MapEllipse/MapPie callbacks crashed the game at start.
 - The game crashed at start with ThemeDictionarySwapper.ApplyTheme postfix changing the dictionary inside the callback: now the postfix only notes the swapper, ThemeSwapStep (Update) changes Map_FiringArc on a later frame. If it still crashes - suspects: that patch, then set_MaxRangeInLat/UpdateBearingPreview.
 - LogOutput of the crash ended right after 'Enabled in the game's Mods menu' (patching at start): the ThemeDictionarySwapper.ApplyTheme patch is REMOVED (do not patch it). Wedge colour now: ArcColorOnce at the start of the zones finds the MapBase once (cached), replaces Map_FiringArc in its MergedDictionaries by a red brush.
-- Missile booster light scales with the missile mass (ap._massInKg, ln(mass+250) scale, 15..7000 kg): brightness 25..100 %, radius 50..100 % (Flash.cs MissileLaunchFlash).
-- Muzzle flash and hit flash graded like the missile booster light (brightness 25..100 %; radius muzzle 50..300 m, hit 100..600 m, missile 50..100 % of 12 units): muzzle by the shell mass (ammo._ap._massInKg, ln(mass+10), 0.13..862 kg; BarrelFlash got the 'ammo' argument), hits by the size tier in the effect name (Tiny 0 .. VeryLarge 1; 100 % = 24 range / 14.9 peak). CIWS/machine-gun flashes unchanged.
-- CIWS/machine-gun flash radius: shot 50 m, hit 100 m (hit by effect impact_small_shell_multi = 0.5 in..35 mm shells); brightness unchanged.
-- Flash of torpedo / bomb / RBU detonation: postfix of WeaponBase.CreateDesctructionEffects (prefix sets _inDetonation, which turns the generic ExplosionFlash off for these three types - one flash, not two); strength = ap._warheadPower on the guns' Power scale (0.1..35, capped), hit scale: brightness 25..100 %, radius 100..600 m; duds (_warheadMalfunction) none; the light is lifted to y>=0.3. ASROC / depth charges (AirDepthCharge) are not covered.
-- Flash duration also graded by the same strength: 100..300 % (muzzle 0.09..0.27 s; hits and detonations 0.39..1.18 s; autocannon/MG hits and CIWS shots stay at 100 %).
 - The max-range circle is hidden only for a targeting state started by the mod's Fire button / its menu (OurFireExecute wraps the command, OurFireDepth > 0 when the state first gets MaxRangeInLat; marked in RealMax). The game's own Fire keeps its circle.
 - Zones (wedges) are shown only for targeting started by the mod's Fire (IsOurState, the RealMax mark); the game's own Fire shows neither the zones nor hides its circle.
 - SAM readiness: a launcher made hot and loaded by the game itself (no Box) is adopted (WarmPostfix, 2x per second per launcher): Box with Until = now + SamReadyMinutes, so the button shows the timer and the missiles are put away at the end.
@@ -439,7 +392,6 @@ SettingsWindow.cs: each Field has Tab + Group. Tabs: Weapons panel (Panel, SAM r
 - `CheckTargeting` (every frame per visible Weapons tab): the `Globals._mainGameViewModel` FieldInfo is cached (was a type + field lookup by name each frame).
 - `UnknownAirClosing` (AutoCharge, every 3 s per AI): `LocalVehicles` is read through `IDictionary` instead of `GetMethod("TryGetValue").Invoke` per object.
 - `FreeAirPostfix`: the list of added aircraft is allocated only when there is something to add.
-- `MissileLaunchFlash`: `GetAccelerationTimes` MethodInfo cached.
 - Checked and left: AiEnter/AiLeave, ArcPostfix (O(1)); AutoCharge and warm-up adoption (throttled 3 s / 0.5 s); HetEnter/HetLeave (per distribution, not per frame); CiwsEnter (only units with a CIWS switched off; builds the skip set per AquireTarget call - a per-frame shared set is possible if profiling shows it); WeaponsTick refresh (0.3 s).
 - Not verified in game.
 
@@ -574,12 +526,6 @@ All values in the user's cfg already matched the defaults in the code except `[U
 - Pinned order to an empty / cold launcher (checked in the code, 0.8.6 `WeaponSelector`): the game offers a launcher whose rails are empty if its magazine has the ammunition (`isWeaponSystemOutOfAmmo` looks at the loaded AND magazine counts); `SelectorCore` keeps only the pinned launcher, so the task is never given to another one. The cold launcher then runs the game's own order flow (`IsHot=true; StartReload()`, our `triggerLoadSystem` during the count: the load animation opens the reload) and fires. With no ammunition at all (magazine 0) the game drops the launcher and the order is discarded ("no systems found"): right. Not verified in the 0.8.7 game.
 - Open (found while checking, NOT changed): with several launchers for the ammunition the game keeps only those whose preferred arc holds the target (then those with the target in the firing arc), so a pinned launcher that is not in that subset is not offered; `SelectorCore` then empties the list and the game discards the order ("pinned selector ... the pinned one is NOT among them"). A possible fix: put the pin back when it passes the game's own filters (operable, online, has ammunition, target in its firing arc if `_engageOnlyInsideArc`). Waiting for a trace that shows the case.
 
-## 28.10: Flash over-exposure (Effects/FlashLimit)
-- Symptom: by day bright flashes (hits/explosions up to 14.9 peak, muzzle 5x) blow out into white and pink-purple (colour channels clip on light hulls and sea).
-- Fix (one toggle, `Effects/FlashLimit`, default on): (1) each new flash is dimmed by the sun: DayK = 1 - 0.65*sun (sun = DynamicSky.getSunlightIntensity via reflection, cached; if unavailable DayK = 1); (2) all alive `AwcFlash` share a total: Budget (20) x FlashPower x DayK. Each flash adds its wanted intensity to a per-frame sum; when the previous frame's sum exceeds the cap, every flash is scaled by cap/sum. On creation the new flash is scaled by cap/(sum + own).
-- Event-driven only: computed at flash creation and in the flash's own Update; no timers or polling. Fire flicker (`AwcFireFlicker`) untouched.
-- Works on 0.8.6 and 0.8.7 (sun lookup fails safely). Not verified in game; Budget/0.65 are the tuning values.
-
 ## 28.10: Fire zones in 3D are red
 - The map wedges were NOT red in game (the earlier resource replacement had no effect; the cause was never traced). Zones.cs ArcColor now changes the theme brush Map_FiringArc IN PLACE (SolidColorBrush.Color, originals remembered and restored when the zones end; replacing the brush stays as the fallback; trace lines "arc colour: ..." under Debug). The 3D view uses WeaponArc3DRenderer.ARC_COLOR (static readonly, (1, 0.62, 0.1, 0.28), orange-yellow, written into the mesh vertex colours at Show). Zones.cs Arc3DColor: while the zones of the mod's Fire are shown the field holds red (0.92, 0.18, 0.18, 0.32), set before SetCandidate; the original value is restored when the zones end. Reflection on a static readonly field (Mono allows it); failure is traced only. Follows FireShowsZones. Not verified in game.
 
@@ -587,8 +533,7 @@ All values in the user's cfg already matched the defaults in the code except `[U
 - WeaponsView.StatusParts (given the Launcher): a non-gun launcher (not Gun/CIWS) in category ready/reload, not engaging, with Stock() == 0 (rails + magazine) shows "Empty" (`st.empty`). The game itself sets `_isEmpty` only for guns, chaff and hardpoints, so a missile launcher out of missiles kept saying "Ready"/"Reloading". Added to ru.json and langs/*.txt after `st.railsEmpty`. Not verified in game.
 - Empty status is now a category too: Cat(ws, launcher) returns 4 (off/grey, the colour of disabled) for a non-gun launcher with Stock() == 0 that is not engaging; StatusParts shows "Empty" for it (only when the game does not already say Offline / Empty).
 
-## 28.10: Effects/DayBrightness (flashes and fire by day)
-- New number (default 0.5, 0.1..1): in full sun flashes (at creation) and the fire light (AwcFireFlicker, every update, flicker on or off) are multiplied by DayK = 1 - (1 - DayBrightness) * sun; night = 1. `DayDim()` is cached per frame (sun from DynamicSky via reflection; unknown sun = no dimming). It replaces the fixed 0.65 dimming that was inside FlashLimit; FlashLimit is now only the total-brightness cap (cap = 20 x FlashPower x DayK). Help texts of FlashLimit in the non-ru/en languages still mention the daylight dimming (not retranslated).
+## 28.10: Fire zones, map colour: log analysis
 - Fire zones, map colour (28.10 log): `zones: start` was reached but ArcColorOnce printed nothing - the loop over the first MapBase's MergedDictionaries found no brush silently. Now: all MapBase of the root are collected once (kept in `_maps`), each painted through `map.TryFindResource("Map_FiringArc")` first and through its merged dictionaries second (brush Color in place, originals restored when the zones end); every outcome is traced (`arc colour: maps found N`, `... -> brush colour set`, `nothing painted`). Wedge fill (weak red) NOT done: the template gives MapPie a Stroke only; waiting for this log.
 - Fire zones, map colour, 2nd log: 1 MapBase found, `TryFindResource("Map_FiringArc")` = no resource, the map's one merged dictionary has no such key - the theme brush is NOT reachable that way (it is dropped as a resource approach). Now `ArcPaintStep` (Update; armed by ArcColor(true) at zones start; <= 60 tries every 0.1 s, then <= 10 more after the first success): walks the MapBase subtree, finds MapPie whose DataContext is WeaponArcSegmentViewModel and sets local Stroke (red 0xDD) and Fill (weak red 0x30) by reflection. Local values override the DynamicResource; nothing to restore (pies die with the zones). Tree walk is bounded and only runs for ~1-6 s after a Fire click, not in a loop of the game. Wedge fill included (user request 28.10). Not verified in game.
 - Fire zones, map colour, 3rd log: armed, `maps found 1`, but no wedge was found inside the MapBase subtree within ~4 s (no exception). ArcPaintStep now walks the WHOLE tree of the status view's root (the wedges may be in a gizmo layer outside MapBase) and, if nothing is painted, traces once at ~0.5 s and once at ~3 s: `tree of N nodes: GizmoHost a, MapEllipse b, MapPie c [DataContext types]` - the next step depends on that line.
@@ -610,3 +555,33 @@ All values in the user's cfg already matched the defaults in the code except `[U
 - `WC.B(color)` returns one shared SolidColorBrush per colour (nothing mutates a brush after it is set); the chevron's RotateTransform(90) is a single shared instance and assigned only on change. The tab refresh (every 0.3 s) no longer creates native Noesis objects for them.
 - Trace arguments of the per-frame zone traces are built only when Debug is on.
 - Not done (minor): StatusViewsStep list reuse, Trace file writer buffering, ArcFillPostfix delegate caching, HeaderStep give-up counter.
+
+## 30.10: Special effects moved to Alternative Special Effects (1.3.0)
+- Removed from this mod (code, cfg, window rows, texts in 9 languages, docs): Flash.cs, Optics.cs and the effect part of GunFixes.cs. Options: Effects/MuzzleFlashLight, HitFlashLight, MissileLaunchFlashLight, FlashPower, FlashLimit, DayBrightness, FireFlicker, FireLightPower; Optics/BinocularsNormalView, NormalViewDayOnly; Guns/MachineGunBurstFix, MachineGunSoundLoopFix, HitSoundFix. The new mod keeps the same [Section]/Key names and copies the values from this mod's .cfg on its first start; old keys in users' .cfg files are ignored by BepInEx, the .cfg is not touched.
+- Kept: Guns/AimBeyondMaxRange, Guns/MaxAccuracyMeters (GunFixes.cs: AlignTurret, CIWS FireAtTarget, GetMeasurementRangeSigma patches), UI/FireShowsZones. Settings window: no "Visual effects" tab, no "Tracers and sound" group.
+- No remaining users of the removed symbols outside the deleted files (checked by grep before deleting). Localization tools (ru.json, help.json, langs/*.txt, langs/help_*.txt) lost the same keys.
+
+## 30.10: Shared settings hub (1.4.0)
+- `src/SettingsHub.cs` (namespace `Rgreat.Hub`) is the same file in every rgreat mod, copied unchanged from Alternative Special Effects (canonical copy: its `src/SettingsHub.cs`); never edit it here. Protocol v1: a registry in AppDomain data `rgreat.settings.v1`; the first mod whose menu hook runs puts the button in (main menu under Mod Manager, pause menu under Options), the others find it.
+- Registration at the end of `TryPatch` (AwcPlugin.cs), in its own try/catch: `SettingsHub.Register("alternative-weapons-control", () => Loc.T("menu.button"), PluginVersion, 20, anchor => SettingsWindow.Open(anchor as Noesis.UIElement, null), () => Enabled)` and `SettingsHub.Install(harmony, asm, Trace, () => Loc.Language)`. `Enabled` is the Mods-menu tick, asked each time.
+- Text `menu.button` ("Weapons Control", ru "Управление оружием", other languages English) in Loc.cs, `Release/lang/*.ini`, tools (ru.json, langs/*.txt).
+- `SettingsWindow.Open` needs only the cfg entries and the anchor's visual tree (top Grid/Canvas, else a Popup); no unit or mission object. Apply/OK are unchanged.
+
+## 30.10: [Guns] AmmunitionFix - ammunition pack as a txt file
+- Source: the user's `ammunition.fix.zip` (47 `#!extend ammunition/<name>.ini` files, keys `[Physics] CircularErrorProbable` and `[WarheadData] Power`; three files lack CEP, two have a broken `WarheadData]` line). Converted to `Release/ammunition_fix.txt` in the format of ASE's `hit_effects.txt`: `[ammunition file name]`, then `Key=value`. Not an ini of the game; the mod reads it itself (next to the dll).
+- `src/AmmunitionFix.cs`: Harmony postfix of the `AmmunitionParameters(string, int, WeaponSystem)` constructor (also builds the shared masters that `Create()` clones). Sets `_circularErrorProbable = CEP * 0.0148809375` (projectiles only, as `loadProjectileParameters`) and `_warheadPower`; `_warheadDudPower` (x0.2, missiles x0.5) and `_ammoPoints` (= Power) are changed too only if they still hold the game's defaults, so an explicit DudPower / AmmoPoints in the ini stays. Option `[Guns] AmmunitionFix` (default true; Guns tab, group Ammunition), checked at each construction. Applied when the ammunition is loaded (mission start); switching the option does not rewrite already loaded ammunition. The encyclopedia reads the ini directly and still shows the original values.
+- Keys in `Loc.cs`/tools: `grp.ammoFix`, `lbl.Guns/AmmunitionFix`, `help.Guns/AmmunitionFix` (9 languages).
+
+## 30.10: Ammunition tab (SettingsAmmo.cs, AmmunitionFix.cs)
+- New settings tab `tabs.ammo` "Ammunition": groups Accuracy (`Guns/MaxAccuracyMeters`, moved from the Guns tab), Ammunition (`Guns/AmmunitionFix`, moved), and the table (group `grp.ammoList`, drawn by `SettingsWindow.AmmoTable`, not by the generic `Row`). The Guns tab keeps `AimBeyondMaxRange` (group `grp.aiming`).
+- Layers: the game's ini < the pack (`ammunition_fix.txt`) < the player's values (`AlternativeWeaponsControl.ammunition.txt` next to the .cfg, same format; a key is stored only when it differs from the pack, or from the game when the pack has none). `AmmoEffective` = player ?? pack; the constructor postfix applies it. Reset of a row / "All to game values" puts the game's values (stored explicitly when the pack differs); "Pack values" restores the pack's.
+- The table works on the same work copy as the other settings: pseudo-keys `Ammo/<name>/0` (accuracy, m) and `/1` (power) are `Field`s created at the first opening (`EnsureAmmoFields`); `Saved` / `Default` / `Load` / `Commit` (`AmmoCommit`) handle them, so the yellow dots, Apply / OK / Cancel work as for cfg entries.
+- Game values and names: `AmmoGameValues` reads the ammunition ini through `Utils.openIniFile("/ammunition", "/<name>.ini")` and `IniHandler.readValue` (float) - no `AmmunitionParameters` is constructed for the UI - and the name from `ammunition_names` (`LocalizationLoader.OpenVirtualLocalizationFile("language_<lang>", ...)`, first element of the "name,,type,description" line). Cached per name.
+- Apply drops the shared masters of the changed ammunition from `AmmunitionParameters._sharedByType` (so the next load makes them again with the new values); weapons that already hold clones keep the old values until the mission is loaded again.
+- New keys (9 languages): `tabs.ammo grp.aiming grp.ammoList ammo.note ammo.resetAll ammo.restorePack ammo.colName ammo.colCep ammo.colPower`.
+
+
+## 30.10 (later): Guns tab merged, dependent settings hidden
+- Tab `tabs.ammo` removed; its rows and the table now live in `tabs.guns`. Labels: "Guns: change maximum accuracy" (hint "game: ~40", `Field.Game` text other than "game: off" is shown via `set.gameVal`), "Guns: alter accuracy and power", "SAM readiness limit".
+- `Field.Parent` (last argument of `Add`): a setting is not drawn while its switch is off (`ParentOn`). Pairs: UI/SamReadyButton -> UI/SamReadyMinutes, Ships/SamAutoCharge -> Ships/SamAutoChargeRange, Guns/AmmunitionFix -> the ammunition table. A switch click calls `DepsChanged`, which sets `_reshow`; `Tick()` redraws the body 2 frames later (not inside the click of the replaced checkbox).
+- GunOneDirector and GunChannelLimit affect guns only (`WeaponSystemGun`, weapon type "Gun"); CIWS and machine guns are not touched.

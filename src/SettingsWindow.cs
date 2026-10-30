@@ -17,7 +17,7 @@ namespace AlternativeWeaponsControl
     /// Noesis elements are built in code; buttons, text and check boxes get the game's own styles.
     /// While a text box has the keyboard, the game's hot keys are off (InputHandler.typingActive, as the game's own text boxes do).
     /// </summary>
-    static class SettingsWindow
+    static partial class SettingsWindow
     {
         public static Action<string> Trace = s => { };
         public static Action<string> Warn = s => { };
@@ -26,7 +26,7 @@ namespace AlternativeWeaponsControl
 
         sealed class Field
         {
-            public string Tab, Group, Key, Label, Unit, Game;
+            public string Tab, Group, Key, Label, Unit, Game, Parent;
             public Kind Kind;
             public float Step, Min, Max;
         }
@@ -35,23 +35,23 @@ namespace AlternativeWeaponsControl
         static readonly List<string> Tabs = new List<string>();
         static string _curTab = "tabs.panel";
 
-        static void Add(string tab, string group, string key, string label, string unit, Kind kind, float step, float min, float max, string game = null)
+        static void Add(string tab, string group, string key, string label, string unit, Kind kind, float step, float min, float max, string game = null, string parent = null)
         {
             if (!Tabs.Contains(tab)) Tabs.Add(tab);
-            Fields.Add(new Field { Tab = tab, Group = group, Key = key, Label = label, Unit = unit, Kind = kind, Step = step, Min = min, Max = max, Game = game });
+            Fields.Add(new Field { Tab = tab, Group = group, Key = key, Label = label, Unit = unit, Kind = kind, Step = step, Min = min, Max = max, Game = game, Parent = parent });
         }
 
         static SettingsWindow()
         {
-            const string T1 = "tabs.panel", T2 = "tabs.fire", TA = "tabs.ai", T3 = "tabs.guns", T4 = "tabs.visual", T5 = "tabs.debug";
+            const string T1 = "tabs.panel", T2 = "tabs.fire", TA = "tabs.ai", T3 = "tabs.guns", T5 = "tabs.debug";
             Add(T1, "grp.panel", "UI/WeaponsTabGroundUnits", "Weapons tab for ground units", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T1, "grp.panel", "UI/WeaponsTabAircraft", "Weapons tab for aircraft and helicopters", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T1, "grp.panel", "UI/FireShowsZones", "Fire shows weapon arcs and range", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T1, "grp.panel", "UI/ClickVolume", "Click sound volume", "0..1 · 0 = no sound", Kind.Number, 0.1f, 0f, 1f);
             Add(T1, "grp.samButton", "UI/SamReadyButton", "SAM readiness button", "", Kind.Bool, 0, 0, 0);
-            Add(T1, "grp.samButton", "UI/SamReadyMinutes", "SAM readiness time, minutes", "1..60", Kind.Number, 1f, 1f, 60f);
+            Add(T1, "grp.samButton", "UI/SamReadyMinutes", "SAM readiness limit", "1..60", Kind.Number, 1f, 1f, 60f, null, "UI/SamReadyButton");
             Add(T2, "grp.sam", "Ships/SamAutoCharge", "Charge SAMs when unknown aircraft approach", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(T2, "grp.sam", "Ships/SamAutoChargeRange", "Unknown aircraft distance to charge", "nm", Kind.Number, 5f, 5f, 200f);
+            Add(T2, "grp.sam", "Ships/SamAutoChargeRange", "Unknown aircraft distance to charge", "nm", Kind.Number, 5f, 5f, 200f, null, "Ships/SamAutoCharge");
             Add(T2, "grp.sam", "Ships/SamKeepLoaded", "Keep SAM missiles on the rails while hot", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T2, "grp.sam", "Ships/SamAnimFix", "Missile load / unload animation fix", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T2, "grp.fireControl", "FireControl/GunOneDirector", "Guns take one director", "", Kind.Bool, 0, 0, 0, "game: off");
@@ -63,21 +63,9 @@ namespace AlternativeWeaponsControl
             Add(TA, "grp.freeAir", "Fire/UnknownAirDefaultEnemy", "On Free by default: enemy AI ships", "", Kind.Bool, 0, 0, 0);
             Add(TA, "grp.chasing", "Ships/NoRbuSurfaceChase", "No chasing surface targets with ASW mortars", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(TA, "grp.chasing", "Ships/NoAirChase", "No chasing air targets", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(T3, "grp.accuracy", "Guns/AimBeyondMaxRange", "Aim guns at targets beyond max range", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(T3, "grp.accuracy", "Guns/MaxAccuracyMeters", "Gun maximum accuracy (best fire control error)", "m", Kind.Number, 1f, 0f, 100f);
-            Add(T3, "grp.tracers", "Guns/MachineGunBurstFix", "Machine gun tracers in the whole burst", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(T3, "grp.tracers", "Guns/MachineGunSoundLoopFix", "Seamless machine gun sound", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(T3, "grp.tracers", "Guns/HitSoundFix", "Always play gun hit sound", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(T4, "grp.binoculars", "Optics/BinocularsNormalView", "Normal view in binoculars at max zoom", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(T4, "grp.binoculars", "Optics/NormalViewDayOnly", "Normal view only by day", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(T4, "grp.flashes", "Effects/MuzzleFlashLight", "Light flash when guns fire", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(T4, "grp.flashes", "Effects/HitFlashLight", "Light flash when shells hit", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(T4, "grp.flashes", "Effects/MissileLaunchFlashLight", "Light of missile boosters at launch", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(T4, "grp.flashes", "Effects/FlashPower", "Flash brightness", "x", Kind.Number, 0.1f, 0.1f, 5f);
-            Add(T4, "grp.flashes", "Effects/FlashLimit", "Limit flash glare", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(T4, "grp.flashes", "Effects/DayBrightness", "Flash and fire brightness by day", "x", Kind.Number, 0.05f, 0.1f, 1f);
-            Add(T4, "grp.fires", "Effects/FireFlicker", "Fire light flicker", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(T4, "grp.fires", "Effects/FireLightPower", "Fire light brightness", "x", Kind.Number, 0.1f, 0.1f, 10f);
+            Add(T3, "grp.aiming", "Guns/AimBeyondMaxRange", "Aim guns at targets beyond max range", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T3, "grp.accuracy", "Guns/MaxAccuracyMeters", "Guns: change maximum accuracy", "m", Kind.Number, 1f, 0f, 100f, "~40");
+            Add(T3, "grp.ammoFix", "Guns/AmmunitionFix", "Guns: alter accuracy and power", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T5, "grp.diagnostics", "General/Debug", "Debug trace", "", Kind.Bool, 0, 0, 0);
             Add("tabs.language", "grp.language", "General/Language", "Language", "", Kind.Lang, 0, 0, 0);
         }
@@ -141,6 +129,7 @@ namespace AlternativeWeaponsControl
                     }
                 }
                 _top = top as UIElement ?? anchor;
+                EnsureAmmoFields();
                 Load();
                 BuildWindow();
                 _move = new TranslateTransform(0f, 0f);
@@ -200,10 +189,11 @@ namespace AlternativeWeaponsControl
         {
             _work.Clear();
             foreach (var e in P.Entries) _work[e.Definition.Section + "/" + e.Definition.Key] = e.GetSerializedValue();
+            foreach (var f in Fields) if (IsAmmo(f.Key)) _work[f.Key] = AmmoSavedText(f.Key);
         }
 
-        static string Saved(Field f) { var e = Entry(f.Key); return e == null ? "" : e.GetSerializedValue(); }
-        static string Default(Field f) { var e = Entry(f.Key); return e == null ? "" : TomlTypeConverter.ConvertToString(e.DefaultValue, e.SettingType); }
+        static string Saved(Field f) { if (IsAmmo(f.Key)) return AmmoSavedText(f.Key); var e = Entry(f.Key); return e == null ? "" : e.GetSerializedValue(); }
+        static string Default(Field f) { if (IsAmmo(f.Key)) return AmmoDefaultText(f.Key); var e = Entry(f.Key); return e == null ? "" : TomlTypeConverter.ConvertToString(e.DefaultValue, e.SettingType); }
         static string Get(Field f) { string v; return _work.TryGetValue(f.Key, out v) ? v : ""; }
 
         static bool Same(string a, string b)
@@ -457,10 +447,11 @@ namespace AlternativeWeaponsControl
             string group = null;
             foreach (var f in Fields)
             {
-                if (f.Tab != _curTab) continue;
+                if (f.Tab != _curTab || f.Group == "grp.ammoList" || !ParentOn(f)) continue;
                 if (f.Group != group) { group = f.Group; _body.Children.Add(GroupTitle(Loc.T(group))); }
                 _body.Children.Add(Row(f));
             }
+            if (_curTab == "tabs.guns" && Flag("Guns/AmmunitionFix")) AmmoTable();
             UpdateStatus();
         }
 
@@ -521,14 +512,14 @@ namespace AlternativeWeaponsControl
 
             string d = Default(f).Replace("True", Loc.T("set.on")).Replace("False", Loc.T("set.off")).Replace("true", Loc.T("set.on")).Replace("false", Loc.T("set.off"));
             if (f.Kind == Kind.Lang) d = Loc.T("set.gameLang");
-            var game = new TextBlock { Text = Loc.F("set.default", d) + (f.Game != null ? "\n" + Loc.T("set.gameOff") : ""), Foreground = B(CDim), FontSize = 11f, TextAlignment = TextAlignment.Right,
+            var game = new TextBlock { Text = Loc.F("set.default", d) + (f.Game == null ? "" : "\n" + (f.Game == "game: off" ? Loc.T("set.gameOff") : Loc.F("set.gameVal", f.Game))), Foreground = B(CDim), FontSize = 11f, TextAlignment = TextAlignment.Right,
                                        VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
             Grid.SetColumn(game, 2);
             g.Children.Add(game);
 
             var rst = new Button { Content = "↺", Width = 24f, Height = 22f, Padding = new Thickness(0f), HorizontalAlignment = HorizontalAlignment.Right };
             try { ToolTipService.SetToolTip(rst, Loc.T("set.resetTip")); } catch { }
-            rst.Click += (o, e) => { _work[f.Key] = Default(f); refresh(); mark(); };
+            rst.Click += (o, e) => { _work[f.Key] = Default(f); refresh(); mark(); DepsChanged(f.Key); };
             Grid.SetColumn(rst, 3);
             g.Children.Add(rst);
 
@@ -590,7 +581,7 @@ namespace AlternativeWeaponsControl
         static FrameworkElement BoolEditor(Field f, Action mark, out Action refresh)
         {
             var cb = new CheckBox { IsChecked = Get(f).Trim().Equals("true", StringComparison.OrdinalIgnoreCase), VerticalAlignment = VerticalAlignment.Center };
-            cb.Click += (o, e) => { _work[f.Key] = cb.IsChecked == true ? "true" : "false"; mark(); };
+            cb.Click += (o, e) => { _work[f.Key] = cb.IsChecked == true ? "true" : "false"; mark(); DepsChanged(f.Key); };
             refresh = () => cb.IsChecked = Get(f).Trim().Equals("true", StringComparison.OrdinalIgnoreCase);
             return cb;
         }
@@ -625,6 +616,7 @@ namespace AlternativeWeaponsControl
                 if (e == null || Same(Get(f), e.GetSerializedValue())) continue;
                 try { e.SetSerializedValue(Get(f)); } catch (Exception ex) { Trace(f.Key + ": " + ex.Message); }
             }
+            try { AmmoCommit(); } catch (Exception ex) { Trace("ammo commit: " + ex); }
             try { P.Cfg.Save(); P.RememberCfgStamp(); } catch (Exception ex) { Warn("Saving the settings failed: " + ex.Message); }
             if (close) { Close(); return; }
             Load();
@@ -632,11 +624,24 @@ namespace AlternativeWeaponsControl
             _redraw = 2;   // the whole window is rebuilt a couple of frames later: not inside the click of a button that is being replaced
         }
 
-        static int _redraw;
+        static int _redraw, _reshow;
+
+        static bool Flag(string key) { string v; return _work.TryGetValue(key, out v) && v.Trim().Equals("true", StringComparison.OrdinalIgnoreCase); }
+
+        /// <summary>A setting whose switch is off is not shown (the switch is another setting, Field.Parent).</summary>
+        static bool ParentOn(Field f) { return f.Parent == null || Flag(f.Parent); }
+
+        /// <summary>A switch was clicked: the settings that depend on it appear or disappear a couple of frames later (not inside the click of the box being replaced).</summary>
+        static void DepsChanged(string key)
+        {
+            if (key == "Guns/AmmunitionFix") { _reshow = 2; return; }
+            foreach (var f in Fields) if (f.Parent == key) { _reshow = 2; return; }
+        }
 
         /// <summary>Called every frame: the delayed rebuild of the window after Apply (the texts follow the new language).</summary>
         public static void Tick()
         {
+            if (_reshow > 0 && --_reshow == 0 && IsOpen && _root != null) { try { Show(); } catch (Exception ex) { Trace("reshow: " + ex); } }
             if (_redraw <= 0) return;
             if (--_redraw > 0) return;
             if (_root == null || !IsOpen) return;
