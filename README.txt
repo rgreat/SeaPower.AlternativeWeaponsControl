@@ -28,8 +28,8 @@ Fire and guns
 1. Fire shows the weapon's firing arcs in red, with a weak red fill, on the map (Sea Power 0.8.7) and in 3D while the target is being picked.
 2. Aim beyond maximum range: guns, CIWS and machine guns turn towards a target out of range without firing.
 3. Disable AI cheating: the game's AI engages only contacts whose true side is hostile, which you cannot know. Your ships now engage the contacts you marked hostile on the plot (on Tight: aircraft only).
-4. Close-range accuracy: option for the best accuracy of guns (default 5 m).
-5. Ammunition pack: the accuracy and warhead power of 47 gun ammunition types are taken from the author's pack (ammunition_fix.txt in the mod folder). The table in the Guns tab of the settings window lists them with the game's names and the game's own values; you can edit every value and reset it to the game's. Option, on by default; applied to ammunition loaded after Apply (a mission start).
+4. Close-range accuracy: "Guns: change maximum accuracy" - best accuracy of guns (default 5 m, the game has about 40 m).
+5. Ammunition pack: the accuracy and warhead power of 47 gun ammunition types are taken from the author's pack (ammunition_fix.txt in the mod folder). The table in the Guns tab of the settings window ("Guns: alter accuracy and power", on by default) lists them with the game's names, the mod's values and the game's own values; you can edit every value and reset it. The table and other dependent settings are hidden while their switch is off; applied to ammunition loaded after Apply (a mission start).
 6. Ship chase options: a ship keeps its course instead of running after RBU targets or aircraft to get them into range.
 
 Fire control (optional)

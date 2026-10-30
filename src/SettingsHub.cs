@@ -14,6 +14,7 @@
 //    "rgreatSettings"; pause menu: the list object noted in AppDomain data "rgreat.settings.v1.pause") and add nothing.
 //  - One active mod: the button carries its name and opens its settings window. Two or more: the button is "Alternative Mods"
 //    and opens a small list, one button per mod, in the order of the entries (then by id).
+//  - The hub logs to LogOutput.log (source 'rgreat settings hub'): every click, every failure.
 //  - Menus are built each time they are shown, so the label always reflects the mods that are active now. No polling anywhere.
 // ======================================================================================================================
 using System;
@@ -31,6 +32,9 @@ namespace Rgreat.Hub
         const string RegistryKey = "rgreat.settings.v1", PauseKey = "rgreat.settings.v1.pause", ButtonName = "rgreatSettings";
 
         static Action<string> _trace = s => { };
+        static BepInEx.Logging.ManualLogSource _log;
+        /// <summary>The hub writes to the BepInEx log (LogOutput.log) always: a click that does nothing must leave a trace even when the mod's Debug is off.</summary>
+        static void Log(string msg) { try { if (_log == null) _log = BepInEx.Logging.Logger.CreateLogSource("rgreat settings hub"); _log.LogInfo(msg); } catch { } }
         static Func<string> _language = () => "en";
         static Assembly _game;
 
@@ -112,6 +116,45 @@ namespace Rgreat.Hub
         public static void Install(Harmony harmony, Assembly game, Action<string> trace, Func<string> language)
         {
             _game = game; if (trace != null) _trace = trace; if (language != null) _language = language;
+            // Patching the menu classes at plugin start makes the runtime run their static constructors, which register Noesis properties before Noesis
+            // is ready: the game (the Release build) crashes natively. So the patches are made after the game's load screen has finished.
+            const BindingFlags any = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
+            try
+            {
+                var ls = game.GetType("SeaPower.LoadScreen");
+                if (ls != null)
+                    foreach (var nt in ls.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic))
+                        if (nt.Name.StartsWith("<ExecuteLoadScreen>", StringComparison.Ordinal))
+                        {
+                            var mn = nt.GetMethod("MoveNext", any);
+                            if (mn != null) { harmony.Patch(mn, postfix: Hm("LoadScreenPostfix")); _harmony = harmony; Log("menu entries wait for the end of the load screen"); return; }
+                        }
+            }
+            catch (Exception e) { Log("load-screen hook failed: " + e.Message); }
+            Log("load screen not found: menu entries are installed now");
+            DoInstall(harmony);
+        }
+
+        static Harmony _harmony;
+        static bool _installed;
+
+        static void LoadScreenPostfix(bool __result)
+        {
+            if (__result || _installed) return;    // the iterator has not finished yet
+            _installed = true;
+            try
+            {
+                DoInstall(_harmony);
+                // the main menu may have been built already: it gets its button now
+                var menu = GameView("SeapowerUI.MainMenuView");
+                if (menu != null) MainMenuCtorPostfix(menu);
+            }
+            catch (Exception e) { Log("installing the menu entries failed: " + e); }
+        }
+
+        static void DoInstall(Harmony harmony)
+        {
+            var game = _game;
             const BindingFlags all = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
             var main = game.GetType("SeapowerUI.MainMenuView");
             var ctor = main == null ? null : main.GetConstructor(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, Type.EmptyTypes, null);
@@ -231,8 +274,9 @@ namespace Rgreat.Hub
         /// <summary>One active mod: its window at once. Several: the list.</summary>
         static void Open(UIElement anchor)
         {
-            if (anchor == null) { _trace("SettingsHub: the menu screen was not found."); return; }
+            if (anchor == null) { Log("click: the menu screen was not found"); _trace("SettingsHub: the menu screen was not found."); return; }
             var a = Active();
+            Log("click: " + a.Count + " active mod(s): " + string.Join(", ", a.ConvertAll(e => (string)e[0]).ToArray()));
             if (a.Count == 0) return;
             if (a.Count == 1) { Run(a[0], anchor); return; }
             ShowList(anchor, a);
@@ -241,41 +285,76 @@ namespace Rgreat.Hub
         static void Run(object[] e, UIElement anchor)
         {
             try { var open = e[4] as Action<object>; if (open != null) open(anchor); }
-            catch (Exception ex) { _trace("SettingsHub: opening " + e[0] + " failed: " + ex); }
+            catch (Exception ex) { Log("opening " + e[0] + " failed: " + ex); _trace("SettingsHub: opening " + e[0] + " failed: " + ex); }
         }
 
         // ------------------------------------------------------------ the list of mods
+        // Hosted like the mods' settings windows: added to the top Grid / Canvas of the menu screen with a high z-index (a Popup is not used:
+        // it was not shown in the menus). A dim layer behind the frame closes the list on a click outside it.
 
-        static Popup _popup;
+        static Panel _host;
+        static FrameworkElement _overlay;
+
+        static DependencyObject Parent(DependencyObject e) { try { return VisualTreeHelper.GetParent(e); } catch { return null; } }
 
         static void ShowList(UIElement anchor, List<object[]> entries)
         {
             try
             {
                 CloseList();
-                var panel = new StackPanel { Margin = new Thickness(16f) };
-                panel.Children.Add(new TextBlock { Text = Hub(), FontSize = 18f, FontWeight = FontWeight.Bold, Foreground = new SolidColorBrush(Color.FromRgb(242, 245, 250)), Margin = new Thickness(0f, 0f, 0f, 12f) });
+                Panel panel = null;
+                for (DependencyObject p = anchor; p != null; p = Parent(p))
+                {
+                    var pn = p as Panel;
+                    bool itemsHost = false;
+                    try { itemsHost = pn != null && pn.IsItemsHost; } catch { }
+                    if (pn != null && !itemsHost && (pn is Grid || pn is Canvas)) panel = pn;
+                }
+                if (panel == null) { Log("the list of mods: no panel to host it in; opening the first mod's settings"); Run(entries[0], anchor); return; }
+
+                var column = new StackPanel { Margin = new Thickness(16f) };
+                column.Children.Add(new TextBlock { Text = Hub(), FontSize = 18f, FontWeight = FontWeight.Bold, Foreground = new SolidColorBrush(Color.FromRgb(242, 245, 250)), Margin = new Thickness(0f, 0f, 0f, 12f) });
                 foreach (var e in entries)
                 {
                     var entry = e;
                     var b = new Button { Content = Title(e), FontSize = 16f, MinWidth = 280f, Margin = new Thickness(0f, 0f, 0f, 8f), Padding = new Thickness(18f, 8f, 18f, 8f) };
-                    b.Click += (s, a) => { CloseList(); Run(entry, anchor); };
-                    panel.Children.Add(b);
+                    b.Click += (s, a) => { CloseList(); Log("opening the settings of " + entry[0]); Run(entry, anchor); };
+                    column.Children.Add(b);
                 }
                 var frame = new Border
                 {
                     Background = new SolidColorBrush(Color.FromRgb(27, 42, 64)), BorderBrush = new SolidColorBrush(Color.FromRgb(95, 200, 228)),
-                    BorderThickness = new Thickness(2.5f), CornerRadius = new CornerRadius(12f), Child = panel
+                    BorderThickness = new Thickness(2.5f), CornerRadius = new CornerRadius(12f), Child = column,
+                    HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
                 };
-                _popup = new Popup { Child = frame, StaysOpen = false, AllowsTransparency = true, Placement = PlacementMode.Center, PlacementTarget = anchor, IsOpen = true };
+                frame.MouseLeftButtonDown += (s, a) => { a.Handled = true; };
+                var overlay = new Grid { Background = new SolidColorBrush(Color.FromArgb(110, 0, 0, 0)) };
+                overlay.Children.Add(frame);
+                overlay.MouseLeftButtonDown += (s, a) => { a.Handled = true; CloseList(); };
+
+                var grid = panel as Grid;
+                if (grid != null)
+                {
+                    Grid.SetRow(overlay, 0); Grid.SetColumn(overlay, 0);
+                    Grid.SetRowSpan(overlay, Math.Max(1, grid.RowDefinitions.Count)); Grid.SetColumnSpan(overlay, Math.Max(1, grid.ColumnDefinitions.Count));
+                }
+                else
+                {
+                    overlay.Width = panel.ActualWidth > 0 ? panel.ActualWidth : 1280f; overlay.Height = panel.ActualHeight > 0 ? panel.ActualHeight : 720f;
+                    Canvas.SetLeft(overlay, 0f); Canvas.SetTop(overlay, 0f);
+                }
+                Panel.SetZIndex(overlay, 30000);
+                panel.Children.Add(overlay);
+                _host = panel; _overlay = overlay;
+                Log("the list of mods shown (" + entries.Count + " mods) in " + panel.GetType().Name + " " + panel.ActualWidth + " x " + panel.ActualHeight);
             }
-            catch (Exception e) { _trace("SettingsHub list: " + e); }
+            catch (Exception e) { Log("the list of mods failed: " + e); _trace("SettingsHub list: " + e); }
         }
 
         static void CloseList()
         {
-            try { if (_popup != null) { _popup.IsOpen = false; _popup.Child = null; } } catch { }
-            _popup = null;
+            try { if (_host != null && _overlay != null) _host.Children.Remove(_overlay); } catch { }
+            _host = null; _overlay = null;
         }
     }
 }
