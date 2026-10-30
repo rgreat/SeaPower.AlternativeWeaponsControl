@@ -4,9 +4,17 @@ New
 
 - Settings can be opened from the main menu and the pause menu. With several of the author's mods installed there is one shared "Alternative Mods" entry.
 - Guns tab: option "Guns: alter accuracy and power" (on by default) with a table of 47 gun ammunition types (the author's pack, ammunition_fix.txt in the mod folder). Each row shows the game's name and two values per field: "default" (the mod's) and "game" (the game's own). Edit any value, reset a row, or set all rows to the game's or the mod's values. Applied to ammunition loaded after Apply (a mission start).
+- Fire zones are red with a weak red fill on the Tactical Display map (Sea Power 0.8.7) and in 3D.
+- Status "Empty" (grey) for missile launchers out of missiles.
 
 Changed
 
+- SAM: the ready and Reload buttons no longer keep a launcher reloading after its last missile; rails reload only on a real demand.
+- Less memory churn in the Weapons tab.
 - Special effects (flashes, fire light, binoculars normal view, machine gun and hit sound fixes) moved to the mod Alternative Special Effects; install it to keep them. Settings are taken over on its first start. The settings window no longer has the "Visual effects" tab and the "Tracers and sound" group.
 - Settings that depend on a switch are hidden while it is off (SAM readiness limit, distance for auto-charge, the ammunition table).
 - Renamed: "SAM readiness limit", "Guns: change maximum accuracy" (shows "game: ~40"), "Guns: alter accuracy and power".
+
+Fixed
+
+- Fire zones flickered with a second unit window open.
