@@ -561,7 +561,7 @@ All values in the user's cfg already matched the defaults in the code except `[U
 - Kept: Guns/AimBeyondMaxRange, Guns/MaxAccuracyMeters (GunFixes.cs: AlignTurret, CIWS FireAtTarget, GetMeasurementRangeSigma patches), UI/FireShowsZones. Settings window: no "Visual effects" tab, no "Tracers and sound" group.
 - No remaining users of the removed symbols outside the deleted files (checked by grep before deleting). Localization tools (ru.json, help.json, langs/*.txt, langs/help_*.txt) lost the same keys.
 
-## 30.10: Shared settings hub (1.4.0)
+## 30.10: Shared settings hub (1.3.0)
 - `src/SettingsHub.cs` (namespace `Rgreat.Hub`) is the same file in every rgreat mod, copied unchanged from Alternative Special Effects (canonical copy: its `src/SettingsHub.cs`); never edit it here. Protocol v1: a registry in AppDomain data `rgreat.settings.v1`; the first mod whose menu hook runs puts the button in (main menu under Mod Manager, pause menu under Options), the others find it.
 - Registration at the end of `TryPatch` (AwcPlugin.cs), in its own try/catch: `SettingsHub.Register("alternative-weapons-control", () => Loc.T("menu.button"), PluginVersion, 20, anchor => SettingsWindow.Open(anchor as Noesis.UIElement, null), () => Enabled)` and `SettingsHub.Install(harmony, asm, Trace, () => Loc.Language)`. `Enabled` is the Mods-menu tick, asked each time.
 - Text `menu.button` ("Weapons Control", ru "Управление оружием", other languages English) in Loc.cs, `Release/lang/*.ini`, tools (ru.json, langs/*.txt).
