@@ -1,20 +1,15 @@
-ALTERNATIVE WEAPONS CONTROL 1.3.0 - CHANGE LIST
-
-New
-
-- Settings can be opened from the main menu and the pause menu. With several of the author's mods installed there is one shared "Alternative Mods" entry.
-- Guns tab: option "Guns: alter accuracy and power" (on by default) with a table of 47 gun ammunition types (the author's pack, ammunition_fix.txt in the mod folder). Each row shows the game's name and two values per field: "default" (the mod's) and "game" (the game's own). Edit any value, reset a row, or set all rows to the game's or the mod's values. Applied to ammunition loaded after Apply (a mission start).
-- Fire zones are red with a weak red fill on the Tactical Display map (Sea Power 0.8.7) and in 3D.
-- Status "Empty" (grey) for missile launchers out of missiles.
-
-Changed
-
-- SAM: the ready and Reload buttons no longer keep a launcher reloading after its last missile; rails reload only on a real demand.
-- Less memory churn in the Weapons tab.
-- Special effects (flashes, fire light, binoculars normal view, machine gun and hit sound fixes) moved to the mod Alternative Special Effects; install it to keep them. Settings are taken over on its first start. The settings window no longer has the "Visual effects" tab and the "Tracers and sound" group.
-- Settings that depend on a switch are hidden while it is off (SAM readiness limit, distance for auto-charge, the ammunition table).
-- Renamed: "SAM readiness limit", "Guns: change maximum accuracy" (shows "game: ~40"), "Guns: alter accuracy and power".
-
-Fixed
-
-- Fire zones flickered with a second unit window open.
+Version 1.4.0
+- CIWS and machine guns now also turn towards a target that is outside their firing sector, as far as they can.
+- New option "Engage targets outside the firing sector" (Guns tab, on): big guns take such targets too and turn towards them. Works for ships loaded after the change.
+- New option "Remember earlier targets" (Guns tab, on): when you give a new fire order, the guns switch to the new target, but the old targets are not forgotten. A gun that cannot reach the new target (too far, or outside its sector) keeps firing at an older one it can reach, and goes back to the newest when it can. Cease fire clears the list.
+- New option "Bottom panel weapons act as Fire" (UI tab, off): a click on a weapon in the panel at the bottom of the screen works like the Fire button of the Weapons tab - it shows the firing zones in red.
+- Group titles show all target types of their missiles, e.g. "ANTI-SHIP/ASW" for the URK-5. New option "SAM group title lists other target types" (UI tab, off) does the same for anti-aircraft missiles that can also hit ships ("SAM/ANTI-SHIP").
+- "Section" is now called "group" in the texts.
+- Guns with a magazine show the rounds left in the magazine, not in the mount.
+- Fixed: land attack missiles (such as the Tomahawk RGM-109C) were listed under ANTI-SHIP.
+- Fixed: the AMMO column was too narrow for "On launcher 2/2".
+- Fixed: "Remember earlier targets": guns that could reach both targets were sometimes pulled back to the older target instead of the newest one, so a turret did not fire at the second target.
+- Fixed: with "Bottom panel weapons act as Fire" the firing sectors on the map were not shown for some weapons (guns).
+- Fixed: with "Remember earlier targets" a ship's guns kept switching back and forth every half second (statuses flickered) when the target was no longer in contact.
+- Groups with several ammunition types now have common Fire, Stop and Reload buttons (Fire uses the chosen ammunition, or the one that is left).
+- Fixed: group Stop could leave the Stop buttons of single guns lit.

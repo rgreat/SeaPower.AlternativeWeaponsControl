@@ -47,6 +47,69 @@ namespace AlternativeWeaponsControl
                 harmony.Patch(mPrev, prefix: Hm("BearingPrefix"), postfix: Hm("BearingPostfix"));
             }
             else Trace("AttackingState.MaxRangeInLat / UpdateBearingPreview not found: the game's range circle stays");
+            // the weapon panel at the bottom of the screen (and the game's other Fire menus) start the targeting with AttackingState.TryStart
+            var ts = tAtk == null ? null : tAtk.GetMethod("TryStart", BindingFlags.Static | BindingFlags.Public);
+            if (ts != null) harmony.Patch(ts, prefix: Hm("TryStartPrefix"), finalizer: Hm("TryStartFinalizer"));
+            else Trace("AttackingState.TryStart not found: the bottom panel does not act as Fire of the mod");
+        }
+
+        // ---- [UI] BottomPanelFire: a click on a weapon of the bottom panel works like the mod's Fire (red zones, no range circle) ------------------------------------
+        static void TryStartPrefix(bool isWaypointEdit, ref bool __state)
+        {
+            __state = false;
+            var a = Active;
+            if (a == null || !Enabled || a._bottomFire == null || !a._bottomFire.Value || isWaypointEdit || OurFireDepth > 0) return;
+            OurFireDepth++; __state = true;
+            Pending = null;   // a launcher tie of an earlier Fire does not apply to this click
+        }
+        static void TryStartFinalizer(bool __state) { if (__state && OurFireDepth > 0) OurFireDepth--; }
+
+        static bool _bottomOn; static float _nextBottom;
+        static readonly Dictionary<object, Dictionary<string, object>> _bottomEntries = new Dictionary<object, Dictionary<string, object>>(new RefCmp());
+        /// <summary>The zones of a targeting started from the bottom panel do not depend on the Weapons tab being open: shown / ended from here.</summary>
+        static void BottomZonesStep(float now)
+        {
+            if (now < _nextBottom) return;
+            _nextBottom = now + 0.1f;
+            var a = Active;
+            if (a == null || !Enabled || a._bottomFire == null || !a._bottomFire.Value || a._zoneFire == null || !a._zoneFire.Value) { if (_bottomOn) { _bottomOn = false; ZonesUpdate(_zoneUnit, null, null, null); } return; }
+            object st = null;
+            try
+            {
+                if (_fMgvm == null) { var globals = _tHoverMgr.Assembly.GetType("SeaPower.Globals"); if (globals != null) _fMgvm = globals.GetField("_mainGameViewModel", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic); }
+                var mgvm = _fMgvm == null ? null : _fMgvm.GetValue(null);
+                var cur = R.Rv(R.P(R.P(mgvm, "StateManager"), "CurrentState"));
+                if (cur != null && cur.GetType().Name == "AttackingState" && IsOurState(cur)) st = cur;
+            }
+            catch { }
+            var unit = st == null ? null : R.P(st, "Source");
+            var pp = Pending;
+            if (st != null && unit != null && !(pp != null && ReferenceEquals(pp.Unit, unit)) && R.B(R.P(unit, "IsPlayerObject")))
+            {
+                var id = R.S(R.P(st, "Ammunition"));
+                // the weapons of the ammunition as the tab's Fire takes them: WeaponEntry.WeaponSystems of the game's ammunition group (guns included)
+                IEnumerable list = null;
+                try
+                {
+                    var obp = R.F(unit, "_obp");
+                    var g = R.F(obp, "_launcherAmmunitionGroups") as IDictionary;
+                    object grp = g != null && g.Contains(id) ? g[id] : null;
+                    if (grp == null) { var gg = R.F(obp, "_gunAmmunitionGroups") as IDictionary; grp = gg != null && gg.Contains(id) ? gg[id] : null; }
+                    if (grp != null)
+                    {
+                        object key = unit, e;
+                        Dictionary<string, object> per;
+                        if (!_bottomEntries.TryGetValue(unit, out per)) { per = new Dictionary<string, object>(); _bottomEntries[unit] = per; }
+                        if (!per.TryGetValue(id, out e)) { e = Activator.CreateInstance(_tHoverMgr.Assembly.GetType("SeapowerUI.ViewModels.WeaponEntry"), unit, grp, false); per[id] = e; }
+                        list = R.P(e, "WeaponSystems") as IEnumerable;
+                    }
+                }
+                catch (Exception ex) { TraceLimited("bz", 5f, "bottom zones: " + ex.Message); }
+                if (list == null) return;
+                _bottomOn = true;
+                ZonesUpdate(unit, id, null, list);
+            }
+            else if (_bottomOn) { _bottomOn = false; ZonesUpdate(_zoneUnit, null, null, null); }
         }
 
         static FieldInfo _fMaxRange;

@@ -24,6 +24,19 @@ namespace AlternativeWeaponsControl
             if (cf != null) harmony.Patch(cf, prefix: Hm("CiwsAimPrefix")); else Trace("CIWS.FireAtTarget not found: CIWS / machine guns do not aim beyond max range");
             var ms = gun == null ? null : gun.GetMethod("GetMeasurementRangeSigma", inst | BindingFlags.DeclaredOnly);
             if (ms != null) harmony.Patch(ms, prefix: Hm("RangeSigmaPrefix"), finalizer: Hm("RangeSigmaFinalizer")); else Trace("WeaponSystemGun.GetMeasurementRangeSigma not found: no minimum range error option");
+            var ini = asm.GetType("SeaPower.IniHandler");
+            var rv = ini == null ? null : ini.GetMethod("readValue", inst, null, new[] { typeof(string), typeof(string), typeof(bool), typeof(bool) }, null);
+            if (rv != null) harmony.Patch(rv, postfix: Hm("IniBoolPostfix")); else Trace("IniHandler.readValue(bool) not found: no EngageOnlyInsideArc override");
+        }
+
+        // ------------------------------------------------------------------ EngageOnlyInsideArc override
+        // The weapon parameters read EngageOnlyInsideArc=True from the ini (battleships, big ships, 80+ weapons): the selector never offers
+        // such a weapon a target outside its firing sector. With [Guns] EngageOutsideSector the value read for this key is False
+        // (units loaded afterwards; the weapon then turns to the nearest edge of the sector, see AimBeyondMaxRange).
+        static void IniBoolPostfix(string key, ref bool __result)
+        {
+            if (!__result || key != "EngageOnlyInsideArc") return;
+            var a = Active; if (a != null && Enabled && a._engageOutside != null && a._engageOutside.Value) __result = false;
         }
 
         // ------------------------------------------------------------------ minimum fire-control range error
@@ -54,7 +67,7 @@ namespace AlternativeWeaponsControl
 
         // ------------------------------------------------------------------ aiming beyond the maximum range
         // WeaponSystemGun.AlignTurret returns at once when the target is farther than the ammunition's range: the turret does not
-        // move. For the player's guns a target up to 1.5 x range + 2 nm away is aimed at as a point of the same bearing at the
+        // move (a target outside the firing sector needs no patch: RotateMountTowardsTarget turns the mount to the nearest edge of the sector). For the player's guns a target up to 1.5 x range + 2 nm away is aimed at as a point of the same bearing at the
         // range (the game's own aiming code does the turning and elevating); the result stays "not aligned": no fire.
         // CIWS / machine guns: CiwsAimPrefix.
         [ThreadStatic] static bool _aimBeyond;
@@ -83,8 +96,10 @@ namespace AlternativeWeaponsControl
         }
 
         /// <summary>
-        /// CIWS and machine guns (Type=CIWS): FireAtTarget aims only while the target is within the range (+ a small margin).
-        /// Farther - up to the same limit as the guns - the mount is turned and elevated towards the target and nothing else is done.
+        /// CIWS and machine guns (Type=CIWS): FireAtTarget aims only while the target is within the range (+ a small margin) AND inside the
+        /// firing sector (horizontal and vertical arcs); otherwise it only stops the fire and does not move the mount. For the targets of the
+        /// player's orders farther than that - up to the same limit as the guns - or outside the sector, the mount is turned and elevated
+        /// towards the target as far as its arcs allow (the guns' own alignment code goes to the nearest edge of the sector) and nothing else is done.
         /// </summary>
         static bool CiwsAimPrefix(object __instance)
         {
@@ -99,10 +114,12 @@ namespace AlternativeWeaponsControl
                 var tr = R.P(tgt, "transform") as Transform; if (tr == null) return true;
                 float dist = (tr.position - mount.transform.position).magnitude, max = Mathf.Sqrt(maxSq);
                 float margin = R.Fl(R.Call(__instance, "CiwsPrepMargin"));
-                if (dist <= max + margin || dist > AimLimit(max)) return true;   // the game's own code
+                bool inSector = R.B(R.Call(__instance, "targetIsInFiringArc", tr.position)) && R.B(R.Call(__instance, "IsTargetInVerticalFiringArc", tr.position));
+                if (dist <= max + margin && inSector) return true;   // the game's own code
+                if (dist > AimLimit(max)) return true;
                 R.Call(__instance, "CalculateAimPosition", tgt);
                 var aim = (Vector3)R.F(__instance, "_aimPosition");
-                if (!R.B(R.Call(__instance, "targetIsInFiringArc", aim)) || !R.B(R.Call(__instance, "IsTargetInVerticalFiringArc", aim))) return false;
+                if (R.B(R.F(__instance, "_isFiring"))) R.Call(__instance, "StopFire");
                 R.Call(__instance, "alignToTarget", aim, false, 0, false);
                 return false;
             }

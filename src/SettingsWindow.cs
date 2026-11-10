@@ -47,6 +47,8 @@ namespace AlternativeWeaponsControl
             Add(T1, "grp.panel", "UI/WeaponsTabGroundUnits", "Weapons tab for ground units", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T1, "grp.panel", "UI/WeaponsTabAircraft", "Weapons tab for aircraft and helicopters", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T1, "grp.panel", "UI/FireShowsZones", "Fire shows weapon arcs and range", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T1, "grp.panel", "UI/BottomPanelFire", "Bottom panel weapons act as Fire", "", Kind.Bool, 0, 0, 0, "game: off", "UI/FireShowsZones");
+            Add(T1, "grp.panel", "UI/SectionTargetTypes", "SAM group title lists other target types", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T1, "grp.panel", "UI/ClickVolume", "Click sound volume", "0..1 · 0 = no sound", Kind.Number, 0.1f, 0f, 1f);
             Add(T1, "grp.samButton", "UI/SamReadyButton", "SAM readiness button", "", Kind.Bool, 0, 0, 0);
             Add(T1, "grp.samButton", "UI/SamReadyMinutes", "SAM readiness limit", "1..60", Kind.Number, 1f, 1f, 60f, null, "UI/SamReadyButton");
@@ -64,6 +66,8 @@ namespace AlternativeWeaponsControl
             Add(TA, "grp.chasing", "Ships/NoRbuSurfaceChase", "No chasing surface targets with ASW mortars", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(TA, "grp.chasing", "Ships/NoAirChase", "No chasing air targets", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T3, "grp.aiming", "Guns/AimBeyondMaxRange", "Aim guns at targets beyond max range", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T3, "grp.aiming", "Guns/EngageOutsideSector", "Engage targets outside the firing sector", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T3, "grp.aiming", "Guns/RememberTargets", "Remember earlier targets", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T3, "grp.accuracy", "Guns/MaxAccuracyMeters", "Guns: change maximum accuracy", "m", Kind.Number, 1f, 0f, 100f, "~40");
             Add(T3, "grp.ammoFix", "Guns/AmmunitionFix", "Guns: alter accuracy and power", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T5, "grp.diagnostics", "General/Debug", "Debug trace", "", Kind.Bool, 0, 0, 0);

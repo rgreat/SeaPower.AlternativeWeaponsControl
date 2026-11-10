@@ -208,6 +208,12 @@ namespace AlternativeWeaponsControl
             if (R.B(R.F(ap, "_hasSecondaryTargetType"))) t(R.S(R.F(ap, "_secondaryTargetType")));
             var la = R.F(ap, "_landAttack") as ICollection;
             if (la != null && la.Count > 0) d |= DLnd;
+            // TargetType=ASuW with CanNotAttackTypes=Vessel (land attack Tomahawk, RGM-109C): it cannot attack ships
+            if ((d & DLnd) != 0 && (d & DSur) != 0)
+            {
+                var no = R.F(ap, "_canNotAttackTypes") as IEnumerable;
+                if (no != null) foreach (var o in no) if (o != null && o.ToString() == "Vessel") { d &= ~DSur; break; }
+            }
             if (R.B(R.F(ap, "_antiTorpedo"))) d |= DMsl;   // torpedoes as targets: MSL (weapons)
             return d;
         }
@@ -268,7 +274,7 @@ namespace AlternativeWeaponsControl
                     if (tt == "ASW" || type == "RBU" || type == "ASROC" || (type == "Torpedo" && (l.Domains & DSub) != 0)) l.Section = 3;
                     else if (type == "Torpedo" && (l.Domains & DSur) != 0) l.Section = 1;
                     else if (tt == "AAW") l.Section = 0;
-                    else if (tt == "ASuW") l.Section = 1;
+                    else if (tt == "ASuW" && ((l.Domains & DSur) != 0 || (l.Domains & DLnd) == 0)) l.Section = 1;
                     else if ((l.Domains & DLnd) != 0) l.Section = 2;
                     else l.Section = 6;
                 }

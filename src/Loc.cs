@@ -45,7 +45,7 @@ namespace AlternativeWeaponsControl
             D("tab.onFreeTip", "Ships on Free also engage aircraft that:\n- are not identified yet;\n- are faster than {0} kn;\n- are closer than {1} nm;\n- come towards the ship (within 45° of the bearing to it).\nKeep in mind: war crimes have no statute of limitations.");
             D("tab.expandAll", "Expand all"); D("tab.collapseAll", "Collapse all");
             D("tab.noWeapons", "No weapons.");
-            D("tab.dragOrder", "Drag to change the order of the sections");
+            D("tab.dragOrder", "Drag to change the order of the groups");
             D("tab.fireTip", "Click: pick the target on the map. Arrow: salvo and launch options.");
             D("tab.autoAgainst", "Automatic use against {0}");
             D("tab.contentError", "The weapons could not be shown for the selected unit.");
@@ -88,7 +88,7 @@ namespace AlternativeWeaponsControl
             D("tip.refWeapon", "Reference of the weapon");
             D("tip.refDirector", "Reference of the director");
             D("tip.switchesGroup", "{0}\n(switches the whole group)");
-            D("tip.switchesSection", "{0}\n(this target type on all the section's launchers - also for their other ammunition of it)");
+            D("tip.switchesSection", "{0}\n(this target type on all the group's launchers - also for their other ammunition of it)");
             D("tip.reloadCurrent", "{0}\n(the game reloads the ammunition the launcher holds ready)");
             // ---- SAM readiness button
             D("sam.away", "Missiles away. Click: load the missiles onto the rails");
@@ -165,6 +165,8 @@ namespace AlternativeWeaponsControl
             D("lbl.UI/WeaponsTabGroundUnits", "Weapons tab for ground units");
             D("lbl.UI/WeaponsTabAircraft", "Weapons tab for aircraft and helicopters");
             D("lbl.UI/FireShowsZones", "Fire shows weapon arcs and range");
+            D("lbl.UI/BottomPanelFire", "Bottom panel weapons act as Fire");
+            D("lbl.UI/SectionTargetTypes", "SAM group title lists other target types");
             D("lbl.FireControl/GunOneDirector", "Guns take one director");
             D("lbl.FireControl/GunChannelLimit", "Guns without a free channel: local control");
             D("lbl.Ships/SamAutoCharge", "Charge SAMs when unknown aircraft approach");
@@ -177,6 +179,8 @@ namespace AlternativeWeaponsControl
             D("lbl.Ships/NoRbuSurfaceChase", "No chasing surface targets with ASW mortars");
             D("lbl.Ships/NoAirChase", "No chasing air targets");
             D("lbl.Guns/AimBeyondMaxRange", "Aim guns at targets beyond max range");
+            D("lbl.Guns/EngageOutsideSector", "Engage targets outside the firing sector");
+            D("lbl.Guns/RememberTargets", "Remember earlier targets");
             D("lbl.Guns/MaxAccuracyMeters", "Guns: change maximum accuracy");
             D("unit.Guns/MaxAccuracyMeters", "m");
             D("lbl.Guns/AmmunitionFix", "Guns: alter accuracy and power");

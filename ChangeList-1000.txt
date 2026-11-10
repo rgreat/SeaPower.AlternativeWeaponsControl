@@ -1,18 +1,11 @@
-Alternative Weapons Control
-
-Version 1.3.0:
-
-New
-- Settings open from the main menu and the pause menu (one shared "Alternative Mods" entry with several of the author's mods).
-- Guns tab: table of 47 gun ammunition types - accuracy and power, with the mod's and the game's values; edit, reset. Option "Guns: alter accuracy and power" (on).
-- Fire zones are red with a weak red fill on the Tactical Display map (Sea Power 0.8.7) and in 3D.
-- Status "Empty" (grey) for missile launchers out of missiles.
-
-Changed
-- Special effects (flashes, fire light, binoculars view, machine gun and hit sound fixes) moved to Alternative Special Effects; settings are taken over.
-- Settings that depend on a switch are hidden while it is off.
-- SAM: the ready and Reload buttons no longer keep a launcher reloading after its last missile.
-- Less memory churn in the Weapons tab.
-
-Fixed
-- Fire zones flickered with a second unit window open.
+Version 1.4.0
+- CIWS and machine guns also turn towards targets outside their firing sector.
+- Option "Engage targets outside the firing sector" (on).
+- Option "Remember earlier targets" (on): after a new fire order, a gun that cannot reach the new target keeps firing at an older one.
+- Option "Bottom panel weapons act as Fire" (off): a click there shows the red firing zones.
+- Group titles show all target types: "ANTI-SHIP/ASW". Option for SAM groups (off).
+- Guns with a magazine show the rounds left in it.
+- Fixed: land attack missiles were listed under ANTI-SHIP; the AMMO column was too narrow for "On launcher 2/2".
+- Fixed: guns were sometimes pulled back to an older target instead of the newest one; firing sectors from the bottom panel were missing for guns.
+- Fixed: ship guns flickering between targets when the target was lost; group Stop leaving gun Stop buttons lit.
+- Groups with several ammunition types have common Fire / Stop / Reload buttons (Fire uses the chosen ammunition).

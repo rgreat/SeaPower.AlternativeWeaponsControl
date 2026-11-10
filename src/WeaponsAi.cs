@@ -366,6 +366,7 @@ namespace AlternativeWeaponsControl
             _hetUnit = null;
             _hetPin = null;
             if (!Enabled) return;
+            try { RememberGunOrders(__instance); } catch (Exception e) { Trace("remember gun orders: " + e.Message); }
             try
             {
                 // other mounts that the game gave a task tied to another launcher (all guns with the ammunition, linked launchers)

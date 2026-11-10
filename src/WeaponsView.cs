@@ -87,7 +87,7 @@ namespace AlternativeWeaponsControl
             public List<MemberRow> Members = new List<MemberRow>(); public bool DetailBuilt, Expandable; public List<string> Ammo = new List<string>();
             public List<KeyValuePair<string, StockUI>> AmmoStocks = new List<KeyValuePair<string, StockUI>>();
             public List<AmmoChipsUI> AmmoChips = new List<AmmoChipsUI>();
-            public string ActiveAmmo; public List<AmmoCardUI> Cards = new List<AmmoCardUI>();   // several ammunition types and several launchers: the chosen (active) ammunition, the launchers are listed under it
+            public List<string> FireIds; public string ActiveAmmo; public List<AmmoCardUI> Cards = new List<AmmoCardUI>();   // several ammunition types and several launchers: the chosen (active) ammunition, the launchers are listed under it
             public TextBlock Chan; public Border ChanBox; public string ChanTip; public List<object> Dirs = new List<object>(); public bool GuidedAmmo, Wires;
         }
 
@@ -95,6 +95,7 @@ namespace AlternativeWeaponsControl
         {
             public AwcPlugin P;
             public object Unit;
+            public readonly List<TitleUI> Titles = new List<TitleUI>();
             public int DomMask;
             public float StockW = 80f;   // the AMMO column: fits the widest "max/max" of the tab (StockWidth)
             public readonly List<ColumnDefinition> StockCols = new List<ColumnDefinition>();   // the target domains the unit's launchers can engage: the AIR..LND columns shown
@@ -427,7 +428,7 @@ namespace AlternativeWeaponsControl
                                       CornerRadius = new CornerRadius(3f), Margin = new Thickness(0f, 0f, 0f, 6f) };
                 var sh = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0f), Background = WC.Clear };
                 sh.Margin = new Thickness(10f, 4f, 10f, 3f);
-                sh.Children.Add(T(Loc.T("section." + kv.Key), WC.Sub, 11.5f, FontWeights.SemiBold));
+                sh.Children.Add(MakeTitle(v, kv.Key, kv.Value).Tb);
                 // "2 turrets", "2 launchers, 2 tubes": counted by what they are
                 var counts = new List<KeyValuePair<string, int>>();
                 int count = 0;
@@ -672,6 +673,20 @@ namespace AlternativeWeaponsControl
                 fit(StockMax(gr.Ls));
                 foreach (var a in gr.Ammo) fit(StockMax(gr.Ls, a));
                 if (gr.Ls.Count > 1) foreach (var l in gr.Ls) fit(Cap(l.Ws));
+                // the "On launcher 2/2" line under the stock of a single launcher (font 10)
+                if (gr.Ls.Count == 1 && !gr.Ls.TrueForAll(IsGun))
+                {
+                    try
+                    {
+                        var rails = Rails(gr.Ls[0].Ws);
+                        if (rails != null && rails.Count > 0 && rails.Count < 10000)
+                        {
+                            var n = Fmt(rails.Count);
+                            w = Math.Max(w, Measure(Loc.F("stock.rail", n, n), 10f));
+                        }
+                    }
+                    catch { }
+                }
             }
             v.StockW = (float)Math.Ceiling(w) + 16f;
             foreach (var c in v.StockCols) c.Width = new GridLength(v.StockW);
@@ -819,7 +834,8 @@ namespace AlternativeWeaponsControl
             At(row, gr.States, 2);
             gr.Stock = MakeStock(12f, WC.Text);
             At(row, gr.Stock.P, 3);
-            At(row, Controls(v, gr.Ls, gr.Ammo, gr.Ammo.Count == 1, gr.Ammo.Count == 1, gr.Ls.Count == 1 ? gr.Ls[0] : null), 4);   // several ammunition types: Fire / Stop / Reload are in each ammunition's card
+            gr.FireIds = new List<string>(gr.Ammo); OrderFireIds(v, gr);
+            At(row, Controls(v, gr.Ls, gr.FireIds, true, true, gr.Ls.Count == 1 ? gr.Ls[0] : null), 4);   // several ammunition types: Fire takes the first one, Stop / Reload act on all; each ammunition's card has its own
             gr.Chips = new ChipUI[5];
             for (int i = 0; i < 5; i++)
             {
@@ -904,7 +920,7 @@ namespace AlternativeWeaponsControl
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(64f) });
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28f) });
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28f) });
-            if (fire && ammo.Count > 0) At(g, FireButton(v, ammo, pin), 0);
+            if (fire && ammo.Count > 0) At(g, FireButton(v, ammo, pin, scope), 0);
             if (!more) return g;
             var cu = new CtrlUI { Scope = scope, Ammo = ammo };
             cu.Cease = IconButton(true, Loc.T("btn.cease"), () => Cease(v, cu));
@@ -1040,9 +1056,10 @@ namespace AlternativeWeaponsControl
         /// <summary>Cease fire: the launchers drop what they engage, and the unit's waiting orders for them go.</summary>
         void Cease(WeaponsView v, CtrlUI cu)
         {
+            if (_debug) { try { Trace("Stop clicked: " + string.Join("/", cu.Ammo.ToArray()) + ", " + cu.Scope.Count + " launcher(s), engaged before: " + CeaseState(cu)); } catch { } }
             foreach (var l in cu.Scope)
             {
-                if (R.B(R.F(l.Ws, "_executingEngageTask")) || R.B(R.F(l.Ws, "_isAutoEngaging")))
+                if (R.B(R.F(l.Ws, "_executingEngageTask")) || R.B(R.F(l.Ws, "_isAutoEngaging")) || R.F(l.Ws, "_takenEngageTask") != null)
                 {
                     // one ammunition of a multi-ammunition system (aircraft stores): only when it is the one being fired
                     if (cu.Ammo.Count < l.Ammo.Count)
@@ -1054,6 +1071,7 @@ namespace AlternativeWeaponsControl
                     if (R.Is(l.Ws, _tCiws)) { try { R.Call(l.Ws, "StopEngage"); } catch { } }
                 }
             }
+            ForgetTargets(v.Unit, cu.Ammo);
             var tasks = R.F(v.Unit, "_currentEngageTasks") as IList;
             if (tasks != null)
                 for (int i = tasks.Count - 1; i >= 0; i--)
@@ -1064,7 +1082,20 @@ namespace AlternativeWeaponsControl
                     bool mine = pin != null ? cu.Scope.Exists(l => ReferenceEquals(l.Ws, pin)) : cu.Scope.Count > 1 || IsWholeAmmo(v, cu, R.S(R.F(t, "_ammoId")));
                     if (mine && cu.Ammo.Contains(R.S(R.F(t, "_ammoId")))) { try { R.Call(v.Unit, "RemoveEngageTask", t); } catch { tasks.RemoveAt(i); } }
                 }
+            if (_debug) { try { Trace("Stop done: still engaged: " + CeaseState(cu) + "; unit orders left: " + (tasks == null ? 0 : tasks.Count)); } catch { } }
             Refresh(v, false);
+        }
+
+        static string CeaseState(CtrlUI cu)
+        {
+            var sb = new StringBuilder(); int n = 0;
+            foreach (var l in cu.Scope)
+            {
+                bool ex = R.B(R.F(l.Ws, "_executingEngageTask")), au = R.B(R.F(l.Ws, "_isAutoEngaging")), tk = R.F(l.Ws, "_takenEngageTask") != null;
+                if (!ex && !au && !tk) continue;
+                n++; if (n <= 8) sb.Append(l.Name).Append(" #").Append(l.Index).Append(ex ? " exec" : "").Append(au ? " auto" : "").Append(tk ? " task" : "").Append("; ");
+            }
+            return n == 0 ? "none" : n + " (" + sb + ")";
         }
 
         /// <summary>Does this scope hold every launcher of the unit with the ammunition (so the unit's open orders for it are its own)?</summary>
@@ -1110,7 +1141,7 @@ namespace AlternativeWeaponsControl
             }
         }
 
-        FrameworkElement FireButton(WeaponsView v, List<string> ids, Launcher pin)
+        FrameworkElement FireButton(WeaponsView v, List<string> ids, Launcher pin, List<Launcher> scope = null)
         {
             var g = new Grid();
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -1132,8 +1163,8 @@ namespace AlternativeWeaponsControl
             arrow.MouseLeave += (s, e) => { fu.OverArrow = false; PaintFire(fu); };
             Click(main, () =>
             {
-                if (_debug) { try { var all = R.F(R.F(v.Unit, "_obp"), "_weaponSystems") as IList; Trace("Fire clicked: " + PickAmmo(ids, pin) + ", launcher " + (pin == null ? "none (any)" : "#" + (all == null ? -1 : all.IndexOf(pin.Ws)))); } catch { } }
-                SetPending(v, pin, ids); FireNow(v, PickAmmo(ids, pin)); CheckTargeting(v);
+                if (_debug) { try { var all = R.F(R.F(v.Unit, "_obp"), "_weaponSystems") as IList; Trace("Fire clicked: " + PickAmmo(ids, pin, scope) + ", launcher " + (pin == null ? "none (any)" : "#" + (all == null ? -1 : all.IndexOf(pin.Ws)))); } catch { } }
+                SetPending(v, pin, ids); FireNow(v, PickAmmo(ids, pin, scope)); CheckTargeting(v);
             });
             Click(arrow, () => { SetPending(v, pin, ids); OpenFireMenu(v, ids, fire); });
             return fire;
@@ -1145,9 +1176,18 @@ namespace AlternativeWeaponsControl
         }
 
         /// <summary>The ammunition a launcher's Fire uses: the one it holds ready, else its first.</summary>
-        static string PickAmmo(List<string> ids, Launcher pin)
+        static string PickAmmo(List<string> ids, Launcher pin, List<Launcher> scope = null)
         {
-            if (ids.Count == 1 || pin == null) return ids[0];
+            if (pin == null)
+            {
+                // the chosen ammunition (first); when none of the launchers has any left, the first type that still has some
+                if (scope != null && ids.Count > 1)
+                    foreach (var a in ids)
+                        foreach (var l in scope)
+                            try { if (l.Ammo.Contains(a) && (R.I(R.Call(l.Ws, "getLoadedAmmoCount", a)) > 0 || R.I(R.Call(l.Ws, "getMagazineAmmoCount", a)) > 0)) return a; } catch { }
+                return ids[0];
+            }
+            if (ids.Count == 1) return ids[0];
             var cur = R.S(R.F(R.F(R.F(pin.Ws, "_ammoForEngage"), "_ap"), "_ammunitionFileName"));
             if (cur != null && ids.Contains(cur)) return cur;
             foreach (var a in ids) { try { if (R.I(R.Call(pin.Ws, "getLoadedAmmoCount", a)) > 0) return a; } catch { } }
@@ -1211,7 +1251,7 @@ namespace AlternativeWeaponsControl
         {
             gr.DetailBuilt = true;
             bool pick = gr.Ammo.Count > 1 && gr.Ls.Count > 1;   // choose the active ammunition: the launchers are listed under it
-            if (pick) gr.ActiveAmmo = RememberedActive(v, gr) ?? DefaultActive(gr);
+            if (pick) { gr.ActiveAmmo = RememberedActive(v, gr) ?? DefaultActive(gr); OrderFireIds(v, gr); }
             if (gr.Ammo.Count > 1) foreach (var id in gr.Ammo) gr.Detail.Children.Add(AmmoCard(v, gr, id));
             if (gr.Ls.Count < 2) return;
             var names = new Dictionary<string, int>();
@@ -1302,10 +1342,19 @@ namespace AlternativeWeaponsControl
             foreach (var m in gr.Members) if (!m.L.Ammo.Contains(gr.ActiveAmmo)) { m.G.Opacity = 0.5f; gr.Detail.Children.Add(m.G); }
         }
 
+        /// <summary>The group's own Fire uses the chosen ammunition: it goes first (not chosen yet: the one the launchers hold ready, else the first).</summary>
+        static void OrderFireIds(WeaponsView v, GroupRow gr)
+        {
+            if (gr.FireIds == null || gr.FireIds.Count < 2) return;
+            var a = gr.ActiveAmmo ?? RememberedActive(v, gr) ?? DefaultActive(gr);
+            if (a != null && gr.FireIds.Remove(a)) gr.FireIds.Insert(0, a);
+        }
+
         void SetActive(WeaponsView v, GroupRow gr, string id)
         {
             if (gr.ActiveAmmo == id) return;
             gr.ActiveAmmo = id;
+            OrderFireIds(v, gr);
             if (v.Unit != null) ActiveMemory.GetOrCreateValue(v.Unit)[gr.Key] = id;
             foreach (var m in gr.Members)
             {
@@ -1502,13 +1551,59 @@ namespace AlternativeWeaponsControl
             foreach (var l in ls)
             {
                 var ammo = only == null ? l.Ammo : l.Ammo.Contains(only) ? new List<string> { only } : new List<string>();
-                n += Loaded(l.Ws, ammo);
                 var mag = R.F(R.F(l.Ws, "_vwp"), "_associatedMagazine");
+                // a gun with a magazine: the rounds in the mount (_sharedLoadedAmmoCount) are part of the magazine's count, not extra
+                if (mag == null || !IsGun(l)) n += Loaded(l.Ws, ammo);
                 if (mag == null || mags.Contains(mag)) continue;
                 mags.Add(mag);
                 foreach (var a in ammo) { try { n += R.I(R.Call(mag, "getAmmunitionCount", a)); } catch { } }
             }
             return n;
+        }
+
+        sealed class TitleUI { public TextBlock Tb; public int Section; public List<int> Always = new List<int>(), SamExtra = new List<int>(); }
+
+        /// <summary>The title of a group card (a section): its name, and after it "/" the other purposes of the ammunition of its launchers
+        /// ("ANTI-SHIP/ASW": URK-5 hits ships and submarines). What a SAM can also hit ("SAM/ANTI-SHIP") is added only with [UI] SectionTargetTypes.
+        /// A torpedo has one purpose. Updated with the option in Refresh (TitleText).</summary>
+        TitleUI MakeTitle(WeaponsView v, int section, List<GroupRow> groups)
+        {
+            var t = new TitleUI { Section = section };
+            if (section <= 3)
+                foreach (var gr in groups)
+                {
+                    var l = gr.Ls[0];
+                    if (l.AmmoDom == null) continue;
+                    foreach (var id in l.Ammo)   // (gr.Ammo is filled when the group row is built, later)
+                    {
+                        int ix = l.Ammo.IndexOf(id); if (ix < 0 || ix >= l.AmmoDom.Length) continue;
+                        int d = l.AmmoDom[ix];
+                        bool missile = R.S(R.F(AmmoParams(v, id), "_type")) == "Missile";
+                        Action<List<int>, int> add = (lst, k) => { if (!lst.Contains(k)) lst.Add(k); };
+                        if ((d & DAir) != 0)
+                        {
+                            add(t.Always, 0);
+                            if (missile) { if ((d & DSur) != 0) add(t.SamExtra, 1); if ((d & DLnd) != 0) add(t.SamExtra, 2); if ((d & DSub) != 0) add(t.SamExtra, 3); }
+                        }
+                        else if (!missile) { if ((d & DSub) != 0) add(t.Always, 3); else if ((d & DSur) != 0) add(t.Always, 1); else if ((d & DLnd) != 0) add(t.Always, 2); }
+                        else { if ((d & DSur) != 0) add(t.Always, 1); if ((d & DLnd) != 0) add(t.Always, 2); if ((d & DSub) != 0) add(t.Always, 3); }
+                    }
+                }
+            t.Tb = T(TitleText(t), WC.Sub, 11.5f, FontWeights.SemiBold);
+            v.Titles.Add(t);
+            return t;
+        }
+
+        static string TitleText(TitleUI t)
+        {
+            var title = Loc.T("section." + t.Section);
+            var a = Active;
+            var kinds = new List<int>(t.Always);
+            if (a != null && a._secTargets != null && a._secTargets.Value) foreach (var k in t.SamExtra) if (!kinds.Contains(k)) kinds.Add(k);
+            kinds.Remove(t.Section);
+            kinds.Sort();
+            foreach (var k in kinds) title += "/" + Loc.T("section." + k);
+            return title;
         }
 
         static StockUI MakeStock(float size, Color c)
@@ -1759,6 +1854,7 @@ namespace AlternativeWeaponsControl
             var unit = v.Unit;
             var w = W(unit);
             SyncDoctrine(unit, w);
+            foreach (var tt in v.Titles) { var txt = TitleText(tt); if (tt.Tb.Text != txt) tt.Tb.Text = txt; }
             // header
             var ws = R.S(R.F(unit, "_weaponStatus"));
             string[] sn = { "Free", "Tight", "Hold" };
@@ -1875,7 +1971,11 @@ namespace AlternativeWeaponsControl
                         int mmax = Cap(m.L.Ws);
                         var one = new List<Launcher> { m.L };
                         // the game's default capacity of 10000 (a mount that has none of its own, e.g. an aircraft's guns): the magazine's
-                        if (mmax >= 10000 && R.F(R.F(m.L.Ws, "_vwp"), "_associatedMagazine") != null) SetStock(m.Stock, Stock(one), StockMax(one), IsGun(m.L));
+                        // a mount with a magazine shows the magazine's rest, not the rounds in the mount (a gun: always; another launcher: unless
+                        // the magazine is shared with the group's other launchers - then only its own rounds can be told)
+                        var mgz = R.F(R.F(m.L.Ws, "_vwp"), "_associatedMagazine");
+                        bool own = mgz != null && (IsGun(m.L) || !gr.Members.Exists(o => o != m && R.F(R.F(o.L.Ws, "_vwp"), "_associatedMagazine") == mgz));
+                        if (mgz != null && (mmax >= 10000 || own)) SetStock(m.Stock, Stock(one), StockMax(one), IsGun(m.L));
                         else SetStock(m.Stock, Loaded(m.L.Ws, m.L.Ammo), mmax, IsGun(m.L));
                     }
                     for (int i = 0; i < 5; i++)

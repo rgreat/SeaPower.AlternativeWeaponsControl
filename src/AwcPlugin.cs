@@ -29,7 +29,7 @@ namespace AlternativeWeaponsControl
     {
         public const string PluginGuid = "com.rgreat.seapower.alternativeweaponscontrol";
         public const string PluginName = "Alternative Weapons Control";
-        public const string PluginVersion = "1.3.0";
+        public const string PluginVersion = "1.4.0";
 
         public static readonly string BuildId = ReadBuildId();
 
@@ -46,7 +46,7 @@ namespace AlternativeWeaponsControl
         internal ConfigEntry<string> _language; internal ConfigEntry<bool> _debugEntry, _gunChannels, _gunOneDirector, _noRbuSurfaceChase, _noAirChase;
         internal ConfigEntry<string> _secOrder;
         internal ConfigEntry<float> _clickVolume, _samMinutes, _samAutoRange, _gunMinError;
-        internal ConfigEntry<bool> _ammoFix, _plotHostile, _tabAir, _tabLand, _samButton, _zoneFire, _samAuto, _samKeep, _samAnim, _gunAimBeyond;
+        internal ConfigEntry<bool> _ammoFix, _plotHostile, _tabAir, _tabLand, _samButton, _zoneFire, _samAuto, _samKeep, _samAnim, _gunAimBeyond, _engageOutside, _gunMemory, _bottomFire, _secTargets;
         public static string UserDir { get; private set; }
 
         /// <summary>The settings the window shows (in this order).</summary>
@@ -157,7 +157,7 @@ namespace AlternativeWeaponsControl
                 "and fires once they come into range. All ships, the enemy's too.");
             _tabLand = Cfg.Bind("UI", "WeaponsTabGroundUnits", true, "The Weapons tab for ground vehicles and land installations (the units with guns / launchers of their own).");
             _tabAir = Cfg.Bind("UI", "WeaponsTabAircraft", true, "The Weapons tab for aircraft and helicopters (their weapons on the hardpoints: one group, a Fire for each ammunition type, switches by target type).");
-            _secOrder = Cfg.Bind("UI", "SectionOrder", "SAM,GUNS,ANTI-SHIP,ASW", "The order of the sections of the Weapons tab (drag a section's title to change it): names separated by commas; the sections not named follow in the usual order. Empty = the usual order (SAM, ANTI-SHIP, LAND ATTACK, ASW, GUNS, CIWS, OTHER, STORES).");
+            _secOrder = Cfg.Bind("UI", "SectionOrder", "SAM,GUNS,ANTI-SHIP,ASW", "The order of the groups of the Weapons tab (drag a group's title to change it): names separated by commas; the sections not named follow in the usual order. Empty = the usual order (SAM, ANTI-SHIP, LAND ATTACK, ASW, GUNS, CIWS, OTHER, STORES).");
             _freeAirKnots = Cfg.Bind("Fire", "UnknownAirMinKnots", 500f,
                 "Speed (knots) above which an unidentified aircraft coming towards the ship (within the distance of UnknownAirMaxNm) is engaged by the Weapons tab's \"On Free: engage unidentified aircraft\". " +
                 "Airliners of the game cruise at about 460-480 knots and reach 560 at most.");
@@ -169,9 +169,19 @@ namespace AlternativeWeaponsControl
             _zoneFire = Cfg.Bind("UI", "FireShowsZones", true,
                 "While the target is being picked after Fire, the firing arcs and range of the weapons are shown on the map and in 3D " +
                 "(as the game does with Alt held over a weapon in the unit's status line).");
+            _secTargets = Cfg.Bind("UI", "SectionTargetTypes", false,
+                "A SAM group's title on the Weapons tab also lists the other target types of the SAM ammunition: SAM/ANTI-SHIP (a SAM that can also hit ships). The other target types of non-SAM missiles (ANTI-SHIP/ASW: a missile that hits ships and submarines) are always listed.");
+            _bottomFire = Cfg.Bind("UI", "BottomPanelFire", false,
+                "A click on a weapon of the panel at the bottom of the screen works like the Fire button of the Weapons tab: the weapons' firing arcs and range are shown in red on the map and in 3D and the game's red range circle is hidden. Needs 'Fire shows weapon arcs and range'.");
             _gunAimBeyond = Cfg.Bind("Guns", "AimBeyondMaxRange", true,
                 "The player's guns, CIWS and machine guns turn and elevate towards a target beyond their maximum range (up to 1.5 x the range, at least 5 nm) " +
-                "without firing, as if it were at the maximum range. Off = as in the game: the turret stays still until the target is in range.");
+                "or outside their firing sector (as far as the sector allows) without firing. Off = as in the game: the turret stays still until the target is in range and in the sector.");
+            _engageOutside = Cfg.Bind("Guns", "EngageOutsideSector", true,
+                "Many big weapons (battleship and cruiser guns, some CIWS) have EngageOnlyInsideArc=True in the game: they are never given a target outside their firing sector. " +
+                "On = this restriction is ignored; the weapon takes such a target and turns to the nearest edge of its sector (and does not fire until the target is inside). Applied to units loaded after the change (a mission start). Works together with the option above.");
+            _gunMemory = Cfg.Bind("Guns", "RememberTargets", true,
+                "A new order to fire makes the guns switch to the new target as before, but the earlier targets are not forgotten: a gun that cannot reach the new target " +
+                "(out of range or outside its firing sector) goes on with the newest earlier target it can reach, and returns to the newest one when it can. Cease fire clears the list. Off = as in the game: every new order replaces the old one.");
             _gunMinError = Cfg.Bind("Guns", "MaxAccuracyMeters", 5f,
                 "Best (maximum) accuracy of guns against surface targets, in metres: the floor of the fire-control range error. The game uses about 40 m, so at close range " +
                 "(up to ~1.4 nm) guns are relatively less accurate than at medium range. The scaling with distance (1.5 % of range) stays. " +
@@ -182,7 +192,7 @@ namespace AlternativeWeaponsControl
                 "Verbose logging and BepInEx/AlternativeWeaponsControl.trace.txt.");
             _language = Cfg.Bind("General", "Language", "",
                 "Language of the mod's texts: a code of a game language (en, ru ...); empty = the game's own language. The texts are in the files lang/<code>.ini in the mod folder - edit them to translate.");
-            Entries.Add(_clickVolume); Entries.Add(_samButton); Entries.Add(_zoneFire); Entries.Add(_plotHostile); Entries.Add(_freeAirKnots); Entries.Add(_freeAirNm); Entries.Add(_freeAirOwn); Entries.Add(_freeAirEnemy); Entries.Add(_tabLand); Entries.Add(_tabAir); Entries.Add(_samAuto); Entries.Add(_samKeep); Entries.Add(_samAnim); Entries.Add(_samAutoRange); Entries.Add(_samMinutes); Entries.Add(_gunOneDirector); Entries.Add(_gunChannels); Entries.Add(_noRbuSurfaceChase); Entries.Add(_noAirChase); Entries.Add(_gunAimBeyond); Entries.Add(_gunMinError); Entries.Add(_ammoFix); Entries.Add(_debugEntry); Entries.Add(_language);
+            Entries.Add(_gunMemory); Entries.Add(_bottomFire); Entries.Add(_secTargets); Entries.Add(_clickVolume); Entries.Add(_samButton); Entries.Add(_zoneFire); Entries.Add(_plotHostile); Entries.Add(_freeAirKnots); Entries.Add(_freeAirNm); Entries.Add(_freeAirOwn); Entries.Add(_freeAirEnemy); Entries.Add(_tabLand); Entries.Add(_tabAir); Entries.Add(_samAuto); Entries.Add(_samKeep); Entries.Add(_samAnim); Entries.Add(_samAutoRange); Entries.Add(_samMinutes); Entries.Add(_gunOneDirector); Entries.Add(_gunChannels); Entries.Add(_noRbuSurfaceChase); Entries.Add(_noAirChase); Entries.Add(_gunAimBeyond); Entries.Add(_engageOutside); Entries.Add(_gunMinError); Entries.Add(_ammoFix); Entries.Add(_debugEntry); Entries.Add(_language);
             Loc.Trace = Trace; Loc.Forced = () => _language == null ? "" : _language.Value;
             foreach (var en in Entries) Loc.Register("help." + en.Definition.Section + "/" + en.Definition.Key, en.Description == null ? "" : en.Description.Description);
 
@@ -207,6 +217,8 @@ namespace AlternativeWeaponsControl
             try { SettingsWindow.Tick(); } catch (Exception e) { Trace("settings tick: " + e.Message); }
             WatchConfigFile();
             try { FixTargetsStep(); } catch (Exception e) { Trace("target fix: " + e.Message); }
+            try { BottomZonesStep(UnityEngine.Time.unscaledTime); } catch (Exception e) { Trace("bottom zones: " + e.Message); }
+            try { GunTargetsStep(UnityEngine.Time.unscaledTime); } catch (Exception e) { Trace("gun targets: " + e.Message); }
             if (!Enabled) return;
             try { StatusViewsStep(UnityEngine.Time.unscaledTime); } catch (Exception e) { Trace("status views: " + e); }
         }
@@ -276,6 +288,7 @@ namespace AlternativeWeaponsControl
             try { HookZones(harmony, asm); } catch (Exception e) { Warn("Fire zones failed: " + e.Message); }
             try { HookWarmUp(harmony, asm); } catch (Exception e) { Warn("SAM ready button failed: " + e.Message); }
             try { HookAmmoFix(harmony, asm); } catch (Exception e) { Warn("Ammunition fix failed: " + e.Message); }
+            try { HookGunTargets(harmony, asm); } catch (Exception e) { Warn("Gun targets failed: " + e.Message); }
             try { HookGunFixes(harmony, asm); } catch (Exception e) { Warn("Gun fixes failed: " + e.Message); }
             try { HookWeapons(harmony, asm); } catch (Exception e) { Warn("Weapons hooks failed: " + e.Message); Trace(e.ToString()); }
             try

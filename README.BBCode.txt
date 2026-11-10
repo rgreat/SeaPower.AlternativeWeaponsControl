@@ -1,4 +1,4 @@
-Version 1.3.0.
+Version 1.4.0.
 
 Adds a new [b]Weapons[/b] tab in the Unit Status window of your units, and a set of combat improvements.
 
@@ -7,7 +7,7 @@ Adds a new [b]Weapons[/b] tab in the Unit Status window of your units, and a set
 [olist]
 [*][b]All launchers at a glance[/b], by kind (SAM, anti-ship, land attack, ASW, guns, CIWS), launchers of the same system in one row (×N), opened to every launcher and every type of ammunition. Groups with several ammunition types have an ammunition selector with its own target-type switches and Cease fire. Section titles with several groups have common Fire / Stop / Reload.
 State of each launcher and its current target, ammunition left, fire-control channels of the directors, links to the reference.
-Drag a section title (SAM, GUNS, …) to reorder the sections.
+Drag a group title (SAM, GUNS, …) to reorder the groups.
 [*][b]Ground vehicles, land installations, aircraft and helicopters[/b] get the tab too (each can be switched off in the settings).
 [*][b]Fire orders[/b] for a group, an ammunition or one launcher: pick the target on the map, salvo and launch options, cease fire, reload. A launcher given its own target fires at it and waits while it is busy or no fire-control channel is free. Kept in saved games.
 [*][b]Automatic use[/b] per launcher and target domain (aircraft, missiles, surface ships, submarines, land): switch off what the AI may use by itself - e.g. keep the long-range SAMs for aircraft. Merged with the unit's Standing Orders; kept in saved games. Manual fire is never restricted.
@@ -25,7 +25,10 @@ Drag a section title (SAM, GUNS, …) to reorder the sections.
 [h3]Fire and guns[/h3]
 [olist]
 [*][b]Fire shows the weapon's firing arcs[/b] in red, with a weak red fill, on the map (Sea Power 0.8.7) and in 3D while the target is being picked.
-[*][b]Aim beyond maximum range:[/b] guns, CIWS and machine guns turn towards a target out of range without firing.
+[*][b]Aim beyond maximum range:[/b] guns, CIWS and machine guns turn towards a target out of range or outside their firing sector (as far as the sector allows) without firing.
+[*][b]Engage targets outside the firing sector[/b] (on by default): big guns that the game never gives a target outside their sector take such a target and turn to the edge of the sector (applied to units loaded afterwards).
+[*][b]Remember earlier targets[/b] (on by default): a new order to fire still switches the guns to the new target, but earlier targets are kept; a gun that cannot reach the new one (range, firing sector) goes on with the newest earlier target it can reach. Cease fire clears the list.
+[*][b]Bottom panel weapons act as Fire[/b] (off by default): a click on a weapon of the panel at the bottom of the screen shows the red zones and hides the game's range circle, like Fire of the tab.
 [*][b]Disable AI cheating:[/b] the game's AI engages only contacts whose true side is hostile, which you cannot know. Your ships now engage the contacts you marked hostile on the plot (on Tight: aircraft only).
 [*][b]Close-range accuracy:[/b] "Guns: change maximum accuracy" - best accuracy of guns (default 5 m, the game has about 40 m).
 [*][b]Ammunition pack:[/b] the accuracy and warhead power of 47 gun ammunition types are taken from the author's pack (ammunition_fix.txt in the mod folder). The table in the Guns tab of the settings window ("Guns: alter accuracy and power", on by default) lists them with the game's names, the mod's values and the game's own values; you can edit every value and reset it. The table and other dependent settings are hidden while their switch is off; applied to ammunition loaded after Apply (a mission start).
