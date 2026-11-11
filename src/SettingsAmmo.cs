@@ -50,15 +50,41 @@ namespace AlternativeWeaponsControl
             return Loc.F("set.default", ps.Length == 0 ? "?" : ps) + "\n" + Loc.F("set.gameVal", gs.Length == 0 ? "?" : gs);
         }
 
+        static List<string> _ammoRows;          // the table of the work copy: names in the order shown
+        static bool _ammoPicker;                // the "Add" list is open
+        static string _ammoFilter = "";
+
+        static void AmmoEnsureField(string n)
+        {
+            if (AmmoField(n, 0) != null) return;
+            Fields.Add(new Field { Tab = "tabs.guns", Group = "grp.ammoList", Key = "Ammo/" + n + "/0", Label = n, Unit = "", Kind = Kind.Number, Step = 1f, Min = 0f, Max = 100000f });
+            Fields.Add(new Field { Tab = "tabs.guns", Group = "grp.ammoList", Key = "Ammo/" + n + "/1", Label = n, Unit = "", Kind = Kind.Number, Step = 0.1f, Min = 0f, Max = 100000f });
+        }
+
         static void EnsureAmmoFields()
         {
-            if (_ammoFields) return;
             _ammoFields = true;
-            foreach (var n in AwcPlugin.AmmoNames())
-            {
-                Fields.Add(new Field { Tab = "tabs.guns", Group = "grp.ammoList", Key = "Ammo/" + n + "/0", Label = n, Unit = "", Kind = Kind.Number, Step = 1f, Min = 0f, Max = 100000f });
-                Fields.Add(new Field { Tab = "tabs.guns", Group = "grp.ammoList", Key = "Ammo/" + n + "/1", Label = n, Unit = "", Kind = Kind.Number, Step = 0.1f, Min = 0f, Max = 100000f });
-            }
+            _ammoRows = AwcPlugin.AmmoListNames();
+            foreach (var n in AwcPlugin.AmmoNames()) AmmoEnsureField(n);
+            foreach (var n in _ammoRows) AmmoEnsureField(n);
+        }
+
+        /// <summary>The window is (re)loaded from the saved settings: the table is the saved list again.</summary>
+        static void AmmoReload()
+        {
+            if (!_ammoFields) return;
+            _ammoRows = AwcPlugin.AmmoListNames();
+            foreach (var n in _ammoRows) AmmoEnsureField(n);
+            _ammoPicker = false; _ammoFilter = "";
+        }
+
+        static bool AmmoListDirty()
+        {
+            if (!_ammoFields || _ammoRows == null) return false;
+            var s = AwcPlugin.AmmoListNames();
+            if (s.Count != _ammoRows.Count) return true;
+            for (int i = 0; i < s.Count; i++) if (!string.Equals(s[i], _ammoRows[i], StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
         }
 
         static Field AmmoField(string name, int which)
@@ -72,13 +98,17 @@ namespace AlternativeWeaponsControl
         static void AmmoCommit()
         {
             if (!_ammoFields) return;
-            bool any = false;
+            bool any = AmmoListDirty();
             foreach (var f in Fields) if (IsAmmo(f.Key) && !Same(Get(f), Saved(f))) { any = true; break; }
             if (!any) return;
             var user = new Dictionary<string, float[]>(StringComparer.OrdinalIgnoreCase);
+            var order = new List<string>();
+            var inRows = new HashSet<string>(_ammoRows, StringComparer.OrdinalIgnoreCase);
             foreach (var n in AwcPlugin.AmmoNames())
+                if (!inRows.Contains(n)) user[n] = new[] { float.NaN, float.NaN, float.NaN, 1f };   // pack ammunition taken off the table
+            foreach (var n in _ammoRows)
             {
-                var v = new[] { float.NaN, float.NaN };
+                var v = new[] { float.NaN, float.NaN, float.NaN, float.NaN };
                 for (int i = 0; i < 2; i++)
                 {
                     var f = AmmoField(n, i); if (f == null) continue;
@@ -87,14 +117,15 @@ namespace AlternativeWeaponsControl
                     if (float.IsNaN(b)) { var g = AwcPlugin.AmmoGameValues(n); b = i == 0 ? g.Cep : g.Power; }
                     if (float.IsNaN(b) || Math.Abs(w - b) > 1e-5f) v[i] = w;
                 }
-                if (!float.IsNaN(v[0]) || !float.IsNaN(v[1])) user[n] = v;
+                if (!AwcPlugin.AmmoIsPack(n)) { v[2] = 1f; order.Add(n); }
+                if (!float.IsNaN(v[0]) || !float.IsNaN(v[1]) || !float.IsNaN(v[2])) user[n] = v;
             }
-            AwcPlugin.AmmoSaveUser(user);
+            AwcPlugin.AmmoSaveUser(user, order);
         }
 
         static void AmmoSetAll(Func<string, int, float> value)
         {
-            foreach (var n in AwcPlugin.AmmoNames())
+            foreach (var n in _ammoRows)
                 for (int i = 0; i < 2; i++)
                 {
                     float v = value(n, i); var f = AmmoField(n, i);
@@ -115,7 +146,66 @@ namespace AlternativeWeaponsControl
             bar.Children.Add(Btn(Loc.T("ammo.restorePack"), () => AmmoSetAll((n, i) => { float p = AwcPlugin.AmmoPack(n, i); return float.IsNaN(p) ? GameValue(n, i) : p; })));
             _body.Children.Add(bar);
             _body.Children.Add(AmmoHeader());
-            foreach (var n in AwcPlugin.AmmoNames()) _body.Children.Add(AmmoRow(n));
+            foreach (var n in _ammoRows.ToArray()) _body.Children.Add(AmmoRow(n));
+            AmmoAdder();
+        }
+
+        /// <summary>"Add ammunition": an edit box with a drop-down list under it. The list holds every projectile ammunition of the game that is not in the table
+        /// ("translated name (id)"); typing filters it; choosing an item adds a row.</summary>
+        static void AmmoAdder()
+        {
+            var pan = new StackPanel { Margin = new Thickness(12f, 8f, 12f, 8f) };
+            _body.Children.Add(pan);
+            var have = new HashSet<string>(_ammoRows, StringComparer.OrdinalIgnoreCase);
+            var items = new List<KeyValuePair<string, string>>();   // text, id
+            foreach (var n in AwcPlugin.AllGunAmmo())
+            {
+                if (have.Contains(n)) continue;
+                var t = AwcPlugin.AmmoGameValues(n).Title;
+                items.Add(new KeyValuePair<string, string>(t == "?" || string.IsNullOrEmpty(t) ? n : t + " (" + n + ")", n));
+            }
+            items.Sort((a, b) => string.Compare(a.Key, b.Key, StringComparison.CurrentCultureIgnoreCase));
+
+            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            var lab = Text(Loc.T("ammo.add"), CDim, 12f); lab.Margin = new Thickness(0f, 0f, 8f, 0f); row.Children.Add(lab);
+            var box = Edit("", 380f); box.TextAlignment = TextAlignment.Left; row.Children.Add(box);
+            var arrow = new Button { Content = "▼", Width = 26f, Height = 24f, Padding = new Thickness(0f), Margin = new Thickness(2f, 0f, 0f, 0f) };
+            row.Children.Add(arrow);
+            pan.Children.Add(row);
+
+            var list = new StackPanel();
+            var scroll = new ScrollViewer { MaxHeight = 220f, Width = 480f, HorizontalAlignment = HorizontalAlignment.Left, Visibility = Visibility.Collapsed,
+                                            VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = list, Background = B(CField), Margin = new Thickness(0f, 2f, 0f, 0f) };
+            pan.Children.Add(scroll);
+
+            Action fill = () =>
+            {
+                list.Children.Clear();
+                string q = (box.Text ?? "").Trim(); int shown = 0, total = 0;
+                foreach (var it in items)
+                {
+                    if (q.Length > 0 && it.Key.IndexOf(q, StringComparison.CurrentCultureIgnoreCase) < 0) continue;
+                    total++;
+                    if (shown >= 80) continue;
+                    shown++;
+                    string nm = it.Value;
+                    var b = new Button { Content = it.Key, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(8f, 2f, 8f, 2f), MinHeight = 22f };
+                    b.Click += (o, e) =>
+                    {
+                        _ammoRows.Add(nm); AmmoEnsureField(nm);
+                        var g = AwcPlugin.AmmoGameValues(nm);
+                        _work["Ammo/" + nm + "/0"] = Fmt(g.Cep); _work["Ammo/" + nm + "/1"] = Fmt(g.Power);
+                        _reshow = 1;
+                    };
+                    list.Children.Add(b);
+                }
+                if (total > shown) list.Children.Add(Text(Loc.F("ammo.more", (total - shown).ToString()), CDim, 11f));
+                if (total == 0) list.Children.Add(Text(Loc.T("ammo.none"), CDim, 11f));
+            };
+            Action open = () => { fill(); scroll.Visibility = Visibility.Visible; };
+            arrow.Click += (o, e) => { if (scroll.Visibility == Visibility.Visible) scroll.Visibility = Visibility.Collapsed; else open(); };
+            box.GotFocus += (o, e) => open();
+            box.TextChanged += (o, e) => open();
         }
 
         static Grid AmmoColumns()
@@ -127,13 +217,14 @@ namespace AlternativeWeaponsControl
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(124f) });
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(78f) });
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(30f) });
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(30f) });
             return g;
         }
 
         static FrameworkElement AmmoHeader()
         {
             var g = AmmoColumns();
-            string[] t = { Loc.T("ammo.colName"), Loc.T("ammo.colCep"), "", Loc.T("ammo.colPower"), "", "" };
+            string[] t = { Loc.T("ammo.colName"), Loc.T("ammo.colCep"), "", Loc.T("ammo.colPower"), "", "", "" };
             for (int c = 0; c < t.Length; c++)
             {
                 if (t[c].Length == 0) continue;
@@ -162,6 +253,7 @@ namespace AlternativeWeaponsControl
                 dot.Visibility = Same(Get(fc), Saved(fc)) && Same(Get(fp), Saved(fp)) ? Visibility.Hidden : Visibility.Visible;
                 UpdateStatus(); UpdateTabDots();
             };
+            _marks.Add(mark);
             Action rc, rp;
             var ec = NumberEditor(fc, mark, out rc); Grid.SetColumn(ec, 1); g.Children.Add(ec);
             var gc = Text(AmmoHint(name, 0, game.Cep), CDim, 11f); gc.Margin = new Thickness(8f, 0f, 0f, 0f); Grid.SetColumn(gc, 2); g.Children.Add(gc);
@@ -177,6 +269,16 @@ namespace AlternativeWeaponsControl
                 rc(); rp(); mark();
             };
             Grid.SetColumn(rst, 5); g.Children.Add(rst);
+
+            var del = new Button { Content = "✕", Width = 24f, Height = 22f, Padding = new Thickness(0f), HorizontalAlignment = HorizontalAlignment.Right };
+            try { ToolTipService.SetToolTip(del, Loc.T("ammo.removeTip")); } catch { }
+            del.Click += (o, e) =>
+            {
+                _ammoRows.RemoveAll(x => string.Equals(x, name, StringComparison.OrdinalIgnoreCase));
+                _work[fc.Key] = Fmt(GameValue(name, 0)); _work[fp.Key] = Fmt(GameValue(name, 1));   // a removed row is the game's own again
+                _reshow = 1;
+            };
+            Grid.SetColumn(del, 6); g.Children.Add(del);
 
             mark();
             outer.MouseEnter += (o, e) =>

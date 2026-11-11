@@ -23,7 +23,17 @@ namespace AlternativeWeaponsControl
             var cf = wci == null ? null : wci.GetMethod("FireAtTarget", inst | BindingFlags.DeclaredOnly, null, Type.EmptyTypes, null);
             if (cf != null) harmony.Patch(cf, prefix: Hm("CiwsAimPrefix")); else Trace("CIWS.FireAtTarget not found: CIWS / machine guns do not aim beyond max range");
             var ms = gun == null ? null : gun.GetMethod("GetMeasurementRangeSigma", inst | BindingFlags.DeclaredOnly);
-            if (ms != null) harmony.Patch(ms, prefix: Hm("RangeSigmaPrefix"), finalizer: Hm("RangeSigmaFinalizer")); else Trace("WeaponSystemGun.GetMeasurementRangeSigma not found: no minimum range error option");
+            if (ms != null) harmony.Patch(ms, prefix: Hm("RangeSigmaPrefix"), postfix: Hm("RangeSigmaPostfix"), finalizer: Hm("RangeSigmaFinalizer")); else Trace("WeaponSystemGun.GetMeasurementRangeSigma not found: no minimum range error option");
+            var gfm = asm.GetType("SeaPower.GunFireControlModel");
+            var ss = gfm == null ? null : gfm.GetMethod("SurfaceSigmas", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            if (ss != null) harmony.Patch(ss, postfix: Hm("FcErrorPostfix")); else Trace("GunFireControlModel.SurfaceSigmas not found: no fire-control accuracy multiplier");
+            var sens = asm.GetType("SeaPower.SensorSystem");
+            var rfp = sens == null ? null : sens.GetMethod("ResolveFireControlProfile", inst | BindingFlags.DeclaredOnly);
+            if (rfp != null) harmony.Patch(rfp, prefix: Hm("FcProfilePrefix"), postfix: Hm("FcProfilePostfix")); else Trace("SensorSystem.ResolveFireControlProfile not found: no director gain / minimum solution options");
+            var su = asm.GetType("SeaPower.SensorUtils");
+            var bs = su == null ? null : su.GetMethod("BuildSolution", BindingFlags.Static | BindingFlags.Public);
+            if (bs != null) harmony.Patch(bs, prefix: Hm("SolSpeedPrefix")); else Trace("SensorUtils.BuildSolution not found: no SolutionBuildSpeed");
+            ApplyLocalGain();
             var ini = asm.GetType("SeaPower.IniHandler");
             var rv = ini == null ? null : ini.GetMethod("readValue", inst, null, new[] { typeof(string), typeof(string), typeof(bool), typeof(bool) }, null);
             if (rv != null) harmony.Patch(rv, postfix: Hm("IniBoolPostfix")); else Trace("IniHandler.readValue(bool) not found: no EngageOnlyInsideArc override");
@@ -37,6 +47,93 @@ namespace AlternativeWeaponsControl
         {
             if (!__result || key != "EngageOnlyInsideArc") return;
             var a = Active; if (a != null && Enabled && a._engageOutside != null && a._engageOutside.Value) __result = false;
+        }
+
+        // ------------------------------------------------------------------ fire-control error multiplier
+        // GunFireControlModel.SurfaceSigmas gives the four errors of the aim point of a salvo at a surface target (range, bearing, target's movement during the flight,
+        // own ship's motion in a sea): director gain, light, crew, solution and the range floor are already in them. [Guns] FireControlAccuracy divides all four.
+        static Type _tSensorRadar;
+
+        static void FcErrorPostfix(ref float rangeSigma, ref float bearingSigma, ref float predictionSigma, ref float stabilizationSigma)
+        {
+            var a = Active; if (a == null || !Enabled) return;
+            float m = a._fcAccuracy == null || a._fcAccuracy.Value <= 0.0001f ? 1f : a._fcAccuracy.Value;
+            if (Math.Abs(m - 1f) < 1e-4f) return;
+            rangeSigma /= m; bearingSigma /= m; predictionSigma /= m; stabilizationSigma /= m;
+        }
+
+        // The game decides whether a gun must wait for the fall of its last shell ("spotting fire") by comparing ITS estimate of the aim error with the shell scatter:
+        // WeaponSystemGun.NeedsSpottingFire -> GetMeasurementRangeSigma. The estimate gets the same accuracy multipliers as the real error, else a more accurate
+        // gun would still wait for splashes.
+        static void RangeSigmaPostfix(object __instance, ref float __result)
+        {
+            var a = Active; if (a == null) return;
+            float g = a._fcAccuracy == null || a._fcAccuracy.Value <= 0.0001f ? 1f : a._fcAccuracy.Value;
+            float m = g;
+            if (Math.Abs(m - 1f) > 1e-4f) __result /= m;
+        }
+
+        // ------------------------------------------------------------------ director gain / minimum solution, local control gain
+        // A director's profile (SensorSystem._fcSolutionGainRate / _fcMinSolution, set once by ResolveFireControlProfile from the sensor's ini or inferred) drives
+        // everything: range error ~ 1/gain^2, bearing error ~ 1/sqrt(gain), the speed the solution builds up (~ gain), the unstabilized-mount factor, the spotting-fire
+        // decision. The scale of the values differs between rulesets (the game: optics 0.75, radars 1.5-2.5; WW2 pack: optics 0.11-0.37, radars 0.23-0.60).
+        // Here the profile is recomputed from the sensor's own base values at every call (so a changed option works at once):
+        //   1. WeakDirectorsLift p (percent): a gain below RefGain (0.75, the weakest director of the game) gets p% of the gap to RefGain added;
+        //      the minimum solution grows by the same factor. Gains of the game's directors (>= 0.75) are not touched.
+        //   2. the multipliers of the kind (optical / radar) on the gain and on the minimum solution.
+        // Local control (no director) uses Globals._gunLocalControlGainRate (0.6): set to 0.6 * LocalControlGain.
+        const float RefGain = 0.75f;
+        static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, float[]> FcBase = new System.Runtime.CompilerServices.ConditionalWeakTable<object, float[]>();
+        static FieldInfo _fGainGlobal; static float _localGainBase = float.NaN;
+
+        static void FcProfilePrefix(object __instance, out bool __state)
+        {
+            __state = false;
+            try { __state = R.B(R.F(__instance, "_fcProfileResolved")); } catch { }
+        }
+
+        static void FcProfilePostfix(object __instance, bool __state)
+        {
+            try
+            {
+                var a = Active;
+                float[] b;
+                if (!FcBase.TryGetValue(__instance, out b))
+                {
+                    if (a == null) return;   // nothing changed yet: the sensor's own values are the base
+                    b = new[] { R.Fl(R.F(__instance, "_fcSolutionGainRate")), R.Fl(R.F(__instance, "_fcMinSolution")) };
+                    FcBase.Add(__instance, b);
+                }
+                float gain = b[0], min = b[1];
+                if (a != null && gain > 0f)
+                {
+                    if (_tSensorRadar == null) _tSensorRadar = _tObjectBase.Assembly.GetType("SeaPower.SensorSystemRadar");
+                    bool radar = _tSensorRadar != null && _tSensorRadar.IsInstanceOfType(__instance);
+                    float wm = a._weakBoost == null ? 0f : Mathf.Clamp01(a._weakBoost.Value / 100f);
+                    float f = 1f;
+                    if (gain < RefGain) f = (gain + wm * (RefGain - gain)) / gain;   // closes wm of the gap to the weakest director of the game
+                    float mm = (radar ? a._minSolRadar : a._minSolOptical) == null ? 1f : (radar ? a._minSolRadar : a._minSolOptical).Value;
+                    gain = Mathf.Max(gain * f, 0.02f);
+                    if (min > 0f) min = Mathf.Clamp01(min * f * Mathf.Max(mm, 0f));
+                }
+                R.SetF(__instance, "_fcSolutionGainRate", gain);
+                R.SetF(__instance, "_fcMinSolution", min);
+            }
+            catch (Exception e) { TraceLimited("fcprofile-err", 10f, "director profile: " + e.Message); }
+        }
+
+        /// <summary>Globals._gunLocalControlGainRate = the game's value * LocalControlGain (called at start and whenever an option changes).</summary>
+        internal void ApplyLocalGain()
+        {
+            try
+            {
+                if (_fGainGlobal == null) _fGainGlobal = _tObjectBase.Assembly.GetType("SeaPower.Globals").GetField("_gunLocalControlGainRate", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                if (_fGainGlobal == null) return;
+                if (float.IsNaN(_localGainBase)) _localGainBase = R.Fl(_fGainGlobal.GetValue(null));
+                float m = Enabled && _gainLocal != null ? Mathf.Max(_gainLocal.Value, 0.01f) : 1f;
+                _fGainGlobal.SetValue(null, _localGainBase * m);
+            }
+            catch (Exception e) { Trace("local control gain: " + e.Message); }
         }
 
         // ------------------------------------------------------------------ minimum fire-control range error

@@ -43,7 +43,7 @@ namespace AlternativeWeaponsControl
 
         static SettingsWindow()
         {
-            const string T1 = "tabs.panel", T2 = "tabs.fire", TA = "tabs.ai", T3 = "tabs.guns", T5 = "tabs.debug";
+            const string T1 = "tabs.panel", T2 = "tabs.fire", TA = "tabs.ai", T3 = "tabs.guns", TG = "tabs.gunsAccuracy", T5 = "tabs.debug";
             Add(T1, "grp.panel", "UI/WeaponsTabGroundUnits", "Weapons tab for ground units", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T1, "grp.panel", "UI/WeaponsTabAircraft", "Weapons tab for aircraft and helicopters", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T1, "grp.panel", "UI/FireShowsZones", "Fire shows weapon arcs and range", "", Kind.Bool, 0, 0, 0, "game: off");
@@ -52,12 +52,6 @@ namespace AlternativeWeaponsControl
             Add(T1, "grp.panel", "UI/ClickVolume", "Click sound volume", "0..1 · 0 = no sound", Kind.Number, 0.1f, 0f, 1f);
             Add(T1, "grp.samButton", "UI/SamReadyButton", "SAM readiness button", "", Kind.Bool, 0, 0, 0);
             Add(T1, "grp.samButton", "UI/SamReadyMinutes", "SAM readiness limit", "1..60", Kind.Number, 1f, 1f, 60f, null, "UI/SamReadyButton");
-            Add(T2, "grp.sam", "Ships/SamAutoCharge", "Charge SAMs when unknown aircraft approach", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(T2, "grp.sam", "Ships/SamAutoChargeRange", "Unknown aircraft distance to charge", "nm", Kind.Number, 5f, 5f, 200f, null, "Ships/SamAutoCharge");
-            Add(T2, "grp.sam", "Ships/SamKeepLoaded", "Keep SAM missiles on the rails while hot", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(T2, "grp.sam", "Ships/SamAnimFix", "Missile load / unload animation fix", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(T2, "grp.fireControl", "FireControl/GunOneDirector", "Guns take one director", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(T2, "grp.fireControl", "FireControl/GunChannelLimit", "Guns without a free channel: local control", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(TA, "grp.targeting", "Fire/EngageByPlotRelation", "Disable AI cheating", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(TA, "grp.freeAir", "Fire/UnknownAirMinKnots", "Engage unidentified aircraft faster than", "kn", Kind.Number, 10f, 100f, 2000f);
             Add(TA, "grp.freeAir", "Fire/UnknownAirMaxNm", "Engage unidentified aircraft closer than", "nm", Kind.Number, 5f, 5f, 200f);
@@ -65,14 +59,27 @@ namespace AlternativeWeaponsControl
             Add(TA, "grp.freeAir", "Fire/UnknownAirDefaultEnemy", "On Free by default: enemy AI ships", "", Kind.Bool, 0, 0, 0);
             Add(TA, "grp.chasing", "Ships/NoRbuSurfaceChase", "No chasing surface targets with ASW mortars", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(TA, "grp.chasing", "Ships/NoAirChase", "No chasing air targets", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T2, "grp.sam", "Ships/SamAutoCharge", "Charge SAMs when unknown aircraft approach", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T2, "grp.sam", "Ships/SamAutoChargeRange", "Unknown aircraft distance to charge", "nm", Kind.Number, 5f, 5f, 200f, null, "Ships/SamAutoCharge");
+            Add(T2, "grp.sam", "Ships/SamKeepLoaded", "Keep SAM missiles on the rails while hot", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T2, "grp.sam", "Ships/SamAnimFix", "Missile load / unload animation fix", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T3, "grp.aiming", "Guns/AimBeyondMaxRange", "Aim guns at targets beyond max range", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T3, "grp.aiming", "Guns/EngageOutsideSector", "Engage targets outside the firing sector", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T3, "grp.aiming", "Guns/RememberTargets", "Remember earlier targets", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T3, "grp.aiming", "Guns/RerollAimError", "Unstick guns at long range", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T3, "grp.aiming", "Guns/ClickEngagesAllGuns", "Click on a target: all guns", "", Kind.Bool, 0, 0, 0, "game: one ammunition");
             Add(T3, "grp.aiming", "Guns/LocalControlKeepsFiring", "Local control: no spotting wait", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(T3, "grp.accuracy", "Guns/MaxAccuracyMeters", "Guns: change maximum accuracy", "m", Kind.Number, 1f, 0f, 100f, "~40");
-            Add(T3, "grp.ammoFix", "Guns/AmmunitionFix", "Guns: alter accuracy and power", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(TG, "grp.fireControl", "FireControl/GunOneDirector", "Guns take one director", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(TG, "grp.fireControl", "FireControl/GunChannelLimit", "Guns without a free channel: local control", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(TG, "grp.global", "Guns/MaxAccuracyMeters", "Maximum accuracy", "m", Kind.Number, 1f, 0f, 100f, "~40");
+            Add(TG, "grp.global", "Guns/AccuracyMultiplier", "Shell accuracy", "x", Kind.Number, 0.1f, 0.1f, 20f, "1");
+            Add(TG, "grp.global", "Guns/FireControlAccuracy", "Aiming accuracy", "x", Kind.Number, 0.1f, 0.1f, 20f, "1");
+            Add(TG, "grp.directors", "Guns/WeakDirectorsLift", "Weak directors boost", "%", Kind.Number, 5f, 0f, 100f, "game: 0");
+            Add(TG, "grp.directors", "Guns/SolutionBuildSpeed", "Firing solution build speed", "x", Kind.Number, 0.05f, 0.05f, 5f, "game: 1");
+            Add(TG, "grp.directors", "Guns/LocalControlGain", "Solution quality without a director", "x", Kind.Number, 0.05f, 0.1f, 10f, "game: 1");
+            Add(TG, "grp.directors", "Guns/OpticalDirectorMinSolution", "Solution quality with optical directors", "x", Kind.Number, 0.1f, 0f, 5f, "game: 1");
+            Add(TG, "grp.directors", "Guns/RadarDirectorMinSolution", "Solution quality with radar directors", "x", Kind.Number, 0.1f, 0f, 5f, "game: 1");
+            Add(T3, "grp.ammoFix", "Guns/AmmunitionFix", "Custom accuracy and power", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T5, "grp.diagnostics", "General/Debug", "Debug trace", "", Kind.Bool, 0, 0, 0);
             Add("tabs.language", "grp.language", "General/Language", "Language", "", Kind.Lang, 0, 0, 0);
         }
@@ -196,6 +203,7 @@ namespace AlternativeWeaponsControl
         {
             _work.Clear();
             foreach (var e in P.Entries) _work[e.Definition.Section + "/" + e.Definition.Key] = e.GetSerializedValue();
+            AmmoReload();
             foreach (var f in Fields) if (IsAmmo(f.Key)) _work[f.Key] = AmmoSavedText(f.Key);
         }
 
@@ -212,7 +220,7 @@ namespace AlternativeWeaponsControl
             return string.Equals((a ?? "").Trim(), (b ?? "").Trim(), StringComparison.OrdinalIgnoreCase);
         }
 
-        static bool Dirty() { foreach (var f in Fields) if (!Same(Get(f), Saved(f))) return true; return false; }
+        static bool Dirty() { if (AmmoListDirty()) return true; foreach (var f in Fields) if (!Same(Get(f), Saved(f))) return true; return false; }
 
         // ------------------------------------------------------------ the game's keyboard while typing
 
@@ -431,9 +439,13 @@ namespace AlternativeWeaponsControl
 
         // ------------------------------------------------------------ rows
 
+        // the "changed" markers of the rows on the page: after Apply they are refreshed in place (no rebuild: the scroll position and the page stay)
+        static readonly List<Action> _marks = new List<Action>();
+
         static void Show()
         {
             if (_body == null) return;
+            _marks.Clear();
             _body.Children.Clear();
             if (_tabBar != null)
             {
@@ -455,7 +467,7 @@ namespace AlternativeWeaponsControl
             foreach (var f in Fields)
             {
                 if (f.Tab != _curTab || f.Group == "grp.ammoList" || !ParentOn(f)) continue;
-                if (f.Group != group) { group = f.Group; _body.Children.Add(GroupTitle(Loc.T(group))); }
+                if (f.Group != group) { group = f.Group; if (group == "grp.directors") PresetBar(); else _body.Children.Add(GroupTitle(Loc.T(group))); }
                 _body.Children.Add(Row(f));
             }
             if (_curTab == "tabs.guns" && Flag("Guns/AmmunitionFix")) AmmoTable();
@@ -479,6 +491,7 @@ namespace AlternativeWeaponsControl
 
         static bool TabChanged(string tab)
         {
+            if (tab == "tabs.guns" && AmmoListDirty()) return true;
             foreach (var f in Fields) if (f.Tab == tab && !Same(Get(f), Saved(f))) return true;
             return false;
         }
@@ -486,7 +499,7 @@ namespace AlternativeWeaponsControl
         static void UpdateStatus()
         {
             if (_status == null) return;
-            bool any = false;
+            bool any = AmmoListDirty();
             foreach (var f in Fields) if (!Same(Get(f), Saved(f))) { any = true; break; }
             _status.Text = any ? Loc.T("set.changed") : "";
         }
@@ -512,6 +525,7 @@ namespace AlternativeWeaponsControl
             g.Children.Add(lab);
 
             Action mark = () => { dot.Visibility = Same(Get(f), Saved(f)) ? Visibility.Hidden : Visibility.Visible; UpdateStatus(); UpdateTabDots(); };
+            _marks.Add(mark);
             Action refresh;
             var editor = f.Kind == Kind.Bool ? BoolEditor(f, mark, out refresh) : f.Kind == Kind.Lang ? LangEditor(f, mark, out refresh) : NumberEditor(f, mark, out refresh);
             Grid.SetColumn(editor, 1);
@@ -614,9 +628,60 @@ namespace AlternativeWeaponsControl
             return cb;
         }
 
+        // ------------------------------------------------------------------ presets of the fire-control accuracy settings (Guns tab, Accuracy)
+        // A preset only fills the settings below with values (nothing is stored but those settings); the bar shows which preset the current values equal.
+        // base = the game as it is; advanced = the mod's default (weak directors lifted, local control a little worse: right for the game and for rule sets with weak
+        // directors); ww2 = for the WW2 pack (directors of gain 0.1-0.6): stronger lift, radars better than optics, local control below the directors.
+        static readonly string[] PresetKeys = { "Guns/WeakDirectorsLift", "Guns/LocalControlGain", "Guns/OpticalDirectorMinSolution", "Guns/RadarDirectorMinSolution", "Guns/SolutionBuildSpeed" };
+        static readonly string[] PresetNames = { "base", "advanced", "ww2" };
+        static readonly float[][] PresetValues =
+        {
+            new[] { 0f,   1f,    1f, 1f,    1f },
+            new[] { 50f,  0.75f, 1f, 1f,    1f },
+            new[] { 50f,  0.5f,  1f, 1.25f, 0.5f },
+        };
+
+        static string CurrentPreset()
+        {
+            for (int p = 0; p < PresetNames.Length; p++)
+            {
+                bool all = true;
+                for (int i = 0; i < PresetKeys.Length && all; i++)
+                {
+                    string v; float f;
+                    all = _work.TryGetValue(PresetKeys[i], out v) && TryNum(v, out f) && Math.Abs(f - PresetValues[p][i]) < 0.0005f;
+                }
+                if (all) return PresetNames[p];
+            }
+            return null;
+        }
+
+        static void PresetBar()
+        {
+            string cur = CurrentPreset();
+            var bar = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(12f, 2f, 12f, 4f) };
+            var t = Text(Loc.T("preset.title") + ":  ", CDim); t.Margin = new Thickness(0f, 0f, 4f, 0f);
+            bar.Children.Add(t);
+            foreach (var n in PresetNames)
+            {
+                string name = n;
+                bar.Children.Add(Btn(Loc.T("preset." + name) + (cur == name ? "  ✓" : ""), () =>
+                {
+                    int p = Array.IndexOf(PresetNames, name);
+                    for (int i = 0; i < PresetKeys.Length; i++) _work[PresetKeys[i]] = PresetValues[p][i].ToString("0.##", CultureInfo.InvariantCulture);
+                    _reshow = 2;
+                }, 90f));
+            }
+            if (cur == null) { var c = Text(Loc.T("preset.custom"), CDim, 12f); c.Margin = new Thickness(6f, 0f, 0f, 0f); bar.Children.Add(c); }
+            _body.Children.Add(bar);
+            _body.Children.Add(new TextBlock { Text = Loc.T("preset.note"), Foreground = B(CDim), FontSize = 11f, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(12f, 0f, 12f, 6f) });
+        }
+
         static void Commit(bool close)
         {
             Typing(false);
+            var langEntry = Entry("General/Language");
+            string langBefore = langEntry == null ? "" : langEntry.GetSerializedValue();
             foreach (var f in Fields)
             {
                 var e = Entry(f.Key);
@@ -627,8 +692,15 @@ namespace AlternativeWeaponsControl
             try { P.Cfg.Save(); P.RememberCfgStamp(); } catch (Exception ex) { Warn("Saving the settings failed: " + ex.Message); }
             if (close) { Close(); return; }
             Load();
-            Show();
-            _redraw = 2;   // the whole window is rebuilt a couple of frames later: not inside the click of a button that is being replaced
+            if (langEntry != null && !Same(langBefore, langEntry.GetSerializedValue()))
+            {
+                Show();
+                _redraw = 2;   // another language: the whole window is rebuilt a couple of frames later (not inside the click of a button that is being replaced)
+                return;
+            }
+            // nothing else changes how the window looks: only the "changed" markers go off, the page and its scroll position stay
+            foreach (var m in _marks.ToArray()) { try { m(); } catch { } }
+            UpdateStatus(); UpdateTabDots();
         }
 
         static int _redraw, _reshow;

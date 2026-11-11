@@ -327,6 +327,10 @@ namespace AlternativeWeaponsControl
                     var rng = (Vector2)R.F(ap, "_launchRangesInUnity");
                     if (dist < rng.x || dist > Convert.ToSingle(_miMaxRange.Invoke(unit, new[] { am, targetObject }))) continue;
                     var task = Activator.CreateInstance(tasks.GetType().GetGenericArguments()[0], id, targetObject, unit, 1, 1000, false, false);
+                    // an extra order waits in the list until a gun is free for it, and the game breaks off the guns of ANOTHER target for a waiting order that is newer
+                    // than theirs (HandleEngageTasks) - with two targets ordered one after the other the waiting extras of the first kept tearing the guns off the second.
+                    // Creation time 0: older than every order, so an extra only takes free guns; the click's own order (the game's) still takes over as before.
+                    R.SetF(task, "_creationTime", 0.0);
                     R.Call(unit, "AddEngageTask", task);
                     added++; names += " " + id;
                 }

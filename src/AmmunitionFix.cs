@@ -33,7 +33,8 @@ namespace AlternativeWeaponsControl
 
         // ------------------------------------------------------------ the pack and the player's values
         static List<string> _ammoNames;                       // pack order
-        static Dictionary<string, float[]> _ammoUser;         // the player's values; null = not read yet
+        static Dictionary<string, float[]> _ammoUser;         // the player's values { accuracy, power, listed, removed }; null = not read yet
+        static List<string> _ammoUserOrder = new List<string>();   // the order of the sections of the player's file (the added ammunition keeps it)
 
         static string ModFolder() { try { return Path.GetDirectoryName(typeof(AwcPlugin).Assembly.Location) ?? ""; } catch { return ""; } }
         static string UserAmmoPath()
@@ -57,7 +58,7 @@ namespace AlternativeWeaponsControl
                     if (l[0] == '[' && l[l.Length - 1] == ']')
                     {
                         string n = l.Substring(1, l.Length - 2).Trim();
-                        cur = new[] { float.NaN, float.NaN }; res[n] = cur; if (order != null) order.Add(n);
+                        cur = new[] { float.NaN, float.NaN, float.NaN, float.NaN }; res[n] = cur; if (order != null) order.Add(n);
                         continue;
                     }
                     int eq = l.IndexOf('=');
@@ -66,6 +67,7 @@ namespace AlternativeWeaponsControl
                     float f;
                     if (!float.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out f)) continue;
                     if (k == "CircularErrorProbable") cur[0] = f; else if (k == "Power") cur[1] = f;
+                    else if (k == "Listed") cur[2] = f != 0f ? 1f : float.NaN; else if (k == "Removed") cur[3] = f != 0f ? 1f : float.NaN;
                 }
             }
             catch (Exception e) { Trace("ammo file " + path + ": " + e.Message); }
@@ -76,7 +78,7 @@ namespace AlternativeWeaponsControl
         {
             _ammoNames = new List<string>();
             var res = ReadAmmoFile(Path.Combine(ModFolder(), AmmoFixFile), _ammoNames);
-            _ammoUser = ReadAmmoFile(UserAmmoPath(), null);
+            _ammoUserOrder = new List<string>(); _ammoUser = ReadAmmoFile(UserAmmoPath(), _ammoUserOrder);
             Trace("ammo fix: " + res.Count + " ammunition in the pack, " + _ammoUser.Count + " with the player's values");
             return res;
         }
@@ -95,7 +97,86 @@ namespace AlternativeWeaponsControl
         /// <summary>The value that is applied: the player's, else the pack's (NaN = the game's).</summary>
         internal static float AmmoEffective(string name, int which)
         {
+            if (AmmoRemoved(name)) return float.NaN;   // taken off the list: the game's values
             float u = AmmoUser(name, which); return !float.IsNaN(u) ? u : AmmoPack(name, which);
+        }
+
+        /// <summary>A pack ammunition the player took off the list: neither the pack's nor any value applies.</summary>
+        internal static bool AmmoRemoved(string name) { EnsureAmmoLoaded(); float[] v; return _ammoUser.TryGetValue(name, out v) && !float.IsNaN(v[3]); }
+
+        internal static bool AmmoIsPack(string name) { EnsureAmmoLoaded(); return _ammoFixTable.ContainsKey(name); }
+
+        /// <summary>The list of the table: the pack's ammunition (except the removed) and the ammunition the player added, in the file order.</summary>
+        internal static List<string> AmmoListNames()
+        {
+            EnsureAmmoLoaded();
+            var r = new List<string>();
+            foreach (var n in _ammoNames) if (!AmmoRemoved(n)) r.Add(n);
+            foreach (var n in _ammoUserOrder)
+            {
+                float[] v;
+                if (_ammoUser.TryGetValue(n, out v) && !float.IsNaN(v[2]) && !r.Exists(x => string.Equals(x, n, StringComparison.OrdinalIgnoreCase))) r.Add(n);
+            }
+            return r;
+        }
+
+        // ------------------------------------------------------------ every gun ammunition of the game (for the Add button)
+        static List<string> _ammoDirs, _ammoAll;
+
+        /// <summary>The ammunition folders of the game: its own files and every layer (mods).</summary>
+        static List<string> AmmoDirs()
+        {
+            if (_ammoDirs != null) return _ammoDirs;
+            _ammoDirs = new List<string>();
+            try { var o = Path.Combine(Path.Combine(UnityEngine.Application.streamingAssetsPath, "original"), "ammunition"); if (Directory.Exists(o)) _ammoDirs.Add(o); } catch { }
+            try
+            {
+                var asm = _tObjectBase.Assembly;
+                var fmT = asm.GetType("SeaPower.FileManager");
+                var inst = fmT == null ? null : fmT.GetProperty("Instance", BindingFlags.Static | BindingFlags.Public | BindingFlags.FlattenHierarchy).GetValue(null, null);
+                var dirs = inst == null ? null : fmT.GetProperty("Directories").GetValue(inst, null) as System.Collections.IEnumerable;
+                if (dirs != null)
+                    foreach (var d in dirs)
+                    {
+                        var di = d.GetType().GetProperty("DirectoryInfo").GetValue(d, null) as DirectoryInfo;
+                        if (di == null) continue;
+                        var a = Path.Combine(di.FullName, "ammunition");
+                        if (Directory.Exists(a) && !_ammoDirs.Contains(a)) _ammoDirs.Add(a);
+                    }
+            }
+            catch (Exception e) { Trace("ammo dirs: " + e.Message); }
+            return _ammoDirs;
+        }
+
+        /// <summary>Names of all projectile ammunition (shells and bullets of guns): the files of the game's ammunition folders with Type=Projectile in [General].</summary>
+        internal static List<string> AllGunAmmo()
+        {
+            if (_ammoAll != null) return _ammoAll;
+            var set = new SortedDictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            foreach (var dir in AmmoDirs())
+            {
+                try
+                {
+                    foreach (var f in Directory.GetFiles(dir, "*.ini"))
+                    {
+                        string name = Path.GetFileNameWithoutExtension(f);
+                        if (set.ContainsKey(name)) continue;
+                        string sec = "";
+                        foreach (var raw in File.ReadLines(f))
+                        {
+                            string l = raw; int c = l.IndexOf("//"); if (c >= 0) l = l.Substring(0, c);
+                            l = l.Trim(); if (l.Length == 0 || l[0] == '#' || l[0] == ';') continue;
+                            if (l[0] == '[') { int e = l.IndexOf(']'); sec = e > 0 ? l.Substring(1, e - 1).Trim() : ""; if (!sec.Equals("General", StringComparison.OrdinalIgnoreCase)) break; continue; }
+                            int eq = l.IndexOf('='); if (eq <= 0) continue;
+                            if (l.Substring(0, eq).Trim().Equals("Type", StringComparison.OrdinalIgnoreCase)) { if (l.Substring(eq + 1).Trim().Equals("Projectile", StringComparison.OrdinalIgnoreCase)) set[name] = true; break; }
+                        }
+                    }
+                }
+                catch (Exception e) { Trace("ammo list " + dir + ": " + e.Message); }
+            }
+            _ammoAll = new List<string>(set.Keys);
+            Trace("ammo list: " + _ammoAll.Count + " projectile ammunition in " + AmmoDirs().Count + " folders");
+            return _ammoAll;
         }
 
         internal sealed class AmmoGame { public float Cep = float.NaN, Power = float.NaN; public string Title = "?"; }
@@ -142,9 +223,9 @@ namespace AlternativeWeaponsControl
             cep = 50f; power = 0f;
             try
             {
-                string sa = UnityEngine.Application.streamingAssetsPath;
-                string path = Path.Combine(Path.Combine(Path.Combine(sa, "original"), "ammunition"), name + ".ini");   // the untouched files of the game
-                if (!File.Exists(path)) return false;
+                string path = null;   // the untouched files of the game first, then the layers (mods) for ammunition that the game itself does not have
+                foreach (var d in AmmoDirs()) { var p = Path.Combine(d, name + ".ini"); if (File.Exists(p)) { path = p; break; } }
+                if (path == null) return false;
                 string sec = "";
                 foreach (var raw in File.ReadAllLines(path))
                 {
@@ -194,28 +275,35 @@ namespace AlternativeWeaponsControl
         }
 
         /// <summary>Applies the player's new values: writes the file (only keys that differ from the pack / the game) and drops the shared ammunition parameters of the changed ammunition, so the next load makes them again.</summary>
-        internal static void AmmoSaveUser(Dictionary<string, float[]> user)
+        internal static void AmmoSaveUser(Dictionary<string, float[]> user, List<string> order)
         {
             EnsureAmmoLoaded();
+            var names = new List<string>(_ammoNames);
+            Action<string> addName = n => { if (!names.Exists(x => string.Equals(x, n, StringComparison.OrdinalIgnoreCase))) names.Add(n); };
+            foreach (var n in order) addName(n);
+            foreach (var n in _ammoUserOrder) addName(n);
+            foreach (var n in user.Keys) addName(n);
             var changed = new List<string>();
-            foreach (var n in _ammoNames)
+            foreach (var n in names)
             {
                 float[] o, w; _ammoUser.TryGetValue(n, out o); user.TryGetValue(n, out w);
-                for (int i = 0; i < 2; i++)
+                for (int i = 0; i < 4; i++)
                 {
                     float a = o == null ? float.NaN : o[i], b = w == null ? float.NaN : w[i];
                     if (!(float.IsNaN(a) && float.IsNaN(b)) && !(Math.Abs(a - b) < 1e-5f)) { changed.Add(n); break; }
                 }
             }
-            _ammoUser = user;
+            _ammoUser = user; _ammoUserOrder = new List<string>(order);
             try
             {
-                var lines = new List<string> { "; The player's ammunition values (Ammunition tab of the settings window). Same format as ammunition_fix.txt; a key is here only when it differs from the pack / the game." };
-                foreach (var n in _ammoNames)
+                var lines = new List<string> { "; The player's ammunition values (Guns tab of the settings window). Same format as ammunition_fix.txt; a key is here only when it differs from the pack / the game. Listed=1: ammunition added to the table; Removed=1: pack ammunition taken off the table (the game's values apply)." };
+                foreach (var n in names)
                 {
                     float[] v; if (!user.TryGetValue(n, out v)) continue;
-                    if (float.IsNaN(v[0]) && float.IsNaN(v[1])) continue;
+                    if (float.IsNaN(v[0]) && float.IsNaN(v[1]) && float.IsNaN(v[2]) && float.IsNaN(v[3])) continue;
                     lines.Add(""); lines.Add("[" + n + "]");
+                    if (!float.IsNaN(v[2])) lines.Add("Listed=1");
+                    if (!float.IsNaN(v[3])) lines.Add("Removed=1");
                     if (!float.IsNaN(v[0])) lines.Add("CircularErrorProbable=" + v[0].ToString("0.####", CultureInfo.InvariantCulture));
                     if (!float.IsNaN(v[1])) lines.Add("Power=" + v[1].ToString("0.####", CultureInfo.InvariantCulture));
                 }
@@ -248,10 +336,19 @@ namespace AlternativeWeaponsControl
         {
             try
             {
-                var a = Active; if (a == null || !Enabled || a._ammoFix == null || !a._ammoFix.Value) return;
-                EnsureAmmoLoaded();
+                var a = Active; if (a == null || !Enabled) return;
+                bool fix = a._ammoFix != null && a._ammoFix.Value;
+                float am = a._accuracyMult == null ? 1f : a._accuracyMult.Value;
+                if (!fix && Math.Abs(am - 1f) < 1e-4f) return;
                 var name = R.F(__instance, "_ammunitionFileName") as string; if (name == null) return;
-                float[] v = { AmmoEffective(name, 0), AmmoEffective(name, 1) };
+                float[] v = { float.NaN, float.NaN };
+                if (fix) { EnsureAmmoLoaded(); v[0] = AmmoEffective(name, 0); v[1] = AmmoEffective(name, 1); }
+                // the global accuracy multiplier first: it scales the game's own error radius; the pack's / the player's values below replace it as they are
+                if (am > 0.0001f && Math.Abs(am - 1f) >= 1e-4f)
+                {
+                    var tp = R.F(__instance, "_type");
+                    if (tp != null && tp.ToString() == "Projectile") R.SetF(__instance, "_circularErrorProbable", R.Fl(R.F(__instance, "_circularErrorProbable")) / am);
+                }
                 if (float.IsNaN(v[0]) && float.IsNaN(v[1])) return;
                 var type = R.F(__instance, "_type");
                 bool missile = type != null && type.ToString() == "Missile";

@@ -769,7 +769,8 @@ namespace AlternativeWeaponsControl
             }
             At(row, gr.ChevronHit, 0);
             // name cell: the launcher and its ammunition (one type: its name, type and characteristics; several: their names)
-            var cell = new Grid { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0f, 3f, 6f, 3f) };
+            var cell = new Grid { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0f, 3f, 6f, 3f), Background = WC.Clear };
+            GunTip(cell, () => gr.Ls[0].Ws);
             cell.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             cell.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             cell.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1f, GridUnitType.Star) });
@@ -1284,6 +1285,7 @@ namespace AlternativeWeaponsControl
                 lab.Children.Add(m.Fc);
                 var nb = new Border { Child = lab, BorderBrush = WC.B(WC.Badge), BorderThickness = new Thickness(2f, 0f, 0f, 0f),
                                       Padding = new Thickness(6f, 0f, 0f, 0f), Margin = new Thickness(8f, 0f, 0f, 0f) };
+                nb.Background = WC.Clear; GunTip(nb, () => l.Ws);
                 At(g, nb, 0);
                 if (_samButton != null && _samButton.Value && CanWarm(l.Ws))
                 {

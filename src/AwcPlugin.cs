@@ -45,7 +45,7 @@ namespace AlternativeWeaponsControl
         public ConfigFile Cfg;
         internal ConfigEntry<string> _language; internal ConfigEntry<bool> _debugEntry, _gunChannels, _gunOneDirector, _noRbuSurfaceChase, _noAirChase;
         internal ConfigEntry<string> _secOrder;
-        internal ConfigEntry<float> _clickVolume, _samMinutes, _samAutoRange, _gunMinError;
+        internal ConfigEntry<float> _clickVolume, _samMinutes, _samAutoRange, _gunMinError, _accuracyMult, _fcAccuracy, _weakBoost, _gainLocal, _minSolOptical, _minSolRadar, _solSpeed;
         internal ConfigEntry<bool> _ammoFix, _plotHostile, _tabAir, _tabLand, _samButton, _zoneFire, _samAuto, _samKeep, _samAnim, _gunAimBeyond, _engageOutside, _gunMemory, _gunReroll, _clickAllGuns, _gunLocalFire, _bottomFire, _secTargets;
         public static string UserDir { get; private set; }
 
@@ -197,13 +197,27 @@ namespace AlternativeWeaponsControl
                 "Best (maximum) accuracy of guns against surface targets, in metres: the floor of the fire-control range error. The game uses about 40 m, so at close range " +
                 "(up to ~1.4 nm) guns are relatively less accurate than at medium range. The scaling with distance (1.5 % of range) stays. " +
                 "Set about 40 for the game's behaviour.");
-            _ammoFix = Cfg.Bind("Guns", "AmmunitionFix", true,
+            _accuracyMult = Cfg.Bind("Guns", "AccuracyMultiplier", 1f,
+                "How accurate the shells themselves are: the scatter of the shells around the aim point is divided by this number, so 2 = half the scatter (twice as accurate), 0.5 = twice the scatter, 1 = as in the game. Values of the author's pack and your own values in the Ammunition table below replace the result as they are. Takes effect from the next mission start.");
+            _fcAccuracy = Cfg.Bind("Guns", "FireControlAccuracy", 1f,
+                "How accurately guns aim at surface targets, all guns: the aiming error of every salvo is divided by this number (2 = half the error, 1 = as in the game). It comes on top of everything the game already counts (the director, light, crew, how well the aim is locked). The scatter of the shells themselves is a different thing: see the shell accuracy above. Takes effect at once.");
+            _weakBoost = Cfg.Bind("Guns", "WeakDirectorsLift", 50f,
+                "How much of the gap between a very weak director and the weakest director of the game is closed, in percent. The weakest director of the game has an accuracy of 0.75 (the game calls it gain); some rule sets (e.g. WW2 packs) have directors of 0.1-0.6, and even a good one of them aims far worse than the game's own. A director below 0.75 gets its accuracy raised by this share of the difference to 0.75 (50 = halfway: 0.35 becomes 0.55); its minimum solution grows by the same factor. A better director has smaller aiming errors, builds the firing solution (the Solution % of the gun) faster and makes the guns wait for splashes less. Directors of 0.75 and more are not touched. 0 = as the directors are, 100 = all weak directors as good as the game's weakest. Takes effect at once.");
+            _gainLocal = Cfg.Bind("Guns", "LocalControlGain", 0.75f,
+                "Accuracy of guns without a working director (the gun crew aims by themselves; the game calls it gain): the higher, the smaller the aiming errors. The game's own value is 0.6, better than most directors of rule sets with weak directors; this is a multiplier of it. 1 = the game's value. Takes effect at once.");
+            _solSpeed = Cfg.Bind("Guns", "SolutionBuildSpeed", 1f,
+                "How fast guns build their firing solution (the Solution % of the gun: how well the gun has locked on the target's course and speed; a higher solution means smaller aiming errors from the target's movement and fewer waits for splashes). This is a multiplier of the speed only - the accuracy of the director does not change. It applies to directors and to guns without a director. 1 = as the game; 0.3 = three times slower. A turn or a speed change of the target still costs the same part of the solution, so with a low speed a maneuvering target keeps the solution low. Takes effect at once.");
+            _minSolOptical = Cfg.Bind("Guns", "OpticalDirectorMinSolution", 1f,
+                "Minimum firing solution with an optical director: the solution (how well the gun has locked on the target's course and speed, shown as Solution % of the gun, 0..1) never falls below this level and starts from it, so the guns hit sooner after they open fire and wait for splashes less. This is a multiplier of the director's own minimum (the sensor ini key FCMinSolution); 1 = as the director is.");
+            _minSolRadar = Cfg.Bind("Guns", "RadarDirectorMinSolution", 1f,
+                "Minimum firing solution with a radar director: the solution (how well the gun has locked on the target's course and speed, shown as Solution % of the gun, 0..1) never falls below this level and starts from it, so the guns hit sooner after they open fire and wait for splashes less. This is a multiplier of the director's own minimum (the sensor ini key FCMinSolution); 1 = as the director is.");
+            _ammoFix = Cfg.Bind("Guns", "AmmunitionFix", false,
                 "Accuracy (circular error probable) and warhead power of gun ammunition are taken from the author's pack (ammunition_fix.txt in the mod folder) and from the values you set in the table below. Off = the game's own ammunition values. Applied to ammunition loaded after Apply (a mission start).");
             _debugEntry = Cfg.Bind("General", "Debug", false,
                 "Verbose logging and BepInEx/AlternativeWeaponsControl.trace.txt.");
             _language = Cfg.Bind("General", "Language", "",
                 "Language of the mod's texts: a code of a game language (en, ru ...); empty = the game's own language. The texts are in the files lang/<code>.ini in the mod folder - edit them to translate.");
-            Entries.Add(_gunMemory); Entries.Add(_gunReroll); Entries.Add(_clickAllGuns); Entries.Add(_gunLocalFire); Entries.Add(_bottomFire); Entries.Add(_secTargets); Entries.Add(_clickVolume); Entries.Add(_samButton); Entries.Add(_zoneFire); Entries.Add(_plotHostile); Entries.Add(_freeAirKnots); Entries.Add(_freeAirNm); Entries.Add(_freeAirOwn); Entries.Add(_freeAirEnemy); Entries.Add(_tabLand); Entries.Add(_tabAir); Entries.Add(_samAuto); Entries.Add(_samKeep); Entries.Add(_samAnim); Entries.Add(_samAutoRange); Entries.Add(_samMinutes); Entries.Add(_gunOneDirector); Entries.Add(_gunChannels); Entries.Add(_noRbuSurfaceChase); Entries.Add(_noAirChase); Entries.Add(_gunAimBeyond); Entries.Add(_engageOutside); Entries.Add(_gunMinError); Entries.Add(_ammoFix); Entries.Add(_debugEntry); Entries.Add(_language);
+            Entries.Add(_gunMemory); Entries.Add(_gunReroll); Entries.Add(_clickAllGuns); Entries.Add(_gunLocalFire); Entries.Add(_bottomFire); Entries.Add(_secTargets); Entries.Add(_clickVolume); Entries.Add(_samButton); Entries.Add(_zoneFire); Entries.Add(_plotHostile); Entries.Add(_freeAirKnots); Entries.Add(_freeAirNm); Entries.Add(_freeAirOwn); Entries.Add(_freeAirEnemy); Entries.Add(_tabLand); Entries.Add(_tabAir); Entries.Add(_samAuto); Entries.Add(_samKeep); Entries.Add(_samAnim); Entries.Add(_samAutoRange); Entries.Add(_samMinutes); Entries.Add(_gunOneDirector); Entries.Add(_gunChannels); Entries.Add(_noRbuSurfaceChase); Entries.Add(_noAirChase); Entries.Add(_gunAimBeyond); Entries.Add(_engageOutside); Entries.Add(_gunMinError); Entries.Add(_accuracyMult); Entries.Add(_fcAccuracy); Entries.Add(_weakBoost); Entries.Add(_gainLocal); Entries.Add(_minSolOptical); Entries.Add(_minSolRadar); Entries.Add(_solSpeed); Entries.Add(_ammoFix); Entries.Add(_debugEntry); Entries.Add(_language);
             Loc.Trace = Trace; Loc.Forced = () => _language == null ? "" : _language.Value;
             foreach (var en in Entries) Loc.Register("help." + en.Definition.Section + "/" + en.Definition.Key, en.Description == null ? "" : en.Description.Description);
 
@@ -213,7 +227,7 @@ namespace AlternativeWeaponsControl
             Trace(PluginName + " " + PluginVersion + " build " + BuildId);
             SettingsWindow.Trace = Trace;
             SettingsWindow.Warn = Warn;
-            Cfg.SettingChanged += (s, e) => { _debug = _debugEntry.Value; RememberCfgStamp(); };
+            Cfg.SettingChanged += (s, e) => { _debug = _debugEntry.Value; RememberCfgStamp(); ApplyLocalGain(); };
             RememberCfgStamp();
 
             RefreshEnabled();
@@ -268,6 +282,7 @@ namespace AlternativeWeaponsControl
             bool now = state != false;
             if (now == Enabled) return;
             Enabled = now;
+            try { if (_inst != null) _inst.ApplyLocalGain(); } catch { }
             if (ModState.Controlled)
                 Say(now ? "Enabled in the game's Mods menu (" + ModState.ModId + ")." : "Disabled in the game's Mods menu (" + ModState.ModId + "); idle.");
         }
