@@ -5,7 +5,7 @@
 
 [fin_cal_100mm_d10_tk]
 CircularErrorProbable=30
-Power=4
+Power=8
 
 [fr_cal_30mm]
 CircularErrorProbable=2.4
@@ -44,7 +44,7 @@ Power=1.2
 
 [swe_cal_120mm_ersta]
 CircularErrorProbable=35
-Power=5
+Power=10
 
 [usn_cal_05in]
 CircularErrorProbable=15
@@ -135,7 +135,7 @@ Power=10
 
 [wp_cal_100mm_d10]
 CircularErrorProbable=3
-Power=4
+Power=8
 
 [wp_cal_125mm]
 CircularErrorProbable=3
@@ -187,3 +187,6 @@ Power=6
 [wp_cal_76mm_d56]
 CircularErrorProbable=6
 Power=4.8
+
+[wp_152mm_2a33]
+Power=13.6
