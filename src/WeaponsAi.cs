@@ -66,6 +66,8 @@ namespace AlternativeWeaponsControl
             var ast = asm.GetType("SeapowerUI.ViewModels.AttackingState");
             var aam = ast == null ? null : ast.GetMethod("AddAttackTask", inst);
             if (aam != null) harmony.Patch(aam, postfix: Hm("AddAttackPostfix")); else Trace("AttackingState.AddAttackTask not found: no Fire for one launcher");
+            var aibc = ai == null ? null : ai.GetMethod("AutoAttackByClick", inst);
+            if (aibc != null) harmony.Patch(aibc, postfix: Hm("ClickAttackPostfix")); else Trace("AI.AutoAttackByClick not found: ClickEngagesAllGuns does nothing");
             var at = asm.GetType("SeaPower.AttackTask");
             var ex = at == null ? null : at.GetMethod("OnExecute", inst | BindingFlags.DeclaredOnly);
             if (ex != null) harmony.Patch(ex, postfix: Hm("AttackExecPostfix")); else Trace("AttackTask.OnExecute not found: no Fire for one launcher");
@@ -77,12 +79,36 @@ namespace AlternativeWeaponsControl
             var apg = gun == null ? null : gun.GetMethod("activatePreLaunchGuidance", inst | BindingFlags.DeclaredOnly);
             if (apg != null) harmony.Patch(apg, prefix: Hm("GunGuidePrefix"), postfix: Hm("GunGuidePostfix")); else Trace("WeaponSystemGun.activatePreLaunchGuidance not found: GunOneDirector does nothing");
             if (gfc != null) harmony.Patch(gfc, postfix: Hm("GunFcPostfix")); else Trace("WeaponSystemGun.GetFireControlSensor not found: GunChannelLimit does nothing");
+            var nsf = gun == null ? null : gun.GetMethod("NeedsSpottingFire", inst | BindingFlags.DeclaredOnly, null, Type.EmptyTypes, null);
+            if (nsf != null) harmony.Patch(nsf, prefix: Hm("SpotPrefix")); else Trace("WeaponSystemGun.NeedsSpottingFire not found: LocalControlKeepsFiring does nothing");
             var aut = asm.GetType("SeaPower.AlignUnitToTarget");
             var gva = aut == null ? null : aut.GetMethod("GetValidHeadingArcs", inst, null, Type.EmptyTypes, null);
             _tVesselAi = asm.GetType("SeaPower.Vessel");
             if (gva != null) harmony.Patch(gva, postfix: Hm("ChasePostfix")); else Trace("AlignUnitToTarget.GetValidHeadingArcs not found: NoRbuSurfaceChase / NoAirChase do nothing");
+            // the game's "MISSING TEXT" (a key without text, read through the language dictionary's indexer or a converter) shows nothing to find the key by: show the key
+            try
+            {
+                var dwf = asm.GetType("SeaPower.DictionaryWithFallbacks`2");
+                var idx = dwf == null ? null : dwf.MakeGenericType(typeof(string), typeof(string)).GetProperty("Item");
+                var getter = idx == null ? null : idx.GetGetMethod();
+                if (getter != null) harmony.Patch(getter, postfix: Hm("MissingTextPostfix"));
+                var itc = asm.GetType("SeapowerUI.IniToClassConverter");
+                var cv = itc == null ? null : itc.GetMethod("Convert", inst | BindingFlags.DeclaredOnly);
+                if (cv != null) harmony.Patch(cv, postfix: Hm("MissingTextConvPostfix"));
+            }
+            catch (Exception e) { Trace("missing text hook: " + e.Message); }
             if (n < 8) Logger.LogWarning("Weapons tab: " + (8 - n) + " AI / save hook(s) not found (game updated?); the launcher switches may not be applied or saved.");
             Trace("patched weapons AI / save hooks: " + n);
+        }
+
+        static void MissingTextPostfix(string key, ref string __result)
+        {
+            if (__result == "MISSING TEXT") __result = key ?? __result;
+        }
+
+        static void MissingTextConvPostfix(object value, ref object __result)
+        {
+            if (value is string && "MISSING TEXT".Equals(__result)) __result = value;
         }
 
         static void AiEnter() { _aiDepth++; }
@@ -140,9 +166,36 @@ namespace AlternativeWeaponsControl
             catch (Exception e) { Trace("weapons pin order: " + e.Message); }
         }
 
+        /// <summary>The player's order is the highest priority there is: the game gives it the priority of the target's class (a ship: 10), so the AI's tasks
+        /// (1..5) stand before it in the list and may take its guns over (AI: "priority &lt; mount's priority"). Priority 0, first in the list.</summary>
+        static void OrderFirst(object attackTask)
+        {
+            try
+            {
+                var unit = R.F(attackTask, "_baseObject");
+                if (unit == null || !R.B(R.P(unit, "IsPlayerObject"))) return;
+                var ammo = R.S(R.P(R.V(attackTask, "ammunitionForEngage"), "value"));
+                var target = R.P(R.V(attackTask, "targetObject"), "value");
+                if (_debug) Trace("order given: " + UName(unit) + " " + ammo + " -> " + (target == null ? "position" : UName(target)) + " (the unit's selected ammunition: " + R.S(R.F(unit, "_selectedAmmunitionForEngage")) + ", Fire pending: " + (Pending != null) + ")");
+                var tasks = R.F(unit, "_currentEngageTasks") as IList;
+                if (tasks == null) return;
+                for (int i = tasks.Count - 1; i >= 0; i--)
+                {
+                    var t = tasks[i];
+                    if (t == null || R.B(R.F(t, "_isAutoAttack")) || R.S(R.F(t, "_ammoId")) != ammo || (target != null && !ReferenceEquals(R.F(t, "_targetObject"), target))) continue;
+                    if (R.I(R.F(t, "_priority")) == 0) break;
+                    R.SetF(t, "_priority", 0);
+                    tasks.RemoveAt(i); tasks.Insert(0, t);
+                    break;
+                }
+            }
+            catch (Exception e) { Trace("order first: " + e.Message); }
+        }
+
         static void AttackExecPostfix(object __instance)
         {
             if (!Enabled) return;
+            OrderFirst(__instance);
             PinBox b;
             if (__instance == null || !OrderPins.TryGetValue(__instance, out b)) return;
             try
@@ -338,6 +391,7 @@ namespace AlternativeWeaponsControl
             if (!Enabled) return;
             _hetUnit = __instance;
             _hetPin = null;
+            FixFutureTasks(__instance);
             if (_before != null) _before.Clear();
             try
             {
@@ -367,6 +421,7 @@ namespace AlternativeWeaponsControl
             _hetPin = null;
             if (!Enabled) return;
             try { RememberGunOrders(__instance); } catch (Exception e) { Trace("remember gun orders: " + e.Message); }
+            OrderWatch(__instance);
             try
             {
                 // other mounts that the game gave a task tied to another launcher (all guns with the ammunition, linked launchers)
@@ -535,6 +590,23 @@ namespace AlternativeWeaponsControl
         // the higher _fcSolutionGainRate, as FireControl.ResolveBestDirector) - the others get their channel and state back.
         sealed class DirWas { public object S; public bool Held, Guiding, Rest; public object Tgt, Mode; }
         [ThreadStatic] static List<DirWas> _dirWas;
+
+        /// <summary>Spotting fire: a gun whose solution is below 95 % waits for its last shell to land before the next shot. A gun without a working director never gets a solution
+        /// (WeaponSystemGun: with associated sensors the solution is the best of the working ones = 0), so it fires once per time of flight. LocalControlKeepsFiring: no wait.</summary>
+        static bool SpotPrefix(object __instance, ref bool __result)
+        {
+            var a = Active;
+            if (a == null || !Enabled || a._gunLocalFire == null || !a._gunLocalFire.Value) return true;
+            try
+            {
+                var unit = R.F(__instance, "_baseObject");
+                if (unit == null || !R.B(R.P(unit, "IsPlayerObject"))) return true;
+                if (R.Call(__instance, "GetFireControlSensor") != null) return true;
+                __result = false;
+                return false;
+            }
+            catch { return true; }
+        }
 
         static void GunGuidePrefix(object __instance, object targetObject)
         {

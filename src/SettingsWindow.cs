@@ -68,6 +68,9 @@ namespace AlternativeWeaponsControl
             Add(T3, "grp.aiming", "Guns/AimBeyondMaxRange", "Aim guns at targets beyond max range", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T3, "grp.aiming", "Guns/EngageOutsideSector", "Engage targets outside the firing sector", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T3, "grp.aiming", "Guns/RememberTargets", "Remember earlier targets", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T3, "grp.aiming", "Guns/RerollAimError", "Unstick guns at long range", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T3, "grp.aiming", "Guns/ClickEngagesAllGuns", "Click on a target: all guns", "", Kind.Bool, 0, 0, 0, "game: one ammunition");
+            Add(T3, "grp.aiming", "Guns/LocalControlKeepsFiring", "Local control: no spotting wait", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T3, "grp.accuracy", "Guns/MaxAccuracyMeters", "Guns: change maximum accuracy", "m", Kind.Number, 1f, 0f, 100f, "~40");
             Add(T3, "grp.ammoFix", "Guns/AmmunitionFix", "Guns: alter accuracy and power", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T5, "grp.diagnostics", "General/Debug", "Debug trace", "", Kind.Bool, 0, 0, 0);

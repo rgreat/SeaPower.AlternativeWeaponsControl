@@ -816,7 +816,7 @@ namespace AlternativeWeaponsControl
                 {
                     var id = gr.Ammo[i];
                     var ap = AmmoParams(v, id);
-                    var lk = Link(R.S(R.P(ap, "_displayedName")) ?? id, WC.Dim, 11.5f, null, "Reference of the weapon", () => OpenWeaponReference(v, id));
+                    var lk = Link(AmmoName(ap, id), WC.Dim, 11.5f, null, "Reference of the weapon", () => OpenWeaponReference(v, id));
                     lk.Margin = new Thickness(0f, 0f, 2f, 0f);
                     names.Children.Add(lk);
                     if (i < gr.Ammo.Count - 1) names.Children.Add(T(", ", WC.Dim, 11.5f));
@@ -873,13 +873,20 @@ namespace AlternativeWeaponsControl
             try { return R.F(R.Call(v.Unit, "getAmmunitionByName", id), "_ap"); } catch { return null; }
         }
 
+        /// <summary>The ammunition's name for the screen; the game's "MISSING TEXT" (no text for its name) is replaced by the ammunition's id.</summary>
+        static string AmmoName(object ap, string id)
+        {
+            var n = ap == null ? null : R.S(R.P(ap, "_displayedName"));
+            return string.IsNullOrEmpty(n) || n.StartsWith("MISSING TEXT", StringComparison.Ordinal) ? id : n;
+        }
+
         /// <summary>One line about an ammunition type: its name (a link to its reference), type and characteristics.</summary>
         UIElement AmmoLine(WeaponsView v, string id, float size)
         {
             var ap = AmmoParams(v, id);
             var g = new Grid();
             for (int i = 0; i < 4; i++) g.ColumnDefinitions.Add(new ColumnDefinition { Width = i == 3 ? new GridLength(1f, GridUnitType.Star) : GridLength.Auto });
-            var name = R.S(R.P(ap, "_displayedName")) ?? id;
+            var name = AmmoName(ap, id);
             var type = R.S(R.F(ap, "_displayedType")) ?? "";
             var mw = MuseumWeapon(id);
             var nl = Link(name, size > 12f ? WC.Text : WC.Sub, size, size > 12f ? FontWeights.SemiBold : FontWeights.Medium, null, () => OpenWeaponReference(v, id));
@@ -1056,6 +1063,7 @@ namespace AlternativeWeaponsControl
         /// <summary>Cease fire: the launchers drop what they engage, and the unit's waiting orders for them go.</summary>
         void Cease(WeaponsView v, CtrlUI cu)
         {
+            _stopWatchUntil = UnityEngine.Time.realtimeSinceStartup + 4f;
             if (_debug) { try { Trace("Stop clicked: " + string.Join("/", cu.Ammo.ToArray()) + ", " + cu.Scope.Count + " launcher(s), engaged before: " + CeaseState(cu)); } catch { } }
             foreach (var l in cu.Scope)
             {
@@ -1085,6 +1093,8 @@ namespace AlternativeWeaponsControl
             if (_debug) { try { Trace("Stop done: still engaged: " + CeaseState(cu) + "; unit orders left: " + (tasks == null ? 0 : tasks.Count)); } catch { } }
             Refresh(v, false);
         }
+
+        static float _stopWatchUntil;   // trace only: for a few seconds after a Stop click, every cease button's state is written
 
         static string CeaseState(CtrlUI cu)
         {
@@ -1132,6 +1142,9 @@ namespace AlternativeWeaponsControl
                         if (pin != null ? cu.Scope.Exists(l => ReferenceEquals(l.Ws, pin)) : (cu.Scope.Count > 1 || IsWholeAmmo(v, cu, R.S(R.F(t, "_ammoId"))))) { cease = true; break; }
                     }
                 SetEnabled(cu.Cease, cease);
+                if (_debug && UnityEngine.Time.realtimeSinceStartup < _stopWatchUntil)
+                    TraceLimited("sw" + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(cu), 0.5f,
+                        "after Stop: " + string.Join("/", cu.Ammo.ToArray()) + " x" + cu.Scope.Count + " cease button " + (cease ? "ON" : "off") + "; " + CeaseState(cu) + "; unit orders " + (tasks == null ? 0 : tasks.Count));
                 if (cu.Reload != null)
                 {
                     bool can = cu.Scope.Exists(l => { try { return CanWarm(l.Ws) ? !IsEngaging(l.Ws) && !ReloadBusy(l.Ws) : R.B(R.Call(l.Ws, "CanForceReload")); } catch { return false; } });
@@ -1890,7 +1903,7 @@ namespace AlternativeWeaponsControl
                 string act = null;
                 foreach (var g in sc.Groups) if (g.ActiveAmmo != null && sc.Common.Contains(g.ActiveAmmo)) { act = g.ActiveAmmo; break; }
                 if (act != null && sc.Common[0] != act) { sc.Common.Remove(act); sc.Common.Insert(0, act); }
-                Tip(sc.Fire.Main, Loc.T("btn.fire") + ": " + (R.S(R.P(AmmoParams(v, sc.Common[0]), "_displayedName")) ?? sc.Common[0]));
+                Tip(sc.Fire.Main, Loc.T("btn.fire") + ": " + AmmoName(AmmoParams(v, sc.Common[0]), sc.Common[0]));
                 for (int i = 0; i < 5; i++)
                 {
                     Chip st; SecPairs(v.Unit, sc, Domains[i], null, out st);
@@ -2588,7 +2601,7 @@ namespace AlternativeWeaponsControl
                 if (ids.Count == 1) { AddMenu(menu.Items, items); continue; }
                 // several ammunition types: one submenu each
                 var ap = AmmoParams(v, id);
-                var mi = new MenuItem { Header = R.S(R.P(ap, "_displayedName")) ?? id };
+                var mi = new MenuItem { Header = AmmoName(ap, id) };
                 AddMenu(mi.Items, items);
                 if (mi.Items.Count > 0) menu.Items.Add(mi);
             }

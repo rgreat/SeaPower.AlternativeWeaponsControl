@@ -46,7 +46,7 @@ namespace AlternativeWeaponsControl
         internal ConfigEntry<string> _language; internal ConfigEntry<bool> _debugEntry, _gunChannels, _gunOneDirector, _noRbuSurfaceChase, _noAirChase;
         internal ConfigEntry<string> _secOrder;
         internal ConfigEntry<float> _clickVolume, _samMinutes, _samAutoRange, _gunMinError;
-        internal ConfigEntry<bool> _ammoFix, _plotHostile, _tabAir, _tabLand, _samButton, _zoneFire, _samAuto, _samKeep, _samAnim, _gunAimBeyond, _engageOutside, _gunMemory, _bottomFire, _secTargets;
+        internal ConfigEntry<bool> _ammoFix, _plotHostile, _tabAir, _tabLand, _samButton, _zoneFire, _samAuto, _samKeep, _samAnim, _gunAimBeyond, _engageOutside, _gunMemory, _gunReroll, _clickAllGuns, _gunLocalFire, _bottomFire, _secTargets;
         public static string UserDir { get; private set; }
 
         /// <summary>The settings the window shows (in this order).</summary>
@@ -182,6 +182,17 @@ namespace AlternativeWeaponsControl
             _gunMemory = Cfg.Bind("Guns", "RememberTargets", true,
                 "A new order to fire makes the guns switch to the new target as before, but the earlier targets are not forgotten: a gun that cannot reach the new target " +
                 "(out of range or outside its firing sector) goes on with the newest earlier target it can reach, and returns to the newest one when it can. Cease fire clears the list. Off = as in the game: every new order replaces the old one.");
+            _gunReroll = Cfg.Bind("Guns", "RerollAimError", true,
+                "The game adds a random fire-control error to the aim point of every gun and keeps it until the gun has fired. Near the maximum range that error can push the aim point beyond the gun's firing table: the gun then has no solution, " +
+                "does not even turn, and never fires because the error is only redrawn after a shot - a turret stays idle for minutes while its neighbours shoot. On = such a gun draws a new error at once (only if the target itself can be hit). Off = as in the game. The player's guns only.");
+            _clickAllGuns = Cfg.Bind("Guns", "ClickEngagesAllGuns", true,
+                "A right click on a hostile contact with your own ship selected makes the game order ONE gun ammunition - the one with the longest range that has a usable gun at that moment " +
+                "(a gun whose director is destroyed or that is reloading does not count, so its calibre is skipped). On = every gun ammunition of the ship that can reach the target (range only, the firing sector does not matter) gets the order. " +
+                "Off = as in the game. The player's ships only.");
+            _gunLocalFire = Cfg.Bind("Guns", "LocalControlKeepsFiring", true,
+                "A gun without a working director (destroyed, switched off, or none) aims on local control. The game then holds every next shot until the previous shell has landed (spotting fire: " +
+                "one shell per time of flight, 30-60 s at long range) while the gun's fire-control solution is below 95 %; with a destroyed director the solution stays at 0, so such a gun fires very rarely. " +
+                "On = no such wait: a gun on local control fires at its normal rate (its accuracy stays poor, as in the game). Off = as in the game. The player's guns only.");
             _gunMinError = Cfg.Bind("Guns", "MaxAccuracyMeters", 5f,
                 "Best (maximum) accuracy of guns against surface targets, in metres: the floor of the fire-control range error. The game uses about 40 m, so at close range " +
                 "(up to ~1.4 nm) guns are relatively less accurate than at medium range. The scaling with distance (1.5 % of range) stays. " +
@@ -192,7 +203,7 @@ namespace AlternativeWeaponsControl
                 "Verbose logging and BepInEx/AlternativeWeaponsControl.trace.txt.");
             _language = Cfg.Bind("General", "Language", "",
                 "Language of the mod's texts: a code of a game language (en, ru ...); empty = the game's own language. The texts are in the files lang/<code>.ini in the mod folder - edit them to translate.");
-            Entries.Add(_gunMemory); Entries.Add(_bottomFire); Entries.Add(_secTargets); Entries.Add(_clickVolume); Entries.Add(_samButton); Entries.Add(_zoneFire); Entries.Add(_plotHostile); Entries.Add(_freeAirKnots); Entries.Add(_freeAirNm); Entries.Add(_freeAirOwn); Entries.Add(_freeAirEnemy); Entries.Add(_tabLand); Entries.Add(_tabAir); Entries.Add(_samAuto); Entries.Add(_samKeep); Entries.Add(_samAnim); Entries.Add(_samAutoRange); Entries.Add(_samMinutes); Entries.Add(_gunOneDirector); Entries.Add(_gunChannels); Entries.Add(_noRbuSurfaceChase); Entries.Add(_noAirChase); Entries.Add(_gunAimBeyond); Entries.Add(_engageOutside); Entries.Add(_gunMinError); Entries.Add(_ammoFix); Entries.Add(_debugEntry); Entries.Add(_language);
+            Entries.Add(_gunMemory); Entries.Add(_gunReroll); Entries.Add(_clickAllGuns); Entries.Add(_gunLocalFire); Entries.Add(_bottomFire); Entries.Add(_secTargets); Entries.Add(_clickVolume); Entries.Add(_samButton); Entries.Add(_zoneFire); Entries.Add(_plotHostile); Entries.Add(_freeAirKnots); Entries.Add(_freeAirNm); Entries.Add(_freeAirOwn); Entries.Add(_freeAirEnemy); Entries.Add(_tabLand); Entries.Add(_tabAir); Entries.Add(_samAuto); Entries.Add(_samKeep); Entries.Add(_samAnim); Entries.Add(_samAutoRange); Entries.Add(_samMinutes); Entries.Add(_gunOneDirector); Entries.Add(_gunChannels); Entries.Add(_noRbuSurfaceChase); Entries.Add(_noAirChase); Entries.Add(_gunAimBeyond); Entries.Add(_engageOutside); Entries.Add(_gunMinError); Entries.Add(_ammoFix); Entries.Add(_debugEntry); Entries.Add(_language);
             Loc.Trace = Trace; Loc.Forced = () => _language == null ? "" : _language.Value;
             foreach (var en in Entries) Loc.Register("help." + en.Definition.Section + "/" + en.Definition.Key, en.Description == null ? "" : en.Description.Description);
 

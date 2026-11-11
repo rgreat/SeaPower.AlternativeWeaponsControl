@@ -181,6 +181,9 @@ namespace AlternativeWeaponsControl
             D("lbl.Guns/AimBeyondMaxRange", "Aim guns at targets beyond max range");
             D("lbl.Guns/EngageOutsideSector", "Engage targets outside the firing sector");
             D("lbl.Guns/RememberTargets", "Remember earlier targets");
+            D("lbl.Guns/RerollAimError", "Unstick guns at long range");
+            D("lbl.Guns/ClickEngagesAllGuns", "Click on a target: all guns");
+            D("lbl.Guns/LocalControlKeepsFiring", "Local control: no spotting wait");
             D("lbl.Guns/MaxAccuracyMeters", "Guns: change maximum accuracy");
             D("unit.Guns/MaxAccuracyMeters", "m");
             D("lbl.Guns/AmmunitionFix", "Guns: alter accuracy and power");

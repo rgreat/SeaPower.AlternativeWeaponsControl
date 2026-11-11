@@ -142,11 +142,40 @@ namespace AlternativeWeaponsControl
             catch { return float.MaxValue; }
         }
 
-        static void AlignPostfix(ref bool __result)
+        static void AlignPostfix(object __instance, ref bool __result)
         {
-            if (!_aimBeyond) return;
-            _aimBeyond = false;
-            __result = false;
+            if (_aimBeyond) { _aimBeyond = false; __result = false; return; }
+            if (!__result) { try { UnstickAim(__instance); } catch (Exception e) { TraceLimited("unstick-err", 10f, "unstick aim: " + e.Message); } }
+        }
+
+        // The game adds a random fire-control error (WeaponSystemGun._deviationVector) to the aim point BEFORE it asks the fire table for a solution,
+        // and keeps it (_deviationCalculated) until the gun has fired. Near the maximum range the error can push the aim point past the table
+        // (GunBallistics.TrySolveSurface: range > _maxRange): AlignTurret returns false before the mount moves, the gun never fires, so the error is
+        // never redrawn - the turret idles until the target changes while the other turrets of the same type shoot. [Guns] RerollAimError: if the
+        // target itself (without the error) has a solution, the error is drawn again (the game's own DeviationCheck runs on the next call).
+        static MethodInfo _miSolveSurface, _miGetTable;
+        static void UnstickAim(object g)
+        {
+            var a = Active; if (a == null || !Enabled || a._gunReroll == null || !a._gunReroll.Value) return;
+            if (!R.B(R.F(g, "_deviationCalculated")) || R.B(R.F(g, "_solutionCalculated"))) return;
+            if (Convert.ToDouble(R.F(g, "_projectileToTargetTime")) >= 0.0) return;   // the solution step did not fail
+            var bo = R.F(g, "_baseObject"); if (bo == null || !R.B(R.P(bo, "IsPlayerObject"))) return;
+            var tgt = R.F(g, "_targetObject"); if (tgt == null || R.B(R.Call(tgt, "isAirTarget"))) return;
+            var tr = R.P(tgt, "transform") as Transform; var ap = R.F(R.F(g, "_ammoForEngage"), "_ap"); var barrels = R.F(g, "_barrels") as System.Collections.IList;
+            if (tr == null || ap == null || barrels == null || barrels.Count == 0) return;
+            var gb = _tObjectBase.Assembly.GetType("SeaPower.GunBallistics");
+            if (_miGetTable == null) _miGetTable = gb.GetMethod("GetTable", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            if (_miSolveSurface == null) _miSolveSurface = gb.GetMethod("TrySolveSurface", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            var table = _miGetTable.Invoke(null, new[] { ap }); if (table == null) return;
+            var go = R.F(barrels[0], "_gunObject") as GameObject; if (go == null) return;
+            Vector3 own = go.transform.position + go.transform.rotation * (Vector3)R.F(barrels[0], "_spawnPosition");
+            Vector3 pos = tr.position; if (pos.y < 0f) pos.y = 0f;
+            var vel = (Vector3)R.P(tgt, "UnityVelocityVector"); vel.y = 0f;
+            var args = new object[] { table, own, pos, vel, 0f, Vector3.zero };
+            if (!(bool)_miSolveSurface.Invoke(null, args)) return;   // the target itself cannot be hit: nothing to redraw
+            R.SetF(g, "_deviationCalculated", false);
+            TraceLimited("unstick" + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(g), 5f,
+                "aim error redrawn: gun " + R.S(R.F(g, "_systemName")) + " of " + R.S(R.Call(bo, "getUIDAndName")) + " for " + R.S(R.Call(tgt, "getUIDAndName")) + " (the old error left the fire table)");
         }
     }
 }
