@@ -40,7 +40,6 @@ namespace AlternativeWeaponsControl
             D("tab.ammo", "AMMO");
             D("tab.fire", "FIRE");
             D("status.free", "Free"); D("status.tight", "Tight"); D("status.hold", "Hold");
-            D("tab.onTight", "On Tight: engage hostile aircraft");
             D("tab.onFree", "On Free: engage unidentified aircraft");
             D("tab.onFreeTip", "Ships on Free also engage aircraft that:\n- are not identified yet;\n- are faster than {0} kn;\n- are closer than {1} nm;\n- come towards the ship (within 45° of the bearing to it).\nKeep in mind: war crimes have no statute of limitations.");
             D("tab.expandAll", "Expand all"); D("tab.collapseAll", "Collapse all");
@@ -127,8 +126,8 @@ namespace AlternativeWeaponsControl
             D("chip.on", "{0}: automatic against {1}.\nClick: off for {2}.");
             D("chip.off", "{0}: off for {1}.\nClick: automatic again.");
             D("chip.order", "{0}: off by Standing Orders - ");
-            D("chip.orderNo", "{0}: No");
-            D("chip.orderEnd", ".\nClick: allow for {0} (the unit's order becomes Yes, the other launchers it covers turn off).");
+            D("chip.orderNo", "the auto-engage rules say Never");
+            D("chip.orderEnd", ".\nClick: allow for {0} (a rule allowing it is added to the unit's Standing Orders, the other launchers it covers turn off).");
             D("chip.mixed", "{0}: mixed - ");
             D("chip.mixedAuto", "automatic"); D("chip.mixedOff", "off"); D("chip.mixedOrder", "off by Standing Orders");
             D("chip.mixedEnd", ".\nClick: the same for all.");
@@ -214,15 +213,13 @@ namespace AlternativeWeaponsControl
             D("menu.button", "Weapons Control");
             D("grp.aiming", "Aiming");
             D("grp.ammoList", "Gun ammunition");
-            D("ammo.note", "Accuracy: circular error probable, the radius in metres at maximum range within which shells land (smaller = more accurate). Power: warhead power. The values of the game are shown beside the fields; the arrow puts them back. Applied to ammunition loaded after Apply (a mission start).");
+            D("ammo.note", "Accuracy: circular error probable, the radius in metres at maximum range within which shells land (smaller = more accurate). Power: warhead power. The values of the game are shown beside the fields; the arrow puts them back. ✕ removes a row from the table; the list below the table adds any other gun ammunition of the game. Applied to ammunition loaded after Apply (a mission start).");
             D("preset.title", "Directors preset"); D("preset.base", "Base"); D("preset.advanced", "Advanced"); D("preset.ww2", "WW2 Mod"); D("preset.custom", "custom values");
             D("preset.note", "Fills the director settings below (not the shell accuracy). Base: the game as it is. Advanced: weak directors made more accurate, guns without a director a little worse - fits the game and rule sets with weak directors. WW2 Mod: for the WW2 pack (weak directors): weak directors lifted halfway to the game's weakest director, guns without a director worse than directors, the firing solution builds at half speed. Apply to keep.");
             D("ammo.resetAll", "All to game values");
             D("ammo.restorePack", "All to mod values");
             D("ammo.colName", "Ammunition");
             D("ammo.add", "Add ammunition:");
-            D("ammo.close", "Close list");
-            D("ammo.filter", "Filter:");
             D("ammo.more", "...and {0} more: type to narrow the list");
             D("ammo.none", "No more gun ammunition.");
             D("ammo.removeTip", "Remove from the table (the game's values apply again)");

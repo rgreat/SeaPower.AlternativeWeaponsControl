@@ -11,8 +11,8 @@ using Mathf = UnityEngine.Mathf;
 namespace AlternativeWeaponsControl
 {
     /// <summary>
-    /// The "Weapons" tab of Unit Status (Noesis UI built in code): the unit's weapons status (Free / Tight / Hold) and "On Tight:
-    /// engage hostile aircraft"; its launchers by kind (SAM, ANTI-SHIP, LAND ATTACK, ASW, GUNS, CIWS), launchers of the same
+    /// The "Weapons" tab of Unit Status (Noesis UI built in code): the unit's weapons status (Free / Tight / Hold) and "On Free: engage
+    /// unidentified aircraft"; its launchers by kind (SAM, ANTI-SHIP, LAND ATTACK, ASW, GUNS, CIWS), launchers of the same
     /// system in one group row (×N) with summary state and stock and the automatic-use chips AIR / MSL / SUR / SUB / LND
     /// (a group's chip sets all its launchers); a row opens to its ammunition (type, characteristics, reference, the fire menu
     /// of the bottom panel) and, for a group, its launchers one per line with their own chips. All open when everything fits,
@@ -105,7 +105,6 @@ namespace AlternativeWeaponsControl
             public readonly List<GroupRow> Groups = new List<GroupRow>();
             public Border[] Status = new Border[3];
             public TextBlock[] StatusText = new TextBlock[3];
-            public Border TightBox; public Rectangle TightMark; public StackPanel TightRow;
             public Border FreeBox; public Rectangle FreeMark; public StackPanel FreeRow;
             public TextBlock ExpandText;
             public float NextRefresh;
@@ -338,14 +337,7 @@ namespace AlternativeWeaponsControl
             }
             seg.Children.Add(segBox);
             Grid.SetColumn(seg, 0); head.Children.Add(seg);
-            v.TightRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(16f, 0f, 0f, 0f), Background = WC.Clear, VerticalAlignment = VerticalAlignment.Center };
-            v.TightBox = new Border { Width = 14f, Height = 14f, BorderBrush = WC.B(WC.Ring), BorderThickness = new Thickness(1f), CornerRadius = new CornerRadius(2f), Margin = new Thickness(0f, 0f, 6f, 0f) };
-            v.TightMark = new Rectangle { Width = 6f, Height = 6f, Fill = WC.B(WC.Ok), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-            v.TightBox.Child = v.TightMark;
-            v.TightRow.Children.Add(v.TightBox);
-            v.TightRow.Children.Add(T(Loc.T("tab.onTight"), WC.Sub, 12f));
-            Click(v.TightRow, () => ToggleTightAir(v));
-            // the second switch under it: On Free: engage approaching fast unidentified aircraft (the mod's own, saved with the unit); the tick is orange-red
+            // the switch under the status: On Free: engage approaching fast unidentified aircraft (the mod's own, saved with the unit); the tick is orange-red
             var orange = Color.FromRgb(240, 96, 40);
             v.FreeRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(16f, 0f, 0f, 0f), Background = WC.Clear, VerticalAlignment = VerticalAlignment.Center };
             v.FreeBox = new Border { Width = 14f, Height = 14f, BorderBrush = WC.B(WC.Ring), BorderThickness = new Thickness(1f), CornerRadius = new CornerRadius(2f), Margin = new Thickness(0f, 0f, 6f, 0f) };
@@ -356,7 +348,7 @@ namespace AlternativeWeaponsControl
             Click(v.FreeRow, () => { W(v.Unit).FreeAirSet = FreeAirOn(v.Unit) ? 0 : 1; Refresh(v, false); });
             { var ai = AwcPlugin.Instance; SetTip(v.FreeRow, Loc.F("tab.onFreeTip", Num(ai != null && ai._freeAirKnots != null ? ai._freeAirKnots.Value : 500f), Num(ai != null && ai._freeAirNm != null ? ai._freeAirNm.Value : 50f))); }
             var sw = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0f), VerticalAlignment = VerticalAlignment.Center };
-            sw.Children.Add(v.TightRow); sw.Children.Add(v.FreeRow);
+            sw.Children.Add(v.FreeRow);
             Grid.SetColumn(sw, 1); head.Children.Add(sw);
             // Expand / Collapse all: at the left of the WEAPONS column title, centred in its height
             v.ExpandText = T(Loc.T("tab.expandAll"), WC.Sub, 11f);
@@ -1880,22 +1872,12 @@ namespace AlternativeWeaponsControl
                 v.StatusText[i].Foreground = WC.B(on ? Color.FromRgb(255, 255, 255) : WC.Dim);
                 v.StatusText[i].FontWeight = on ? FontWeights.SemiBold : FontWeights.Normal;
             }
-            var tight = R.P(R.P(unit, "TacticalDoctrine"), "ShipsOnWeaponsTightEngageHostileAircraft");
-            bool vessel = R.Is(unit, _tVessel) && tight != null;
-            v.TightRow.Visibility = vessel ? Visibility.Visible : Visibility.Collapsed;
             v.FreeRow.Visibility = R.Is(unit, _tVessel) ? Visibility.Visible : Visibility.Collapsed;
             if (R.Is(unit, _tVessel))
             {
                 bool fa = FreeAirOn(unit);
                 v.FreeMark.Visibility = fa ? Visibility.Visible : Visibility.Hidden;
                 v.FreeBox.BorderBrush = WC.B(fa ? Color.FromRgb(240, 96, 40) : WC.Ring);
-            }
-            if (vessel)
-            {
-                bool t = R.B(R.P(tight, "ResolvedValue"));
-                v.TightMark.Visibility = t ? Visibility.Visible : Visibility.Hidden;
-                v.TightBox.Background = WC.Clear;
-                v.TightBox.BorderBrush = WC.B(t ? WC.Ok : WC.Ring);
             }
             v.ExpandText.Text = v.Groups.Exists(g => g.Expandable && !g.Open) ? Loc.T("tab.expandAll") : Loc.T("tab.collapseAll");
             RefreshCtrls(v);
@@ -2452,17 +2434,6 @@ namespace AlternativeWeaponsControl
             if (_tWeaponStatus == null) return;
             if (status == 2) { try { R.Call(v.Unit, "CeaseFire", false); } catch (Exception e) { Trace("CeaseFire: " + e.Message); } }
             R.Call(v.Unit, "SetWeaponStatus", Enum.ToObject(_tWeaponStatus, status), true);
-            Refresh(v, false);
-        }
-
-        void ToggleTightAir(WeaponsView v)
-        {
-            var it = R.P(R.P(v.Unit, "TacticalDoctrine"), "ShipsOnWeaponsTightEngageHostileAircraft");
-            if (it == null) return;
-            bool val = R.B(R.P(it, "ResolvedValue"));
-            R.SetP(it, "IsSet", true);
-            R.SetP(it, "Value", !val);
-            try { R.Call(it, "Refresh"); } catch { }
             Refresh(v, false);
         }
 

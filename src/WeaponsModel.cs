@@ -128,7 +128,7 @@ namespace AlternativeWeaponsControl
     /// <summary>
     /// The Weapons tab model: the launchers of a unit (its weapon systems except decoys), grouped by kind; the target domains each can
     /// engage; the player's "no automatic use" switches per launcher and domain, merged with the unit's Standing Orders
-    /// (TacticalDoctrine items AutoAttackSurface, ShipsAutoUseSAMsAgainstSurfaceTargets, ShipsAutoUseAntiShipMissilesAgainstSurfaceTargets);
+    /// (game 0.9.0: TacticalDoctrine.AutoEngageRuleSet, the AutoEngageRules of weapon class x target category x weapon status);
     /// kept in the mission save (the unit's section); used by the AI hooks (WeaponsAi.cs).
     /// </summary>
     public partial class AwcPlugin
@@ -138,10 +138,18 @@ namespace AlternativeWeaponsControl
         public static readonly string[] DomainNames = { "AIR", "MSL", "SUR", "SUB", "LND" };
         public static readonly string[] DomainLong = { "aircraft and helicopters", "missiles, torpedoes and other weapons", "surface ships", "submarines", "land targets" };
 
-        // Standing Orders items mapped onto launcher domains
-        const string ItAuto = "AutoAttackSurface", ItSam = "ShipsAutoUseSAMsAgainstSurfaceTargets", ItAsm = "ShipsAutoUseAntiShipMissilesAgainstSurfaceTargets";
-        static readonly string[] Items = { ItAuto, ItSam, ItAsm };
-        static readonly string[] ItemLabels = { "Auto attack surface", "Ships auto-use SAMs against surface targets", "Ships auto-use anti-ship missiles against surface targets" };
+        // Standing Orders: the game's auto-engage rules (AutoEngageRules), read and extended by reflection
+        static Type _tRules, _tAeCtx, _tAeDomain, _tAeClass, _tAeCat, _tAeRule, _tAePolicy;
+        static MethodInfo _miPermits, _miCanEngage, _miClassifyAmmo, _miMountClass, _miDomainOf, _miMayEngage;
+        const int CatLargeAir = 0, CatMediumAir = 1, CatSmallAir = 2, CatHeli = 3, CatAsm = 4, CatWeapon = 5, CatShip = 6, CatSurfSub = 7, CatSub = 8, CatLand = 9;
+        static readonly int[][] DomainCats =
+        {
+            new[] { CatLargeAir, CatMediumAir, CatSmallAir, CatHeli },   // DAir
+            new[] { CatAsm, CatWeapon },                                  // DMsl
+            new[] { CatShip, CatSurfSub },                                // DSur
+            new[] { CatSub },                                             // DSub
+            new[] { CatLand },                                            // DLnd
+        };
 
         static Type _tObjectBase, _tVessel, _tSubmarine, _tLandUnit, _tTorpedo, _tWeaponBase, _tCiws, _tWeaponStatus, _tLauncher, _tAircraft, _tHelicopter;
 
@@ -159,6 +167,25 @@ namespace AlternativeWeaponsControl
             _tAircraft = asm.GetType("SeaPower.Aircraft");
             _tHelicopter = asm.GetType("SeaPower.Helicopter");
             _tWeaponStatus = _tObjectBase == null ? null : _tObjectBase.GetNestedType("WeaponStatus");
+            const BindingFlags st = BindingFlags.Static | BindingFlags.Public;
+            _tRules = asm.GetType("SeaPower.AutoEngageRules");
+            _tAeCtx = asm.GetType("SeaPower.AutoEngageConditionContext");
+            _tAeDomain = asm.GetType("SeaPower.AutoEngageShooterDomain");
+            _tAeClass = asm.GetType("SeaPower.AutoEngageWeaponClass");
+            _tAeCat = asm.GetType("SeaPower.AutoEngageTargetCategory");
+            _tAeRule = asm.GetType("SeaPower.AutoEngageRule");
+            _tAePolicy = asm.GetType("SeaPower.AutoEngagePolicy");
+            if (_tRules != null)
+            {
+                _miPermits = _tRules.GetMethod("Permits", st);
+                _miCanEngage = _tRules.GetMethod("CanEngage", st);
+                _miClassifyAmmo = _tRules.GetMethod("ClassifyAmmo", st);
+                _miMountClass = _tRules.GetMethod("MountClass", st);
+                _miDomainOf = _tRules.GetMethod("DomainOf", st);
+                _miMayEngage = _tRules.GetMethod("UnitMayAutoEngage", st);
+            }
+            if (_miPermits == null || _miCanEngage == null || _miClassifyAmmo == null || _miMountClass == null || _miDomainOf == null || _tAeRule == null || _tAeCtx == null)
+                Warn("The game's auto-engage rules (AutoEngageRules) were not found (the game is older than 0.9.0?): Standing Orders are not merged into the Weapons tab.");
         }
 
         /// <summary>The domain of a target object (one of DAir ... DLnd), 0 when none.</summary>
@@ -188,8 +215,8 @@ namespace AlternativeWeaponsControl
             public string Loc = "";      // "fore port" ...
             public List<string> Ammo = new List<string>();
             public int Domains;          // domains its ammo can engage
-            public bool HasSam, HasAsm;  // Standing Orders items that cover its ammo
             public int[] AmmoDom;        // per Ammo entry
+            public int[] AmmoCls;        // per Ammo entry: the auto-engage weapon class (bit mask, 0 = none)
         }
 
         public static readonly string[] SectionNames = { "SAM", "ANTI-SHIP", "LAND ATTACK", "ASW", "GUNS", "CIWS", "OTHER", "STORES" };
@@ -218,12 +245,22 @@ namespace AlternativeWeaponsControl
             return d;
         }
 
-        static bool IsSam(object ap)
+        /// <summary>The weapon class of the auto-engage rules for an ammunition on this mount (guns and CIWS by the mount, the rest by the ammunition), as a bit.</summary>
+        static int AmmoClassBits(object unit, object ws, object ap)
         {
-            return R.S(R.F(ap, "_type")) == "Missile" && R.S(R.F(ap, "_targetType")) == "AAW" && R.B(R.F(ap, "_hasSecondaryTargetType")) && R.S(R.F(ap, "_secondaryTargetType")) == "ASuW";
+            try
+            {
+                if (_miClassifyAmmo == null) return 0;
+                object c;
+                if (R.S(R.F(ap, "_type")) == "Projectile") c = _miMountClass.Invoke(null, new[] { ws });
+                else
+                {
+                    c = _miClassifyAmmo.Invoke(null, new[] { ap, unit });   // Nullable<WeaponClass>: boxed value or null
+                }
+                return c == null ? 0 : 1 << Convert.ToInt32(c);
+            }
+            catch { return 0; }
         }
-
-        static bool IsAsm(object ap) { return R.S(R.F(ap, "_type")) == "Missile" && R.S(R.F(ap, "_targetType")) == "ASuW"; }
 
         /// <summary>The unit's launchers (vessels and submarines; not chaff, noisemakers, hardpoints).</summary>
         public static List<Launcher> Launchers(object unit)
@@ -242,6 +279,7 @@ namespace AlternativeWeaponsControl
                 var l = new Launcher { Ws = ws, Index = i, Name = R.S(R.Rv(R.P(ws, "DisplayName"))) ?? R.S(R.F(ws, "_systemName")) ?? "?" };
                 var names = R.F(ws, "_associatedAmmunitionNames") as IList;
                 var doms = new List<int>();
+                var cls = new List<int>();
                 object first = null;
                 if (names != null)
                     foreach (var o in names)
@@ -257,11 +295,11 @@ namespace AlternativeWeaponsControl
                         l.Ammo.Add(id);
                         doms.Add(d);
                         l.Domains |= d;
-                        if (IsSam(ap)) l.HasSam = true;
-                        if (IsAsm(ap)) l.HasAsm = true;
+                        cls.Add(AmmoClassBits(unit, ws, ap));
                         if (first == null) first = ap;
                     }
                 l.AmmoDom = doms.ToArray();
+                l.AmmoCls = cls.ToArray();
                 if (l.Domains == 0) continue;
                 if (wt == "Hardpoint") l.Section = 7;   // all the stores of an aircraft: one group, a Fire per ammunition
                 else if (wt == "CIWS") l.Section = 5;
@@ -378,8 +416,10 @@ namespace AlternativeWeaponsControl
         public sealed class UnitW
         {
             public readonly Dictionary<int, int> Off = new Dictionary<int, int>();   // launcher index -> domains the player turned off
-            public readonly bool[] Snap = new bool[Items.Length];                    // Standing Orders values last seen
+            public readonly Dictionary<long, bool> Snap = new Dictionary<long, bool>();   // launcher index * 64 + domain -> the rules allowed it when last seen
             public bool SnapInit;
+            public volatile bool RulesDirty = true;                                      // the unit's rule set raised PropertyChanged (the game's editor, a parent change, AllowByRules)
+            public object Hooked;                                                        // the rule set whose PropertyChanged is subscribed
             public int FreeAirSet = -1;                                             // On Free: engage approaching fast unidentified aircraft: -1 = the default of the side, 0 / 1 = the player's choice
             public List<Launcher> Cache;                                            // launchers (for the AI hooks)
             public readonly Dictionary<object, int> IndexOf = new Dictionary<object, int>();
@@ -412,64 +452,39 @@ namespace AlternativeWeaponsControl
             return w.Cache;
         }
 
-        static object DoctrineItem(object unit, int item)
-        {
-            var doc = R.P(unit, "TacticalDoctrine");
-            return R.P(doc, Items[item]);
-        }
+        static bool RulesAvailable { get { return _miPermits != null && _tAeRule != null && _tAeCtx != null && _miDomainOf != null; } }
 
-        /// <summary>Does the item apply to this unit at all (the AI checks it for player vessels; AutoAttackSurface for any non-land unit).</summary>
-        static bool ItemApplies(object unit, int item)
-        {
-            if (!R.B(R.P(unit, "IsPlayerObject"))) return false;
-            if (item == 0) return !R.Is(unit, _tLandUnit);
-            return R.Is(unit, _tVessel);
-        }
+        static object RuleSet(object unit) { return R.P(R.P(unit, "TacticalDoctrine"), "AutoEngageRuleSet"); }
 
-        static bool ItemValue(object unit, int item)
+        /// <summary>Does the unit's rule set let the launcher engage the domain by itself (at Free: only a rule saying Never, or no rule, forbids)? Conditions of a rule count as allowed.</summary>
+        static bool DocAllowed(object unit, Launcher l, int d)
         {
-            var it = DoctrineItem(unit, item);
-            return it == null || R.B(R.P(it, "ResolvedValue"));
-        }
-
-        /// <summary>Does the item cover this launcher / domain (would its "No" block it)?</summary>
-        static bool Covers(int item, Launcher l, int d)
-        {
-            if ((l.Domains & d) == 0) return false;
-            if (item == 0) return (d & (DSur | DSub | DLnd)) != 0;
-            if (item == 1) return l.HasSam && (d & (DSur | DSub | DLnd)) != 0;
-            return l.HasAsm && d == DSur;
-        }
-
-        /// <summary>Is automatic use of the launcher against the domain allowed by the unit's Standing Orders? blockers: the items saying No.</summary>
-        static bool DocAllowed(object unit, Launcher l, int d, List<int> blockers)
-        {
-            bool ok = true;
-            if ((d & (DSur | DSub | DLnd)) != 0 && ItemApplies(unit, 0) && !ItemValue(unit, 0)) { ok = false; if (blockers != null) blockers.Add(0); }
-            // per ammunition: the domain stays allowed while one of its ammunition types able to engage it is not blocked
-            bool sam = l.HasSam && ItemApplies(unit, 1) && !ItemValue(unit, 1) && (d & (DSur | DSub | DLnd)) != 0;
-            bool asm = l.HasAsm && ItemApplies(unit, 2) && !ItemValue(unit, 2) && d == DSur;
-            if (sam || asm)
+            if (!RulesAvailable || !R.B(R.P(unit, "IsPlayerObject"))) return true;
+            try
             {
-                bool any = false;
-                var obp = unit;
+                var rules = R.P(RuleSet(unit), "ResolvedRules");
+                if (rules == null) return true;
+                var dom = _miDomainOf.Invoke(null, new[] { unit });
+                int di = Array.IndexOf(Domains, d);
+                var free = Enum.Parse(_tWeaponStatus, "Free");   // (WeaponStatus: Tight = 0, Free = 1, Hold = 2)
+                bool engageable = false;
                 for (int i = 0; i < l.Ammo.Count; i++)
                 {
-                    if ((l.AmmoDom[i] & d) == 0) continue;
-                    object ap = null;
-                    try { ap = R.F(R.Call(obp, "getAmmunitionByName", l.Ammo[i]), "_ap"); } catch { }
-                    if (ap == null) continue;
-                    if ((sam && IsSam(ap)) || (asm && IsAsm(ap))) continue;
-                    any = true;
-                    break;
+                    if ((l.AmmoDom[i] & d) == 0 || l.AmmoCls[i] == 0) continue;
+                    foreach (var c in DomainCats[di])
+                        for (int k = 0; k < 12; k++)
+                        {
+                            if ((l.AmmoCls[i] & (1 << k)) == 0) continue;
+                            var cls = Enum.ToObject(_tAeClass, k); var cat = Enum.ToObject(_tAeCat, c);
+                            if (!(bool)_miCanEngage.Invoke(null, new[] { cls, cat })) continue;
+                            engageable = true;
+                            var a = new object[] { rules, dom, cls, cat, free, Activator.CreateInstance(_tAeCtx), true, l.Ammo[i], null };
+                            if ((bool)_miPermits.Invoke(null, a)) return true;
+                        }
                 }
-                if (!any)
-                {
-                    ok = false;
-                    if (blockers != null) { if (sam) blockers.Add(1); if (asm) blockers.Add(2); }
-                }
+                return !engageable;   // nothing the rules speak about: not blocked
             }
-            return ok;
+            catch (Exception e) { TraceLimited("docallowed", 60f, "auto-engage rules: " + e.Message); return true; }
         }
 
         public enum Chip { None, On, Off, Order, Mixed }
@@ -477,7 +492,7 @@ namespace AlternativeWeaponsControl
         public static Chip State(object unit, Launcher l, int d)
         {
             if ((l.Domains & d) == 0) return Chip.None;
-            if (!DocAllowed(unit, l, d, null)) return Chip.Order;
+            if (!DocAllowed(unit, l, d)) return Chip.Order;
             int off;
             return W(unit).Off.TryGetValue(l.Index, out off) && (off & d) != 0 ? Chip.Off : Chip.On;
         }
@@ -487,7 +502,7 @@ namespace AlternativeWeaponsControl
             if ((l.Domains & d) == 0) return false;
             int off;
             if (w.Off.TryGetValue(l.Index, out off) && (off & d) != 0) return false;
-            return DocAllowed(unit, l, d, null);
+            return DocAllowed(unit, l, d);
         }
 
         static void SetOff(UnitW w, int idx, int d, bool off)
@@ -498,29 +513,67 @@ namespace AlternativeWeaponsControl
             if (v == 0) w.Off.Remove(idx); else w.Off[idx] = v;
         }
 
-        /// <summary>Standing Orders changed outside the tab (the window, or by inheritance): the switches it covers follow it again.</summary>
-        public static void SyncDoctrine(object unit, UnitW w)
+        /// <summary>Standing Orders changed outside the tab (the game's rules editor, a parent doctrine, a loaded save): the switches whose permission
+        /// changed follow it again. The rule set tells itself when it changes (PropertyChanged: the editor edits the rules in place and raises
+        /// ResolvedRules), so the AI hooks only look at a flag; full = true (the tab's refresh) compares the permissions anyway.</summary>
+        public static void SyncDoctrine(object unit, UnitW w, bool full = true)
         {
-            for (int i = 0; i < Items.Length; i++)
+            if (!RulesAvailable) return;
+            var set = RuleSet(unit);
+            if (set != null && !ReferenceEquals(set, w.Hooked))
             {
-                bool v = ItemValue(unit, i);
-                if (w.SnapInit && v != w.Snap[i] && w.Off.Count > 0)
-                {
-                    var ls = CachedLaunchers(unit, w);
-                    foreach (var l in ls) foreach (var d in Domains) if (Covers(i, l, d)) SetOff(w, l.Index, d, false);
-                }
-                w.Snap[i] = v;
+                var npc = set as System.ComponentModel.INotifyPropertyChanged;
+                if (npc != null) npc.PropertyChanged += (o, e) => { if (e.PropertyName == "ResolvedRules" || string.IsNullOrEmpty(e.PropertyName)) w.RulesDirty = true; };
+                w.Hooked = set; w.RulesDirty = true;
             }
+            if (!full && w.SnapInit && !w.RulesDirty) return;
+            w.RulesDirty = false;
+            var ls = CachedLaunchers(unit, w);
+            foreach (var l in ls)
+                foreach (var d in Domains)
+                {
+                    if ((l.Domains & d) == 0) continue;
+                    long k = (long)l.Index * 64 + d;
+                    bool v = DocAllowed(unit, l, d), was;
+                    if (w.SnapInit && w.Snap.TryGetValue(k, out was) && was != v && w.Off.Count > 0) SetOff(w, l.Index, d, false);
+                    w.Snap[k] = v;
+                }
             w.SnapInit = true;
         }
 
-        static void SetItem(object unit, int item, bool value)
+        /// <summary>The player allows automatic use for the launcher / domain pairs the rules forbid: one rule is put first in the unit's own rule set
+        /// (its domain, the weapon classes of the launchers, the target categories of the domains; Weapons Tight = Free and Tight engage, Hold does not).</summary>
+        static void AllowByRules(object unit, List<KeyValuePair<Launcher, int>> pairs)
         {
-            var it = DoctrineItem(unit, item);
-            if (it == null) return;
-            R.SetP(it, "IsSet", true);
-            R.SetP(it, "Value", value);
-            try { R.Call(it, "Refresh"); } catch { }
+            if (!RulesAvailable || _tAePolicy == null) return;
+            var set = RuleSet(unit);
+            if (set == null) return;
+            var rules = R.P(set, "ResolvedRules");
+            var groups = new Dictionary<int, int>();       // weapon class mask -> category mask
+            foreach (var p in pairs)
+            {
+                if (DocAllowed(unit, p.Key, p.Value)) continue;
+                int cm = 0;
+                for (int i = 0; i < p.Key.Ammo.Count; i++) if ((p.Key.AmmoDom[i] & p.Value) != 0) cm |= p.Key.AmmoCls[i];
+                if (cm == 0) continue;
+                int cats = 0; foreach (var c in DomainCats[Array.IndexOf(Domains, p.Value)]) cats |= 1 << c;
+                int old; groups.TryGetValue(cm, out old); groups[cm] = old | cats;
+            }
+            if (groups.Count == 0) return;
+            if (!R.B(R.P(set, "IsSet"))) R.SetP(set, "IsSet", true);   // an own copy of the inherited rules
+            var own = R.P(set, "Rules") as IList;
+            if (own == null) return;
+            var dom = _miDomainOf.Invoke(null, new[] { unit });
+            foreach (var kv in groups)
+            {
+                var rule = Activator.CreateInstance(_tAeRule);
+                R.SetF(rule, "DomainMask", 1 << Convert.ToInt32(dom));
+                R.SetF(rule, "WeaponMask", kv.Key);
+                R.SetF(rule, "TargetMask", kv.Value);
+                R.SetF(rule, "Policy", Enum.ToObject(_tAePolicy, 2));   // WeaponsTight
+                own.Insert(0, rule);
+            }
+            try { R.Call(set, "NotifyRulesChanged"); } catch { }
         }
 
         /// <summary>The player turns automatic use on (true) or off for these launcher / domain pairs (one chip, or a group's).</summary>
@@ -533,9 +586,7 @@ namespace AlternativeWeaponsControl
             {
                 var before = new Dictionary<long, bool>();
                 foreach (var l in ls) foreach (var d in Domains) if ((l.Domains & d) != 0) before[(long)l.Index * 64 + d] = Effective(unit, w, l, d);
-                var blockers = new List<int>();
-                foreach (var p in pairs) DocAllowed(unit, p.Key, p.Value, blockers);
-                foreach (var b in blockers) if (!ItemValue(unit, b)) SetItem(unit, b, true);
+                AllowByRules(unit, pairs);
                 var mine = new HashSet<long>();
                 foreach (var p in pairs) { mine.Add((long)p.Key.Index * 64 + p.Value); SetOff(w, p.Key.Index, p.Value, false); }
                 // what the changed orders turned on besides these pairs stays off
@@ -553,8 +604,7 @@ namespace AlternativeWeaponsControl
                 // off: only the player's switch (grey) - the Standing Orders stay as they are
                 foreach (var p in pairs) SetOff(w, p.Key.Index, p.Value, true);
             }
-            for (int i = 0; i < Items.Length; i++) w.Snap[i] = ItemValue(unit, i);
-            w.SnapInit = true;
+            w.SnapInit = false; SyncDoctrine(unit, w);
         }
 
         /// <summary>Tooltip text of a chip.</summary>
@@ -565,10 +615,8 @@ namespace AlternativeWeaponsControl
             if (whom == null) whom = Loc.T("chip.thisLauncher");
             if (st == Chip.On) return Loc.F("chip.on", Loc.T("dom." + di), Loc.T("domLong." + di), whom);
             if (st == Chip.Off) return Loc.F("chip.off", Loc.T("dom." + di), whom);
-            var b = new List<int>();
-            DocAllowed(unit, l, d, b);
             var sb = new StringBuilder(Loc.F("chip.order", Loc.T("dom." + di)));
-            for (int i = 0; i < b.Count; i++) sb.Append(i > 0 ? ", " : "").Append(Loc.F("chip.orderNo", ItemLabels[b[i]]));
+            sb.Append(Loc.T("chip.orderNo"));
             sb.Append(Loc.F("chip.orderEnd", whom));
             return sb.ToString();
         }

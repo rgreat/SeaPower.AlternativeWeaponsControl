@@ -95,7 +95,7 @@ namespace AlternativeWeaponsControl
                 _miSurface.Invoke(null, a);
                 float rs = (float)a[5] * UnityToM, bs = (float)a[6] * UnityToM, ps = (float)a[7] * UnityToM, ss = (float)a[8] * UnityToM;
                 var sb = new StringBuilder();
-                sb.Append(real ? Loc.F("gt.errAt", N1(distUnity * UnityToM / 1000f)) : Loc.F("gt.errRef", N1(distUnity * UnityToM / 1000f)));
+                sb.Append((real ? Loc.F("gt.errAt", N1(distUnity * UnityToM / 1000f)) : Loc.F("gt.errRef", N1(distUnity * UnityToM / 1000f))).TrimEnd() + " ");
                 sb.Append(Loc.F("gt.err", N1(rs), N1(bs)));
                 if (real && ps > 0.5f) sb.Append(Loc.F("gt.errPred", N1(ps)));
                 if (ss > 0.5f) sb.Append(Loc.F("gt.errStab", N1(ss)));

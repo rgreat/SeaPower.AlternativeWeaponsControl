@@ -55,8 +55,15 @@ namespace AlternativeWeaponsControl
         /// <summary>
         /// The game's AI (GetPossibleTargetsList) takes a unit for a target only if the contact is hostile on the plot (IdentifiedAsHostile) AND its true taskforce is
         /// hostile to the ship's (RelationshipTo): a neutral airliner the player marked hostile is passed by - the AI uses what the player cannot know. For the player's
-        /// ships on Free the contacts hostile on the plot are added (the rest of the game's tests for a unit are kept: a surface contact needs the AutoAttackSurface doctrine).
+        /// ships the contacts hostile on the plot are added when the unit's auto-engage rules let it engage them.
         /// </summary>
+        /// <summary>AutoEngageRules.UnitMayAutoEngage: do the unit's rules let it engage the contact by itself in its weapon status?</summary>
+        static bool MayAutoEngage(object unit, object target)
+        {
+            if (_miMayEngage == null) return true;
+            try { return (bool)_miMayEngage.Invoke(null, new[] { unit, target }); } catch { return true; }
+        }
+
         static void PlotHostilePostfix(object __instance)
         {
             try
@@ -65,34 +72,17 @@ namespace AlternativeWeaponsControl
                 if (a == null || !Enabled || a._plotHostile == null || !a._plotHostile.Value) return;   // (cheap checks first: this runs for every ship's AI)
                 var unit = R.F(__instance, "_baseObject");
                 if (unit == null || !R.Is(unit, _tVessel) || !R.B(R.P(unit, "IsPlayerObject"))) return;
-                var ws = R.F(unit, "_weaponStatus");
-                if (ws == null) return;
-                // Free: every contact hostile on the plot. Tight with "On Tight: engage hostile aircraft": the same, aircraft and helicopters only (the game's own rule
-                // for Tight is the same but looks at the true side). Hold: nothing.
-                bool tight = false;
-                if (ws.ToString() == "Tight")
-                {
-                    try { var it = R.P(R.P(unit, "TacticalDoctrine"), "ShipsOnWeaponsTightEngageHostileAircraft"); tight = it != null && R.B(R.P(it, "ResolvedValue")); } catch { }
-                    if (!tight) return;
-                }
-                else if (ws.ToString() != "Free") return;
+                // The game's AI takes a contact only if the player's plot calls it hostile AND its true side is hostile; the contacts hostile on the plot are added here for
+                // every weapon status, as far as the unit's auto-engage rules let it engage them (Hold: only what a rule with Always allows).
                 var list = R.F(__instance, "_processedObjects") as IList;
                 var dict = R.F(__instance, "_possibleTargetsWithPriorities") as IDictionary;
                 var tf = R.V(unit, "_taskforce");
                 if (list == null || dict == null || tf == null || list.Count == 0) return;
-                bool surfaceOk = true;
-                try
-                {
-                    var doc = R.V(unit, "TacticalDoctrine"); var aas = doc == null ? null : R.V(doc, "AutoAttackSurface"); var rv = aas == null ? null : R.V(aas, "ResolvedValue");
-                    surfaceOk = rv == null || R.B(rv);
-                }
-                catch { }
                 List<object> add = null;
                 foreach (var o in list)
                 {
                     if (o == null || dict.Contains(o) || R.B(R.P(o, "IsDestroyed")) || !R.B(R.Call(o, "isUnit"))) continue;
-                    if (!R.B(R.P(o, "IsAirUnit")) && !surfaceOk) continue;
-                    if (tight && !R.Is(o, _tAircraft) && !R.Is(o, _tHelicopter)) continue;
+                    if (!MayAutoEngage(unit, o)) continue;
                     var mv = R.Call(o, "GetMapVehicle", tf);
                     if (mv == null || !(R.Call(mv, "CurrentRelationship") ?? "").ToString().Equals("Hostile")) continue;
                     (add ?? (add = new List<object>())).Add(o);

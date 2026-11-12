@@ -29,7 +29,7 @@ namespace AlternativeWeaponsControl
     {
         public const string PluginGuid = "com.rgreat.seapower.alternativeweaponscontrol";
         public const string PluginName = "Alternative Weapons Control";
-        public const string PluginVersion = "1.4.0";
+        public const string PluginVersion = "1.5.0";
 
         public static readonly string BuildId = ReadBuildId();
 
@@ -212,7 +212,7 @@ namespace AlternativeWeaponsControl
             _minSolRadar = Cfg.Bind("Guns", "RadarDirectorMinSolution", 1f,
                 "Minimum firing solution with a radar director: the solution (how well the gun has locked on the target's course and speed, shown as Solution % of the gun, 0..1) never falls below this level and starts from it, so the guns hit sooner after they open fire and wait for splashes less. This is a multiplier of the director's own minimum (the sensor ini key FCMinSolution); 1 = as the director is.");
             _ammoFix = Cfg.Bind("Guns", "AmmunitionFix", false,
-                "Accuracy (circular error probable) and warhead power of gun ammunition are taken from the author's pack (ammunition_fix.txt in the mod folder) and from the values you set in the table below. Off = the game's own ammunition values. Applied to ammunition loaded after Apply (a mission start).");
+                "Accuracy (circular error probable) and warhead power of gun ammunition are taken from the author's pack (ammunition_fix.txt in the mod folder) and from the values you set in the table below; any other gun ammunition of the game can be added to the table, or a row removed. Off = the game's own ammunition values. Applied to ammunition loaded after Apply (a mission start).");
             _debugEntry = Cfg.Bind("General", "Debug", false,
                 "Verbose logging and BepInEx/AlternativeWeaponsControl.trace.txt.");
             _language = Cfg.Bind("General", "Language", "",

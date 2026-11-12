@@ -51,7 +51,7 @@ namespace AlternativeWeaponsControl
                     if (m.Name != "GetWeaponSystemsForAmmunition") continue;
                     var ps = m.GetParameters();
                     if (ps.Length == 4) gw = m;
-                    else if (ps.Length == 5 && m.ReturnType == typeof(bool) && ps[4].Name == "vwsList") gw5 = m;
+                    else if (ps.Length >= 5 && m.ReturnType == typeof(bool) && ps[4].Name == "vwsList") gw5 = m;   // (0.9.0: a 6th parameter, ignoreFiringArcs; the postfix takes its arguments by name)
                 }
             if (gw5 != null) patch(gw5, null, "SelectorPostfix5", null); else patch(gw, null, "SelectorPostfix", null);
             patch(_tCiws == null ? null : _tCiws.GetMethod("AquireTarget", inst | BindingFlags.DeclaredOnly), "CiwsEnter", null, "CiwsLeave");
@@ -783,7 +783,7 @@ namespace AlternativeWeaponsControl
             {
                 bool auto = _aiDepth > 0 || (ReferenceEquals(_hetUnit, obj) && TasksAuto(obj, ammoId, targetObject));
                 if (!auto) return;
-                SyncDoctrine(obj, w);
+                SyncDoctrine(obj, w, false);
                 if (w.Off.Count == 0) return;
                 CachedLaunchers(obj, w);
                 int d = TargetDomain(targetObject);
@@ -806,7 +806,7 @@ namespace AlternativeWeaponsControl
                 var unit = R.F(__instance, "_baseObject");
                 UnitW w;
                 if (unit == null || !UnitsW.TryGetValue(unit, out w) || w.Off.Count == 0) return;
-                SyncDoctrine(unit, w);
+                SyncDoctrine(unit, w, false);
                 CachedLaunchers(unit, w);
                 int idx, off;
                 if (!w.IndexOf.TryGetValue(__instance, out idx) || !w.Off.TryGetValue(idx, out off) || off == 0) return;

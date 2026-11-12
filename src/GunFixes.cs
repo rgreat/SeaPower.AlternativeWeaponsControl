@@ -26,7 +26,7 @@ namespace AlternativeWeaponsControl
             if (ms != null) harmony.Patch(ms, prefix: Hm("RangeSigmaPrefix"), postfix: Hm("RangeSigmaPostfix"), finalizer: Hm("RangeSigmaFinalizer")); else Trace("WeaponSystemGun.GetMeasurementRangeSigma not found: no minimum range error option");
             var gfm = asm.GetType("SeaPower.GunFireControlModel");
             var ss = gfm == null ? null : gfm.GetMethod("SurfaceSigmas", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-            if (ss != null) harmony.Patch(ss, postfix: Hm("FcErrorPostfix")); else Trace("GunFireControlModel.SurfaceSigmas not found: no fire-control accuracy multiplier");
+            if (ss != null) harmony.Patch(ss, prefix: Hm("RangeSigmaPrefix"), postfix: Hm("FcErrorPostfix"), finalizer: Hm("RangeSigmaFinalizer"));   // (the real error of a salvo: its range part uses the floor too) else Trace("GunFireControlModel.SurfaceSigmas not found: no fire-control accuracy multiplier");
             var sens = asm.GetType("SeaPower.SensorSystem");
             var rfp = sens == null ? null : sens.GetMethod("ResolveFireControlProfile", inst | BindingFlags.DeclaredOnly);
             if (rfp != null) harmony.Patch(rfp, prefix: Hm("FcProfilePrefix"), postfix: Hm("FcProfilePostfix")); else Trace("SensorSystem.ResolveFireControlProfile not found: no director gain / minimum solution options");
@@ -140,6 +140,8 @@ namespace AlternativeWeaponsControl
         // GetMeasurementRangeSigma = max(Globals._gunFCBaseRangeErrorFloorUnity (~40 m), 1.5 % of range) / gain^2 ...: inside ~1.4 nm the
         // constant floor dominates, so close shooting is relatively worse. For the call the floor is replaced with the configured
         // value (metres); the percentage part (scaling with distance) is untouched.
+        // The floor is swapped around both users of the game's MeasurementRangeSigma for surface targets: WeaponSystemGun.GetMeasurementRangeSigma (the spotting-fire
+        // decision) and GunFireControlModel.SurfaceSigmas (the real aiming error of a salvo and the tooltip); a patch only on the first one left the real error unchanged.
         static FieldInfo _fFloor; static float _floorSaved; static bool _floorSwapped;
         static void RangeSigmaPrefix()
         {

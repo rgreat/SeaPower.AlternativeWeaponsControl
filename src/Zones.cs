@@ -128,7 +128,30 @@ namespace AlternativeWeaponsControl
             if (!mine && OurFireDepth <= 0) return;
             if (mine) RealMax.Remove(__instance);
             RealMax.Add(__instance, value);
+            ZoneRangeFollow(__instance, value);
             value = 0.0;
+        }
+
+        // The wedges show the range the game itself works out for the weapon against what the cursor is over (AttackingState sets MaxRangeInLat on every hover:
+        // kinematic / sensor / terrain range against that contact, e.g. a SAM against a ship), not the ammunition's nominal range. The game's circle stays hidden.
+        static float _zoneRange, _zoneNominal; static IList _zoneList;
+        static void ZoneRangeFollow(object st, double lat)
+        {
+            if (_zoneInfo == null || _zoneList == null || _tHoverInfo == null) return;
+            try
+            {
+                if (!ReferenceEquals(R.P(st, "Source"), _zoneUnit) || R.S(R.P(st, "Ammunition")) != _zoneKeyId) return;
+                float r = (float)(lat / 0.0006047522103382444);
+                if (r <= 0f || r > 1e7f) r = _zoneNominal;
+                if (r <= 0f || Math.Abs(r - _zoneRange) < _zoneRange * 0.005f) return;
+                _zoneRange = r;
+                var info = Activator.CreateInstance(_tHoverInfo);
+                _tHoverInfo.GetField("Unit").SetValue(info, _zoneUnit);
+                _tHoverInfo.GetField("Systems").SetValue(info, _zoneList);
+                _tHoverInfo.GetField("MapRangeInUnity").SetValue(info, r);
+                _zoneInfo = info;   // ZoneReconcile hands it to the manager and the renderer on the next frame
+            }
+            catch (Exception e) { TraceLimited("zr", 5f, "zone range: " + e.Message); }
         }
 
         internal static bool IsOurState(object st) { object o; return st != null && RealMax.TryGetValue(st, out o); }
@@ -320,7 +343,7 @@ namespace AlternativeWeaponsControl
                 if (id != null && _debug) TraceLimited("zonesTry", 5f, "zones: Fire targeting " + id + " pin=" + (pin != null) + " enabled=" + Enabled + " cfg=" + (a != null && a._zoneFire != null && a._zoneFire.Value) + " hover=" + (_tHoverInfo != null && _pHovered != null));
                 if (id == null)
                 {
-                    if (_zoneInfo != null && ReferenceEquals(unit, _zoneUnit)) { ArcColor(false); _zoneInfo = null; _zoneKeyId = null; _zoneKeyPin = null; _tHoverMgr.GetMethod("ClearCandidate").Invoke(null, new object[] { _zoneOwner }); }
+                    if (_zoneInfo != null && ReferenceEquals(unit, _zoneUnit)) { ArcColor(false); _zoneInfo = null; _zoneList = null; _zoneKeyId = null; _zoneKeyPin = null; _tHoverMgr.GetMethod("ClearCandidate").Invoke(null, new object[] { _zoneOwner }); }
                     return;
                 }
                 if (_zoneInfo != null && _zoneKeyId == id && ReferenceEquals(_zoneKeyPin, pin) && ReferenceEquals(_zoneUnit, unit)) return;
@@ -337,7 +360,7 @@ namespace AlternativeWeaponsControl
                 _tHoverInfo.GetField("MapRangeInUnity").SetValue(info, range);
                 Trace("zones: start " + id + " launchers=" + list.Count + " range=" + range);
                 ArcColor(true);
-                _zoneInfo = info; _zoneKeyId = id; _zoneKeyPin = pin; _zoneUnit = unit;
+                _zoneInfo = info; _zoneKeyId = id; _zoneKeyPin = pin; _zoneUnit = unit; _zoneList = list; _zoneRange = range; _zoneNominal = range;
                 _tHoverMgr.GetMethod("SetCandidate").Invoke(null, new object[] { _zoneOwner, unit, list, range });   // starts the manager's tick
             }
             catch (Exception e) { Trace("zones update: " + e.Message); _zoneInfo = null; }

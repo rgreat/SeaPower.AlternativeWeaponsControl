@@ -1,11 +1,10 @@
-Version 1.4.0
-- CIWS and machine guns also turn towards targets outside their firing sector.
-- Option "Engage targets outside the firing sector" (on).
-- Option "Remember earlier targets" (on): after a new fire order, a gun that cannot reach the new target keeps firing at an older one.
-- Option "Bottom panel weapons act as Fire" (off): a click there shows the red firing zones.
-- Group titles show all target types: "ANTI-SHIP/ASW". Option for SAM groups (off).
-- Guns with a magazine show the rounds left in it.
-- Fixed: land attack missiles were listed under ANTI-SHIP; the AMMO column was too narrow for "On launcher 2/2".
-- Fixed: guns were sometimes pulled back to an older target instead of the newest one; firing sectors from the bottom panel were missing for guns.
-- Fixed: ship guns flickering between targets when the target was lost; group Stop leaving gun Stop buttons lit.
-- Groups with several ammunition types have common Fire / Stop / Reload buttons (Fire uses the chosen ammunition).
+Version 1.5.0
+- Supports Sea Power 0.9.0.
+- Automatic use switches follow the unit's Standing Orders (auto-engage rules): a switch the rules forbid is amber; a click adds an allowing rule.
+- Fire shows the range against the contact under the cursor (a SAM against a ship is shorter).
+- Click on a target orders every gun ammunition that reaches it (option, on).
+- Guns that idled near maximum range get a new aiming error (option, on).
+- Guns on local control no longer wait for shell splashes (option, on).
+- Guns tab: director presets (Base / Advanced / WW2 Mod), weak directors boost, solution quality and speed, aiming accuracy; gun tooltips show the director and the aiming error.
+- Custom accuracy and power table (off): add or remove any gun ammunition.
+- Fixed: "Guns: change maximum accuracy" now changes the real error, not only the tooltip.

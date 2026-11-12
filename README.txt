@@ -1,6 +1,6 @@
 ALTERNATIVE WEAPONS CONTROL
 
-Version 1.4.0.
+Version 1.5.0.
 
 Adds a new Weapons tab in the Unit Status window of your units, and a set of combat improvements.
 
@@ -25,7 +25,7 @@ SAM launchers
 
 Fire and guns
 
-1. Fire shows the weapon's firing arcs in red, with a weak red fill, on the map (Sea Power 0.8.7) and in 3D while the target is being picked.
+1. Fire shows the weapon's firing arcs in red, with a weak red fill, on the map (Sea Power 0.8.7) and in 3D while the target is being picked; the radius follows the range the game works out against the contact under the cursor (a SAM against a ship is shorter than against an aircraft).
 2. Aim beyond maximum range: guns, CIWS and machine guns turn towards a target out of range or outside their firing sector (as far as the sector allows) without firing.
    Option "Engage targets outside the firing sector" (on by default): big guns that the game never gives a target outside their sector take such a target and turn to the edge of the sector (applied to units loaded afterwards).
    Option "Remember earlier targets" (on by default): a new order to fire still switches the guns to the new target, but earlier targets are kept; a gun that cannot reach the new one (range, firing sector) goes on with the newest earlier target it can reach. Cease fire clears the list.
@@ -33,7 +33,9 @@ Fire and guns
 3. Disable AI cheating: the game's AI engages only contacts whose true side is hostile, which you cannot know. Your ships now engage the contacts you marked hostile on the plot (on Tight: aircraft only).
 4. Close-range accuracy: "Guns: change maximum accuracy" - best accuracy of guns (default 5 m, the game has about 40 m).
 5. Ammunition pack: the accuracy and warhead power of 48 gun ammunition types are taken from the author's pack (ammunition_fix.txt in the mod folder). The table in the Guns tab of the settings window ("Guns: alter accuracy and power", on by default) lists them with the game's names, the mod's values and the game's own values; you can edit every value and reset it. The table and other dependent settings are hidden while their switch is off; applied to ammunition loaded after Apply (a mission start).
-6. Ship chase options: a ship keeps its course instead of running after RBU targets or aircraft to get them into range.
+6. Gun fixes: "Click on a target: all guns" orders every gun ammunition that reaches the target, not one; "Unstick guns at long range" gives a gun a new aiming error when the old one put the aim point beyond its firing table (it idled for minutes); "Local control: no spotting wait" lets a gun without a working director fire at its normal rate.
+7. Directors and accuracy (Guns tab): presets Base / Advanced / WW2 Mod, boost of weak directors, firing solution quality and build speed, shell and aiming accuracy. The gun tooltip shows the director, the firing solution and the aiming error at the target's range.
+8. Ship chase options: a ship keeps its course instead of running after RBU targets or aircraft to get them into range.
 
 Fire control (optional)
 
@@ -47,12 +49,12 @@ Special effects (flashes, fire light, binoculars normal view, machine gun and hi
 Settings and languages
 
 1. Settings can be opened from the main menu and the pause menu; with several of the author's mods installed there is one shared "Alternative Mods" entry.
-2. Settings window in the game with tabs: Weapons panel, Fire Control, AI, Guns, Debug, Language.
+2. Settings window in the game with tabs: Weapons panel, SAM, AI, Guns, Fire Control, Debug, Language.
 3. Localized into 9 languages (en, ru, cn, de, es, fr, ko, ja, vn). The lang/<code>.ini files can be edited to translate or change texts.
 
 COMPATIBILITY
 
-- Supports Sea Power version 0.8.7 (Release and Stable Beta).
+- Supports Sea Power version 0.9.0.
 - Requires Anchor Chain.
 - Can be switched on/off in the game's Mods menu.
 
