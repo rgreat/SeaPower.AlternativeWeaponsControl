@@ -210,3 +210,6 @@ the real error at close range. Set `MaxAccuracyMeters` ~40 for the game's behavi
 `AttackingState.MaxRangeInLat` is set by the game on every hover with the real range against that contact (kinematic / sensor / terrain; a SAM against a ship is
 well below the ammunition's `_launchRangesInUnity.y`). The setter prefix keeps the circle hidden but passes the value to `ZoneRangeFollow`, which replaces `_zoneInfo`
 with a HoverInfo of the new radius (`ZoneReconcile` hands it to the renderer next frame). Off the contacts (map) the game's own typical-target range applies.
+
+### Settings hub: RefreshLabels in Install
+Every rgreat dll has its own copy of `SettingsHub` with its own static fields. The plugin calls `SettingsHub.Register(...)` and then `SettingsHub.Install(...)`, so in the copy of a mod that starts later `_game` is still null during `Register` and `RefreshLabels` returns at once; the button put in by an earlier mod's copy (AGI with `StartEarly`) kept its old text. `Install` now calls `RefreshLabels()` right after `_game` is set. The file is the canonical copy from ASE, unchanged.

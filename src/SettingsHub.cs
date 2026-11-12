@@ -16,7 +16,7 @@
 //    and opens a small list, one button per mod, in the order of the entries (then by id).
 //  - The hub logs to LogOutput.log (source 'rgreat settings hub'): every click, every failure.
 //  - Menus are built each time they are shown, so the label always reflects the mods that are active now. No polling anywhere.
-//  - A mod that registers later than the first one (early start under Keel) refreshes the text of the buttons already in the menus (RefreshLabels).
+//  - A mod that registers later than the first one (early start under Keel) refreshes the text of the buttons already in the menus (RefreshLabels, in Register and in Install).
 // ======================================================================================================================
 using System;
 using System.Collections;
@@ -141,6 +141,7 @@ namespace Rgreat.Hub
         public static void Install(Harmony harmony, Assembly game, Action<string> trace, Func<string> language)
         {
             _game = game; if (trace != null) _trace = trace; if (language != null) _language = language;
+            RefreshLabels();   // each mod has its own copy of this class: Register above ran before _game was known, so the buttons of the mods started earlier get their text here
             // Patching the menu classes at plugin start makes the runtime run their static constructors, which register Noesis properties before Noesis
             // is ready: the game (the Release build) crashes natively. So the patches are made after the game's load screen has finished.
             const BindingFlags any = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
