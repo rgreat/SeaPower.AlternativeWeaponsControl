@@ -16,6 +16,7 @@
 //    and opens a small list, one button per mod, in the order of the entries (then by id).
 //  - The hub logs to LogOutput.log (source 'rgreat settings hub'): every click, every failure.
 //  - Menus are built each time they are shown, so the label always reflects the mods that are active now. No polling anywhere.
+//  - A mod that registers later than the first one (early start under Keel) refreshes the text of the buttons already in the menus (RefreshLabels).
 // ======================================================================================================================
 using System;
 using System.Collections;
@@ -59,6 +60,30 @@ namespace Rgreat.Hub
                 r.RemoveAll(e => e.Length > 0 && string.Equals(e[0] as string, id, StringComparison.Ordinal));
                 r.Add(new object[] { id, title, version, order, open, active });
             }
+            RefreshLabels();
+        }
+
+        /// <summary>The buttons already in the menus get the text for the mods registered now (a mod that starts later than the first one).</summary>
+        static void RefreshLabels()
+        {
+            try
+            {
+                if (_game == null) return;
+                string label = Label();
+                if (label == null) return;
+                var view = GameView("SeapowerUI.MainMenuView") as FrameworkElement;
+                var scroll = view == null ? null : view.FindName("scrollViewer") as ScrollViewer;
+                var list = scroll == null ? null : scroll.Content as StackPanel;
+                if (list != null)
+                    foreach (var c in list.Children)
+                    {
+                        var b = c as Button;
+                        if (b != null && b.Name == ButtonName) b.Content = label.ToUpperInvariant();
+                    }
+                if (_setContent != null)
+                    foreach (var w in _pauseButtons) { var b = w.Target; if (b != null) _setContent.Invoke(b, new object[] { label }); }
+            }
+            catch (Exception e) { _trace("SettingsHub refresh: " + e.Message); }
         }
 
         static List<object[]> Active()

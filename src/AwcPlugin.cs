@@ -347,7 +347,7 @@ namespace AlternativeWeaponsControl
         // It lives in UnitStatusViewModel.Tabs like the game's ones: added in its constructor (second), available or not after
         // each unit switch, content made when the tab is shown (EnsureContent) and dropped when the unit changes (DisposeOwnedContent).
 
-        const int WeaponsTabKind = 6;   // past the game's UnitStatusTab values (Engagement ... Seeker); Smart Windows' Reference tab is 5
+        const int WeaponsTabKind = 6;   // past the game's UnitStatusTab values (Engagement ... Supplies = 5); free in 0.9.0
 
         Type _ustType, _ustKind;
         FieldInfo _ustUnit;
