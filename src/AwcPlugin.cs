@@ -45,8 +45,8 @@ namespace AlternativeWeaponsControl
         public ConfigFile Cfg;
         internal ConfigEntry<string> _language; internal ConfigEntry<bool> _debugEntry, _gunChannels, _gunOneDirector, _noRbuSurfaceChase, _noAirChase;
         internal ConfigEntry<string> _secOrder;
-        internal ConfigEntry<float> _clickVolume, _samMinutes, _samAutoRange, _gunMinError, _accuracyMult, _fcAccuracy, _weakBoost, _gainLocal, _minSolOptical, _minSolRadar, _solSpeed;
-        internal ConfigEntry<bool> _ammoFix, _plotHostile, _tabAir, _tabLand, _samButton, _zoneFire, _samAuto, _samKeep, _samAnim, _gunAimBeyond, _engageOutside, _gunMemory, _gunReroll, _clickAllGuns, _gunLocalFire, _bottomFire, _secTargets;
+        internal ConfigEntry<float> _clickVolume, _samMinutes, _samAutoRange, _gunMinError, _accuracyMult, _fcAccuracy, _weakBoost, _gainLocal, _minSolOptical, _minSolRadar, _solSpeed, _solLoss, _localGrowth;
+        internal ConfigEntry<bool> _ammoFix, _plotHostile, _tabAir, _tabLand, _samButton, _zoneFire, _samAuto, _samKeep, _samAnim, _gunAimBeyond, _engageOutside, _gunMemory, _gunReroll, _barrelScatter, _bigLocal, _clickAllGuns, _gunLocalFire, _bottomFire, _secTargets;
         public static string UserDir { get; private set; }
 
         /// <summary>The settings the window shows (in this order).</summary>
@@ -82,13 +82,23 @@ namespace AlternativeWeaponsControl
             Trace(msg);
         }
 
-        void Verbose(string msg) { if (_debug) Logger.LogInfo(msg); }
-        static void Say(string msg) { if (_inst != null) _inst.Logger.LogInfo(msg); }
+        void Verbose(string msg) { Trace(msg); }   // details go to the trace only
+        static void Say(string msg) { if (_inst != null) _inst.Logger.LogInfo(msg); Trace(msg); }   // startup diagnostics: BepInEx log + trace
         static void Warn(string msg) { if (_inst != null) _inst.Logger.LogWarning(msg); Trace("WARN " + msg); }
 
         static HarmonyMethod Hm(string name)
         {
-            return new HarmonyMethod(typeof(AwcPlugin).GetMethod(name, BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public));
+            var m = typeof(AwcPlugin).GetMethod(name, BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+            if (m == null) throw new MissingMethodException("AwcPlugin." + name + " (patch method of the mod) not found");
+            return new HarmonyMethod(m);
+        }
+
+        /// <summary>One patch: a missing game member or a failing Harmony call is reported by name (type.member) and does not stop the other patches.</summary>
+        static void PatchOne(Harmony harmony, MethodBase target, string what, string prefix = null, string postfix = null, string finalizer = null)
+        {
+            if (target == null) { Warn(what + " not found in the game: the feature that needs it is off"); return; }
+            try { harmony.Patch(target, prefix: prefix == null ? null : Hm(prefix), postfix: postfix == null ? null : Hm(postfix), finalizer: finalizer == null ? null : Hm(finalizer)); }
+            catch (Exception e) { Warn("patching " + what + " failed: " + e.Message); }
         }
 
         internal static Assembly GameAssembly()
@@ -185,6 +195,12 @@ namespace AlternativeWeaponsControl
             _gunReroll = Cfg.Bind("Guns", "RerollAimError", true,
                 "The game adds a random fire-control error to the aim point of every gun and keeps it until the gun has fired. Near the maximum range that error can push the aim point beyond the gun's firing table: the gun then has no solution, " +
                 "does not even turn, and never fires because the error is only redrawn after a shot - a turret stays idle for minutes while its neighbours shoot. On = such a gun draws a new error at once (only if the target itself can be hit). Off = as in the game. The player's guns only.");
+            _barrelScatter = Cfg.Bind("Guns", "BarrelScatter", true,
+                "The game draws the scatter of the shells once per salvo and gives it to every barrel of the mount, so the shells of a twin or triple turret fly exactly parallel and land in a line, hit or miss together. " +
+                "On = each barrel after the first draws its own shell scatter (the same scatter as the game's, around the same aim point). Off = as in the game. Surface targets, naval guns of all ships.");
+            _bigLocal = Cfg.Bind("Guns", "BigGunsLocalSolution", true,
+                "A gun whose director is destroyed or off keeps its firing solution at 0 for ever in the game (it only follows the best working sensor), so it shoots with the full local-control error. Big turrets have local control and their own rangefinders. " +
+                "On = a naval gun with a shell heavier than 2 kg (about 50 mm and more) and no working director builds its firing solution itself, as a gun without sensors does (its aiming gain stays that of local control: worse than a director). Smaller guns stay as in the game. Off = as in the game.");
             _clickAllGuns = Cfg.Bind("Guns", "ClickEngagesAllGuns", true,
                 "A right click on a hostile contact with your own ship selected makes the game order ONE gun ammunition - the one with the longest range that has a usable gun at that moment " +
                 "(a gun whose director is destroyed or that is reloading does not count, so its calibre is skipped). On = every gun ammunition of the ship that can reach the target (range only, the firing sector does not matter) gets the order. " +
@@ -207,6 +223,12 @@ namespace AlternativeWeaponsControl
                 "Accuracy of guns without a working director (the gun crew aims by themselves; the game calls it gain): the higher, the smaller the aiming errors. The game's own value is 0.6, better than most directors of rule sets with weak directors; this is a multiplier of it. 1 = the game's value. Takes effect at once.");
             _solSpeed = Cfg.Bind("Guns", "SolutionBuildSpeed", 1f,
                 "How fast guns build their firing solution (the Solution % of the gun: how well the gun has locked on the target's course and speed; a higher solution means smaller aiming errors from the target's movement and fewer waits for splashes). This is a multiplier of the speed only - the accuracy of the director does not change. It applies to directors and to guns without a director. 1 = as the game; 0.3 = three times slower. A turn or a speed change of the target still costs the same part of the solution, so with a low speed a maneuvering target keeps the solution low. Takes effect at once.");
+            _solLoss = Cfg.Bind("Guns", "ManeuverSolutionLoss", 10f,
+                "How much of the firing solution a gun loses at each check (every 2 s) when the target's course changed by more than 4 degrees and/or its speed by more than 4 knots: this percent of the CURRENT solution, once for the course and once for the speed. " +
+                "The game takes a fixed 0.1 (10 points) each, however high or low the solution is, so a gun with a low solution cannot grow it against a manoeuvring target at all. 0 = the game's fixed 0.1. Applies to directors and to guns without a director.");
+            _localGrowth = Cfg.Bind("Guns", "LocalSolutionGrowth", 75f,
+                "How fast a big gun with no working director (see Big guns build a solution without a director) builds its own firing solution, as a percent of the growth speed of the BEST director it has (the strongest of its associated sensors, working or not: gain x crew x light). " +
+                "The game's gun without any sensor builds it at the crew speed alone, which is faster than a weak director (gain 0.3-0.5) and so makes a lost director an advantage. 75 = three quarters of the director's speed. A gun with no associated sensor at all uses the AVERAGE director of all units in the mission (the same percent of it), so it is not faster than a director either.");
             _minSolOptical = Cfg.Bind("Guns", "OpticalDirectorMinSolution", 1f,
                 "Minimum firing solution with an optical director: the solution (how well the gun has locked on the target's course and speed, shown as Solution % of the gun, 0..1) never falls below this level and starts from it, so the guns hit sooner after they open fire and wait for splashes less. This is a multiplier of the director's own minimum (the sensor ini key FCMinSolution); 1 = as the director is.");
             _minSolRadar = Cfg.Bind("Guns", "RadarDirectorMinSolution", 1f,
@@ -217,7 +239,7 @@ namespace AlternativeWeaponsControl
                 "Verbose logging and BepInEx/AlternativeWeaponsControl.trace.txt.");
             _language = Cfg.Bind("General", "Language", "",
                 "Language of the mod's texts: a code of a game language (en, ru ...); empty = the game's own language. The texts are in the files lang/<code>.ini in the mod folder - edit them to translate.");
-            Entries.Add(_gunMemory); Entries.Add(_gunReroll); Entries.Add(_clickAllGuns); Entries.Add(_gunLocalFire); Entries.Add(_bottomFire); Entries.Add(_secTargets); Entries.Add(_clickVolume); Entries.Add(_samButton); Entries.Add(_zoneFire); Entries.Add(_plotHostile); Entries.Add(_freeAirKnots); Entries.Add(_freeAirNm); Entries.Add(_freeAirOwn); Entries.Add(_freeAirEnemy); Entries.Add(_tabLand); Entries.Add(_tabAir); Entries.Add(_samAuto); Entries.Add(_samKeep); Entries.Add(_samAnim); Entries.Add(_samAutoRange); Entries.Add(_samMinutes); Entries.Add(_gunOneDirector); Entries.Add(_gunChannels); Entries.Add(_noRbuSurfaceChase); Entries.Add(_noAirChase); Entries.Add(_gunAimBeyond); Entries.Add(_engageOutside); Entries.Add(_gunMinError); Entries.Add(_accuracyMult); Entries.Add(_fcAccuracy); Entries.Add(_weakBoost); Entries.Add(_gainLocal); Entries.Add(_minSolOptical); Entries.Add(_minSolRadar); Entries.Add(_solSpeed); Entries.Add(_ammoFix); Entries.Add(_debugEntry); Entries.Add(_language);
+            Entries.Add(_gunMemory); Entries.Add(_gunReroll); Entries.Add(_barrelScatter); Entries.Add(_bigLocal); Entries.Add(_clickAllGuns); Entries.Add(_gunLocalFire); Entries.Add(_bottomFire); Entries.Add(_secTargets); Entries.Add(_clickVolume); Entries.Add(_samButton); Entries.Add(_zoneFire); Entries.Add(_plotHostile); Entries.Add(_freeAirKnots); Entries.Add(_freeAirNm); Entries.Add(_freeAirOwn); Entries.Add(_freeAirEnemy); Entries.Add(_tabLand); Entries.Add(_tabAir); Entries.Add(_samAuto); Entries.Add(_samKeep); Entries.Add(_samAnim); Entries.Add(_samAutoRange); Entries.Add(_samMinutes); Entries.Add(_gunOneDirector); Entries.Add(_gunChannels); Entries.Add(_noRbuSurfaceChase); Entries.Add(_noAirChase); Entries.Add(_gunAimBeyond); Entries.Add(_engageOutside); Entries.Add(_gunMinError); Entries.Add(_accuracyMult); Entries.Add(_fcAccuracy); Entries.Add(_weakBoost); Entries.Add(_gainLocal); Entries.Add(_minSolOptical); Entries.Add(_minSolRadar); Entries.Add(_solSpeed); Entries.Add(_solLoss); Entries.Add(_localGrowth); Entries.Add(_ammoFix); Entries.Add(_debugEntry); Entries.Add(_language);
             Loc.Trace = Trace; Loc.Forced = () => _language == null ? "" : _language.Value;
             foreach (var en in Entries) Loc.Register("help." + en.Definition.Section + "/" + en.Definition.Key, en.Description == null ? "" : en.Description.Description);
 
@@ -244,6 +266,7 @@ namespace AlternativeWeaponsControl
             try { FixTargetsStep(); } catch (Exception e) { Trace("target fix: " + e.Message); }
             try { BottomZonesStep(UnityEngine.Time.unscaledTime); } catch (Exception e) { Trace("bottom zones: " + e.Message); }
             try { GunTargetsStep(UnityEngine.Time.unscaledTime); } catch (Exception e) { Trace("gun targets: " + e.Message); }
+            try { GunTipStep(UnityEngine.Time.unscaledTime); } catch { }
             if (!Enabled) return;
             try { StatusViewsStep(UnityEngine.Time.unscaledTime); } catch (Exception e) { Trace("status views: " + e); }
         }

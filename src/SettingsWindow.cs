@@ -67,6 +67,8 @@ namespace AlternativeWeaponsControl
             Add(T3, "grp.aiming", "Guns/EngageOutsideSector", "Engage targets outside the firing sector", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T3, "grp.aiming", "Guns/RememberTargets", "Remember earlier targets", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T3, "grp.aiming", "Guns/RerollAimError", "Unstick guns at long range", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T3, "grp.aiming", "Guns/BarrelScatter", "Scatter for every barrel of a turret", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T3, "grp.aiming", "Guns/BigGunsLocalSolution", "Big guns build a solution without a director", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T3, "grp.aiming", "Guns/ClickEngagesAllGuns", "Click on a target: all guns", "", Kind.Bool, 0, 0, 0, "game: one ammunition");
             Add(T3, "grp.aiming", "Guns/LocalControlKeepsFiring", "Local control: no spotting wait", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(TG, "grp.fireControl", "FireControl/GunOneDirector", "Guns take one director", "", Kind.Bool, 0, 0, 0, "game: off");
@@ -76,6 +78,8 @@ namespace AlternativeWeaponsControl
             Add(TG, "grp.global", "Guns/FireControlAccuracy", "Aiming accuracy", "x", Kind.Number, 0.1f, 0.1f, 20f, "1");
             Add(TG, "grp.directors", "Guns/WeakDirectorsLift", "Weak directors boost", "%", Kind.Number, 5f, 0f, 100f, "game: 0");
             Add(TG, "grp.directors", "Guns/SolutionBuildSpeed", "Firing solution build speed", "x", Kind.Number, 0.05f, 0.05f, 5f, "game: 1");
+            Add(TG, "grp.directors", "Guns/LocalSolutionGrowth", "Solution build speed without a director", "%", Kind.Number, 5f, 10f, 200f, "game: n/a");
+            Add(TG, "grp.directors", "Guns/ManeuverSolutionLoss", "Solution lost when the target manoeuvres", "%", Kind.Number, 1f, 0f, 50f, "game: 0");
             Add(TG, "grp.directors", "Guns/LocalControlGain", "Solution quality without a director", "x", Kind.Number, 0.05f, 0.1f, 10f, "game: 1");
             Add(TG, "grp.directors", "Guns/OpticalDirectorMinSolution", "Solution quality with optical directors", "x", Kind.Number, 0.1f, 0f, 5f, "game: 1");
             Add(TG, "grp.directors", "Guns/RadarDirectorMinSolution", "Solution quality with radar directors", "x", Kind.Number, 0.1f, 0f, 5f, "game: 1");
@@ -638,7 +642,7 @@ namespace AlternativeWeaponsControl
         {
             new[] { 0f,   1f,    1f, 1f,    1f },
             new[] { 50f,  0.75f, 1f, 1f,    1f },
-            new[] { 50f,  0.5f,  1f, 1.25f, 0.5f },
+            new[] { 10f,  0.5f,  1f, 1f,    0.5f },
         };
 
         static string CurrentPreset()

@@ -189,6 +189,8 @@ namespace AlternativeWeaponsControl
             D("lbl.Guns/EngageOutsideSector", "Engage targets outside the firing sector");
             D("lbl.Guns/RememberTargets", "Remember earlier targets");
             D("lbl.Guns/RerollAimError", "Unstick guns at long range");
+            D("lbl.Guns/BigGunsLocalSolution", "Big guns build a solution without a director");
+            D("lbl.Guns/BarrelScatter", "Scatter for every barrel of a turret");
             D("lbl.Guns/ClickEngagesAllGuns", "Click on a target: all guns");
             D("lbl.Guns/LocalControlKeepsFiring", "Local control: no spotting wait");
             D("lbl.Guns/MaxAccuracyMeters", "Maximum accuracy");
@@ -204,6 +206,8 @@ namespace AlternativeWeaponsControl
             D("lbl.Guns/OpticalDirectorMinSolution", "Solution quality with optical directors");
             D("unit.Guns/OpticalDirectorMinSolution", "x");
             D("lbl.Guns/SolutionBuildSpeed", "Firing solution build speed"); D("unit.Guns/SolutionBuildSpeed", "x");
+            D("lbl.Guns/LocalSolutionGrowth", "Solution build speed without a director"); D("unit.Guns/LocalSolutionGrowth", "%");
+            D("lbl.Guns/ManeuverSolutionLoss", "Solution lost when the target manoeuvres"); D("unit.Guns/ManeuverSolutionLoss", "%");
             D("lbl.Guns/RadarDirectorMinSolution", "Solution quality with radar directors");
             D("unit.Guns/RadarDirectorMinSolution", "x");
             D("lbl.Guns/AmmunitionFix", "Custom accuracy and power");
@@ -215,7 +219,7 @@ namespace AlternativeWeaponsControl
             D("grp.ammoList", "Gun ammunition");
             D("ammo.note", "Accuracy: circular error probable, the radius in metres at maximum range within which shells land (smaller = more accurate). Power: warhead power. The values of the game are shown beside the fields; the arrow puts them back. ✕ removes a row from the table; the list below the table adds any other gun ammunition of the game. Applied to ammunition loaded after Apply (a mission start).");
             D("preset.title", "Directors preset"); D("preset.base", "Base"); D("preset.advanced", "Advanced"); D("preset.ww2", "WW2 Mod"); D("preset.custom", "custom values");
-            D("preset.note", "Fills the director settings below (not the shell accuracy). Base: the game as it is. Advanced: weak directors made more accurate, guns without a director a little worse - fits the game and rule sets with weak directors. WW2 Mod: for the WW2 pack (weak directors): weak directors lifted halfway to the game's weakest director, guns without a director worse than directors, the firing solution builds at half speed. Apply to keep.");
+            D("preset.note", "Fills the director settings below (not the shell accuracy). Base: the game as it is. Advanced: weak directors made more accurate, guns without a director a little worse - fits the game and rule sets with weak directors. WW2 Mod: for the WW2 pack (weak directors): weak directors lifted a tenth of the way to the game's weakest director, guns without a director worse than directors, the firing solution builds at half speed. Apply to keep.");
             D("ammo.resetAll", "All to game values");
             D("ammo.restorePack", "All to mod values");
             D("ammo.colName", "Ammunition");

@@ -119,14 +119,42 @@ namespace AlternativeWeaponsControl
             catch (Exception e) { Trace("gun tooltip error: " + e.Message); return ""; }
         }
 
-        /// <summary>Tooltip of a hover target, built when the mouse comes (the numbers change with the situation); ws returns the gun.</summary>
+        // The tooltip under the mouse: its text is rebuilt several times a second (the numbers change with the situation) and it stays
+        // as long as the mouse is over the element (the default show time is a few seconds).
+        static TextBlock _liveTip; static Func<object> _liveWs; static FrameworkElement _liveOwner; static float _liveNext;
+
+        /// <summary>Tooltip of a hover target, built when the mouse comes and refreshed while it is shown; ws returns the gun.</summary>
         static void GunTip(FrameworkElement e, Func<object> ws)
         {
             e.MouseEnter += (o, a) =>
             {
-                try { var s = GunInfo(ws()); ToolTipService.SetToolTip(e, s == null ? null : TipOf(s.TrimEnd('\n'))); }
+                try
+                {
+                    var s = GunInfo(ws());
+                    if (s == null) { ToolTipService.SetToolTip(e, null); _liveTip = null; return; }
+                    var tb = new TextBlock { Text = s.TrimEnd('\n'), TextWrapping = TextWrapping.NoWrap, MaxWidth = float.PositiveInfinity };
+                    ToolTipService.SetToolTip(e, tb);
+                    ToolTipService.SetShowDuration(e, int.MaxValue);
+                    _liveTip = tb; _liveWs = ws; _liveOwner = e; _liveNext = 0f;
+                }
                 catch (Exception ex) { Trace("gun tooltip: " + ex.Message); }
             };
+            e.MouseLeave += (o, a) => { if (ReferenceEquals(_liveOwner, e)) { _liveTip = null; _liveOwner = null; } };
+        }
+
+        /// <summary>Called from Update: refreshes the text of the shown gun tooltip.</summary>
+        static void GunTipStep(float now)
+        {
+            var tb = _liveTip;
+            if (tb == null || now < _liveNext) return;
+            _liveNext = now + 0.25f;
+            try
+            {
+                if (_liveOwner != null && !_liveOwner.IsMouseOver) { _liveTip = null; _liveOwner = null; return; }
+                var s = GunInfo(_liveWs());
+                if (s != null) { s = s.TrimEnd('\n'); if (tb.Text != s) tb.Text = s; }
+            }
+            catch (Exception ex) { Trace("gun tooltip refresh: " + ex.Message); _liveTip = null; }
         }
     }
 }
