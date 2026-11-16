@@ -30,6 +30,10 @@ namespace AlternativeWeaponsControl
             PatchOne(harmony, gfm == null ? null : gfm.GetMethod("SurfaceSigmas", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic), "GunFireControlModel.SurfaceSigmas", "RangeSigmaPrefix", "FcErrorPostfix", "RangeSigmaFinalizer");
             var sens = asm.GetType("SeaPower.SensorSystem");
             PatchOne(harmony, sens == null ? null : sens.GetMethod("ResolveFireControlProfile", inst | BindingFlags.DeclaredOnly), "SensorSystem.ResolveFireControlProfile", "FcProfilePrefix", "FcProfilePostfix");
+            // Strict EMCON: a gun-only radar station works as an optical director (light, splashes)
+            PatchOne(harmony, sens == null ? null : sens.GetMethod("GetFireControlLightFactor", inst | BindingFlags.DeclaredOnly), "SensorSystem.GetFireControlLightFactor", null, "TrimLightPostfix");
+            PatchOne(harmony, gun == null ? null : gun.GetMethod("CanObserveFallOfShot", inst | BindingFlags.NonPublic | BindingFlags.DeclaredOnly, null, Type.EmptyTypes, null), "WeaponSystemGun.CanObserveFallOfShot", null, "TrimSplashPostfix");
+            PatchOne(harmony, gun == null ? null : gun.GetMethod("GetFireControlSensor", inst | BindingFlags.DeclaredOnly), "WeaponSystemGun.GetFireControlSensor", null, "TrimRangePostfix");
             var su = asm.GetType("SeaPower.SensorUtils");
             PatchOne(harmony, su == null ? null : su.GetMethod("BuildSolution", BindingFlags.Static | BindingFlags.Public), "SensorUtils.BuildSolution", "SolSpeedPrefix");
             PatchOne(harmony, gfm == null ? null : gfm.GetMethod("SolutionStep", BindingFlags.Static | BindingFlags.Public), "GunFireControlModel.SolutionStep", "SolLossPrefix", "SolLossPostfix");
@@ -105,23 +109,30 @@ namespace AlternativeWeaponsControl
         }
         static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, object> FcUnauth = new System.Runtime.CompilerServices.ConditionalWeakTable<object, object>();
 
+        // The game calls ResolveFireControlProfile for every director of every gun on every check (it returns at once when the profile is resolved):
+        // the values are rewritten only when the profile was just resolved or an option changed (_fcEpoch), not on every call.
+        internal static int _fcEpoch;
+
         static void FcProfilePostfix(object __instance, bool __state)
         {
             try
             {
-                var a = Active;
                 float[] b;
+                if (__state && FcBase.TryGetValue(__instance, out b) && (int)b[2] == _fcEpoch) return;
+                var a = Active;
                 if (!FcBase.TryGetValue(__instance, out b))
                 {
                     if (a == null) return;   // nothing changed yet: the sensor's own values are the base
-                    b = new[] { R.Fl(R.F(__instance, "_fcSolutionGainRate")), R.Fl(R.F(__instance, "_fcMinSolution")) };
+                    b = new[] { R.Fl(R.F(__instance, "_fcSolutionGainRate")), R.Fl(R.F(__instance, "_fcMinSolution")), 0f, R.B(R.F(__instance, "_fcTracksRounds")) ? 1f : 0f };
                     FcBase.Add(__instance, b);
                 }
+                b[2] = _fcEpoch;
                 float gain = b[0], min = b[1];
+                bool trim = a != null && Trimmed(__instance);   // Strict EMCON on a gun-only radar station: an optical director that does not radiate
                 if (a != null && gain > 0f)
                 {
                     if (_tSensorRadar == null) _tSensorRadar = _tObjectBase.Assembly.GetType("SeaPower.SensorSystemRadar");
-                    bool radar = _tSensorRadar != null && _tSensorRadar.IsInstanceOfType(__instance);
+                    bool radar = _tSensorRadar != null && _tSensorRadar.IsInstanceOfType(__instance) && !trim;
                     float wm = a._weakBoost == null ? 0f : Mathf.Clamp01(a._weakBoost.Value / 100f);
                     float f = 1f;
                     if (gain < RefGain) f = (gain + wm * (RefGain - gain)) / gain;   // closes wm of the gap to the weakest director of the game
@@ -129,12 +140,164 @@ namespace AlternativeWeaponsControl
                     gain = Mathf.Max(gain * f, 0.02f);
                     object un; if (FcUnauth.TryGetValue(__instance, out un) && _fGainGlobal != null) gain = Mathf.Max(R.Fl(_fGainGlobal.GetValue(null)), 0.02f);   // not a director: local control
                     if (min > 0f) min = Mathf.Clamp01(min * f * Mathf.Max(mm, 0f));
+                    if (trim && _fGainGlobal != null)
+                    {
+                        // the optical gain: a point between local control (the crew's own eyes) and the radar, the share of the way from the first to the second
+                        float local = Mathf.Max(R.Fl(_fGainGlobal.GetValue(null)), 0.02f);
+                        float share = a._emconOptical == null ? 0.5f : Mathf.Clamp01(a._emconOptical.Value / 100f);
+                        gain = Mathf.Max(Mathf.Lerp(local, gain, share), 0.02f);
+                    }
                 }
                 R.SetF(__instance, "_fcSolutionGainRate", gain);
                 R.SetF(__instance, "_fcMinSolution", min);
+                R.SetF(__instance, "_fcTracksRounds", trim ? false : b[3] > 0.5f);   // optics do not follow shells in flight
+                Radiate(__instance, !trim);
             }
             catch (Exception e) { TraceLimited("fcprofile-err", 10f, "director profile: " + e.Message); }
         }
+
+        // ------------------------------------------------------------------ Strict EMCON: a gun-only radar station as an optical director
+        // The game's ESM hears a radar by RadarParameters._peakPower (RadarCalculator.getSignalStrength: a station with 0 is not in the list of emitters), and a
+        // director only needs IsOn and a free channel to take a gun's target, so a station whose power is 0 still works as a director, silently.
+        static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, float[]> PeakBase = new System.Runtime.CompilerServices.ConditionalWeakTable<object, float[]>();
+        static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, object> OptStations = new System.Runtime.CompilerServices.ConditionalWeakTable<object, object>();   // value: bool (boxed)
+
+        static void Radiate(object sensor, bool on)
+        {
+            var rp = R.F(R.F(sensor, "_radar"), "_rp"); if (rp == null) return;
+            float[] pk;
+            if (!PeakBase.TryGetValue(sensor, out pk)) { if (on) return; pk = new[] { R.Fl(R.F(rp, "_peakPower")) }; PeakBase.Add(sensor, pk); }
+            R.SetF(rp, "_peakPower", on ? pk[0] : 0f);
+        }
+
+        /// <summary>A radar station that serves guns and nothing else (every weapon that lists it is a gun): optics can stand in for it. Decided once per station.</summary>
+        internal static bool OpticalStation(object sensor)
+        {
+            if (sensor == null || _tRadar == null || !_tRadar.IsInstanceOfType(sensor)) return false;
+            object o; if (OptStations.TryGetValue(sensor, out o)) return (bool)o;
+            bool yes = false;
+            try
+            {
+                var wss = R.F(R.F(R.F(sensor, "_baseObject"), "_obp"), "_weaponSystems") as System.Collections.IList;
+                int guns = 0, others = 0;
+                if (wss != null)
+                    foreach (var w in wss)
+                    {
+                        var sl = R.F(R.F(w, "_vwp"), "_associatedSensors") as System.Collections.IList;
+                        if (sl == null || !sl.Contains(sensor)) continue;
+                        if (R.S(R.F(w, "_weaponType")) == "Gun") guns++; else others++;
+                    }
+                yes = guns > 0 && others == 0;
+            }
+            catch (Exception e) { Trace("optical station: " + e.Message); }
+            OptStations.Add(sensor, yes);
+            return yes;
+        }
+
+        /// <summary>The station is under Strict EMCON of its unit and works as an optical director.</summary>
+        internal static bool Trimmed(object sensor)
+        {
+            try
+            {
+                if (!OpticalStation(sensor)) return false;
+                var unit = R.F(sensor, "_baseObject"); UnitW w;
+                return unit != null && UnitsW.TryGetValue(unit, out w) && w.StrictEmcon;
+            }
+            catch { return false; }
+        }
+
+        static MethodInfo _miSun; static Type _skyType;
+        internal static float Sunlight()
+        {
+            try
+            {
+                if (_miSun == null)
+                {
+                    var asm = GameAssemblyStatic();
+                    var sky = asm.GetType("SeaPower.DynamicSky"); if (sky == null) return 1f;
+                    _skyType = _tSingletonGeneric ?? asm.GetType("SeaPower.Singleton`1");
+                    _miSun = sky.GetMethod("getSunlightIntensity", BindingFlags.Instance | BindingFlags.Public);
+                    _skyInst = _skyType.MakeGenericType(sky).GetProperty("Instance", BindingFlags.Static | BindingFlags.Public);
+                }
+                var inst = _skyInst.GetValue(null, null);
+                return inst == null ? 1f : Mathf.Clamp01(Convert.ToSingle(_miSun.Invoke(inst, null)));
+            }
+            catch { return 1f; }
+        }
+        static PropertyInfo _skyInst;
+
+        // the light factor of the optical director: the game's formula for optics (sunlight; no night vision here)
+        static void TrimLightPostfix(object __instance, ref float __result)
+        {
+            if (!_trimAny || !Trimmed(__instance)) return;
+            __result = Sunlight();
+        }
+
+        // a splash is seen in the light, or when a working radar is associated: a station that works as optics is not one
+        static FieldInfo _fSplashMin;
+        static void TrimSplashPostfix(object __instance, ref bool __result)
+        {
+            if (!__result || !_trimAny) return;
+            try
+            {
+                if (_fSplashMin == null) _fSplashMin = GameAssemblyStatic().GetType("SeaPower.Globals").GetField("_gunSplashSpotMinLight", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                if (_fSplashMin != null && Sunlight() >= R.Fl(_fSplashMin.GetValue(null))) return;   // light enough
+                var sl = R.F(R.F(__instance, "_vwp"), "_associatedSensors") as System.Collections.IList; if (sl == null) return;
+                bool real = false;
+                foreach (var x in sl)
+                    if (x != null && _tRadar.IsInstanceOfType(x) && !R.B(R.Rv(R.P(x, "Inoperable"))) && R.B(R.Rv(R.P(x, "IsOn"))) && !Trimmed(x)) { real = true; break; }
+                __result = real;
+            }
+            catch { }
+        }
+        // The range of an optical director: as a Kind=Visual sensor of the game sees (SensorSystemVisual.CheckObjectDetection / GetRange: SensorUtils.CalculateVisualRange
+        // with night vision 0 (size, light, weather), and the visual horizon from the station's height). A gun's own fire control has no director range in the game,
+        // so a trimmed station is given up for a target beyond it: the next director, or local control.
+        static MethodInfo _miVisRange, _miVisHorizon, _miResolveBest; static PropertyInfo _piSensorCache; static Type _tSensorCache;
+        static bool InVisualRange(object station, object target)
+        {
+            try
+            {
+                if (_miVisRange == null)
+                {
+                    var asm = GameAssemblyStatic();
+                    _miVisRange = asm.GetType("SeaPower.SensorUtils").GetMethod("CalculateVisualRange", BindingFlags.Static | BindingFlags.Public, null,
+                        new[] { _tObjectBase, _tObjectBase, typeof(float), typeof(float).MakeByRefType(), typeof(bool), typeof(bool), typeof(bool), asm.GetType("SeaPower.SensorEcho") }, null);
+                    _tSensorCache = asm.GetType("SeaPower.UnitSensorCache");
+                    _miVisHorizon = _tSensorCache.GetMethod("VisualHorizon");
+                    _piSensorCache = asm.GetType("SeaPower.Singleton`1").MakeGenericType(_tSensorCache).GetProperty("Instance", BindingFlags.Static | BindingFlags.Public | BindingFlags.FlattenHierarchy);
+                }
+                var own = R.F(station, "_baseObject");
+                var args = new object[] { own, target, 0f, 0f, false, false, false, null };
+                float range = Convert.ToSingle(_miVisRange.Invoke(null, args));
+                var sp = R.P(station, "SensorPosition");
+                float h = Convert.ToSingle(_miVisHorizon.Invoke(_piSensorCache.GetValue(null, null), new object[] { own, target, R.Fl(R.F(sp, "y")) }));
+                float d = ((Vector3)R.P(R.P(own, "transform"), "position") - (Vector3)R.P(R.P(target, "transform"), "position")).magnitude;
+                return range >= 0f && d <= Mathf.Min(range, h);
+            }
+            catch (Exception e) { TraceLimited("trim-range", 10f, "optical range: " + e.Message); return true; }
+        }
+
+        // a gun's director: a trimmed station only for a target within its visual range; beyond it the next director, or local control
+        static void TrimRangePostfix(object __instance, ref object __result)
+        {
+            if (__result == null || !_trimAny || !Trimmed(__result)) return;
+            var tgt = R.F(__instance, "_targetObject");
+            if (tgt == null || InVisualRange(__result, tgt)) return;
+            try
+            {
+                var all = R.F(R.F(__instance, "_vwp"), "_associatedSensors") as System.Collections.IList;
+                var rest = (System.Collections.IList)Activator.CreateInstance(all.GetType());
+                foreach (var x in all) if (x != __result) rest.Add(x);
+                if (_miResolveBest == null) _miResolveBest = GameAssemblyStatic().GetType("SeaPower.FireControl").GetMethod("ResolveBestDirector", BindingFlags.Static | BindingFlags.Public);
+                var next = _miResolveBest.Invoke(null, new object[] { rest, true, false });
+                __result = next != null && (!Trimmed(next) || InVisualRange(next, tgt)) ? next : null;
+            }
+            catch (Exception e) { TraceLimited("trim-range2", 10f, "optical range: " + e.Message); }
+        }
+
+        /// <summary>Some unit is under Strict EMCON (the hooks above do nothing otherwise).</summary>
+        internal static bool _trimAny;
 
         static System.Reflection.Assembly _gameAsm;
 

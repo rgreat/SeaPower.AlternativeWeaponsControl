@@ -1,10 +1,8 @@
-Version 1.5.0
-- Supports Sea Power 0.9.0.
-- Automatic use switches follow the unit's Standing Orders (auto-engage rules): a switch the rules forbid is amber; a click adds an allowing rule.
-- Fire shows the range against the contact under the cursor (a SAM against a ship is shorter).
-- Click on a target orders every gun ammunition that reaches it (option, on).
-- Guns that idled near maximum range get a new aiming error (option, on).
-- Guns on local control no longer wait for shell splashes (option, on).
-- Guns tab: director presets (Base / Advanced / WW2 Mod), weak directors boost, solution quality and speed, aiming accuracy; gun tooltips show the director and the aiming error.
-- Custom accuracy and power table (off): add or remove any gun ammunition.
-- Fixed: "Guns: change maximum accuracy" now changes the real error, not only the tooltip.
+Version 1.8.0
+- New: Strict EMCON switch next to Free / Tight / Hold. It turns the ship's radars off and none can be turned on. Radar directors of guns keep working as silent optical ones: the enemy does not hear them, but they are less accurate, poor at night and see only a limited range.
+- New option: SAM on Tight fires only when the aircraft is inside the missile's no-escape zone.
+- New launcher statuses: Assessing n%, Waiting for sensor, Sensor inoperable.
+- Guns and other weapons that need no sensors no longer show grey "Sensors Offline".
+- Fixed: FPS drop caused by the mod.
+- Fixed: empty ammunition cells of aircraft hardpoints.
+- Overlapping firing arcs are drawn without a dark red patch.

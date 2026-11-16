@@ -35,6 +35,8 @@ namespace AlternativeWeaponsControl
                 harmony.Patch(m, prefix: pre == null ? null : Hm(pre), postfix: post == null ? null : Hm(post), finalizer: fin == null ? null : Hm(fin));
                 n++;
             };
+            var sensT = asm.GetType("SeaPower.SensorSystem");
+            patch(sensT == null ? null : sensT.GetMethod("Enable", inst | BindingFlags.DeclaredOnly), "EmconEnablePrefix", null, null);
             var ai = asm.GetType("SeaPower.AI");
             patch(ai == null ? null : ai.GetMethod("OnUpdate", inst, null, Type.EmptyTypes, null), "AiEnter", null, "AiLeave");
             patch(ai == null ? null : ai.GetMethod("OnFixedUpdate", inst, null, Type.EmptyTypes, null), "AiEnter", null, "AiLeave");
@@ -109,6 +111,76 @@ namespace AlternativeWeaponsControl
         static void MissingTextConvPostfix(object value, ref object __result)
         {
             if (value is string && "MISSING TEXT".Equals(__result)) __result = value;
+        }
+
+        /// <summary>Strict EMCON of the unit: its radars are not turned on (by the player, the AI or a weapon that needs one).</summary>
+        static bool EmconEnablePrefix(object __instance)
+        {
+            try
+            {
+                if (_tRadar == null || !_tRadar.IsInstanceOfType(__instance)) return true;
+                var unit = R.F(__instance, "_baseObject");
+                UnitW w;
+                if (unit != null && UnitsW.TryGetValue(unit, out w) && w.StrictEmcon && !OpticalStation(__instance)) return false;   // a gun-only station stays usable: optical and silent
+            }
+            catch { }
+            return true;
+        }
+
+        /// <summary>Strict EMCON was switched on or off: the gun-only radar stations of the unit change into optical directors (or back) at once.</summary>
+        internal static void RetrimStations(object unit)
+        {
+            try
+            {
+                _trimAny = true; _fcEpoch++;
+                var list = R.F(R.F(unit, "_obp"), "_sensorSystems") as IEnumerable; if (list == null) return;
+                foreach (var x in list) if (x != null && OpticalStation(x)) R.Call(x, "ResolveFireControlProfile");
+            }
+            catch (Exception e) { Trace("strict emcon trim: " + e.Message); }
+        }
+
+        /// <summary>Strict EMCON was switched on: the radars of the unit that are on are turned off.</summary>
+        static void RadarsOff(object unit)
+        {
+            try
+            {
+                var list = R.F(R.F(unit, "_obp"), "_sensorSystems") as IEnumerable;
+                if (list == null || _tRadar == null) return;
+                var w = W(unit); w.EmconOff.Clear();
+                int i = 0;
+                foreach (var x in list)
+                {
+                    if (x != null && _tRadar.IsInstanceOfType(x) && !OpticalStation(x) && R.B(R.Rv(R.P(x, "IsOn")))) { w.EmconOff.Add(i); R.Call(x, "Disable", false); }
+                    i++;
+                }
+            }
+            catch (Exception e) { Trace("strict emcon: " + e.Message); }
+        }
+
+        /// <summary>Strict EMCON ended: the radars it turned off are turned on again (the weapons otherwise stay "Sensors Offline").</summary>
+        static void RadarsOn(object unit)
+        {
+            try
+            {
+                var w = W(unit);
+                var list = R.F(R.F(unit, "_obp"), "_sensorSystems") as IList;
+                if (list != null) foreach (var i in w.EmconOff) if (i >= 0 && i < list.Count && list[i] != null) R.Call(list[i], "Enable", false, false);
+                w.EmconOff.Clear();
+            }
+            catch (Exception e) { Trace("strict emcon end: " + e.Message); }
+        }
+
+        /// <summary>Does the unit have a radar (the Strict EMCON switch is shown only then)?</summary>
+        static bool HasRadar(object unit)
+        {
+            try
+            {
+                var list = R.F(R.F(unit, "_obp"), "_sensorSystems") as IEnumerable;
+                if (list == null || _tRadar == null) return false;
+                foreach (var x in list) if (x != null && _tRadar.IsInstanceOfType(x)) return true;
+            }
+            catch { }
+            return false;
         }
 
         static void AiEnter() { _aiDepth++; }
@@ -777,6 +849,7 @@ namespace AlternativeWeaponsControl
                 catch (Exception e) { Trace("weapons pin selector: " + e.Message); }
             }
             if (targetObject == null) return;
+            SamTightNez(obj, ammoId, targetObject, list);
             UnitW w;
             if (!UnitsW.TryGetValue(obj, out w) || w.Off.Count == 0) return;
             try
@@ -795,6 +868,50 @@ namespace AlternativeWeaponsControl
                 }
             }
             catch (Exception e) { Trace("weapons selector: " + e.Message); }
+        }
+
+        // SAM: only engage aircraft in the no-escape zone at Weapons Tight (option Fire/SamTightNezOnly)
+        static MethodInfo _miNez; static object[] _nezArgs;
+        sealed class NezEntry { public double Time; public float Nez; }
+        static readonly Dictionary<KeyValuePair<object, object>, NezEntry> _nezCache = new Dictionary<KeyValuePair<object, object>, NezEntry>();
+
+        /// <summary>The unit's automatic fire at an aircraft on Weapons Tight: the SAM launchers stay out of the offer until the aircraft is inside the missile's no-escape zone
+        /// (the game's own AmmunitionParameters.NoEscapeRangePrecise, cached for a second of game time per unit/target/missile as the game does).</summary>
+        static void SamTightNez(object unit, string ammoId, object target, IList list)
+        {
+            var a = Active;
+            if (a == null || a._samTightNez == null || !a._samTightNez.Value || list.Count == 0) return;
+            try
+            {
+                if (_aiDepth <= 0 && !(ReferenceEquals(_hetUnit, unit) && TasksAuto(unit, ammoId, target))) return;   // an order of the player is not held back
+                if (!R.B(R.P(unit, "IsPlayerObject")) || !R.B(R.P(target, "IsAirUnit")) || R.S(R.F(unit, "_weaponStatus")) != "Tight") return;
+                var am = R.Call(unit, "getAmmunitionByName", ammoId);
+                var ap = am == null ? null : R.F(am, "_ap");
+                if (ap == null || R.S(R.F(ap, "_type")) != "Missile" || R.S(R.F(ap, "_targetType")) != "AAW") return;
+                if (_miNez == null)
+                {
+                    _miNez = ap.GetType().GetMethod("NoEscapeRangePrecise", BindingFlags.Instance | BindingFlags.Public);
+                    if (_miNez == null) { Trace("NoEscapeRangePrecise not found: SamTightNezOnly does nothing"); a._samTightNez.Value = false; return; }
+                    var ps = _miNez.GetParameters();
+                    _nezArgs = new object[ps.Length];
+                    for (int i = 3; i < ps.Length; i++) _nezArgs[i] = ps[i].DefaultValue;
+                }
+                double now = MissionTime();
+                var key = new KeyValuePair<object, object>(unit, target);
+                NezEntry e;
+                float dist = ((UnityEngine.Vector3)R.P(R.P(target, "transform"), "position") - (UnityEngine.Vector3)R.P(R.P(unit, "transform"), "position")).magnitude;
+                if (!_nezCache.TryGetValue(key, out e) || now - e.Time >= 1.0 || now < e.Time)
+                {
+                    float wez = ((UnityEngine.Vector2)R.F(ap, "_launchRangesInUnity")).y;
+                    var args = (object[])_nezArgs.Clone(); args[0] = unit; args[1] = target; args[2] = wez;
+                    if (_nezCache.Count > 256) _nezCache.Clear();
+                    e = new NezEntry { Time = now, Nez = (float)_miNez.Invoke(ap, args) };
+                    _nezCache[key] = e;
+                }
+                if (e.Nez < 0f) return;   // not computed (not a missile against an aircraft): no restriction
+                if (dist > e.Nez) list.Clear();
+            }
+            catch (Exception ex) { TraceLimited("samnez", 10f, "SamTightNez: " + ex.Message); }
         }
 
         static void CiwsEnter(object __instance)

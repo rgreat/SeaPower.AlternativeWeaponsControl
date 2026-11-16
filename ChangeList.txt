@@ -1,3 +1,38 @@
+Version 1.8.0
+- New: "Strict EMCON" switch next to Free / Tight / Hold: turns the unit's radars off and none can be turned on, even to engage a target (saved with the unit).
+- The header buttons and ticks light up under the mouse; the radars Strict EMCON turned off come back on when it ends.
+- New: Strict EMCON no longer switches off radar directors that serve only guns: they work as silent optical directors (not heard by ESM; accuracy between local control and the radar, setting Guns/StrictEmconOpticalShare; no shell tracking; night by the rules of optics, splashes unseen in the dark; targets only within the range of optics); the directors window and the gun tooltip say "radar off: optical mode".
+- Fixed: the mod lowered FPS (big-gun local solution asked on every frame of every gun; director profile hook ran on every call; the settings file was checked on disk every second - no longer). Fixed: the bottom-panel fire zones kept the units of earlier missions in memory.
+- New option "On Tight: fire only in no-escape zone" (Fire; off): the ships' automatic SAM fire on Weapons Tight waits until the aircraft is inside the missile's no-escape zone.
+- Settings: the Fire Control tab has two inner tabs, General and Directors.
+- Fixed: the ammunition rows of a group (e.g. depth bombs and sonobuoys of an aircraft's hardpoint) show their own stock, not an empty cell.
+- Fire: identical or nearly identical firing arcs on the map share one red fill instead of stacking into an opaque red; coinciding 3D wedges (torpedo tubes of a submarine) are drawn once.
+- New launcher statuses: "Assessing n%" and "Waiting for sensor" (an order waits because the crew has not assessed the target yet - the game's reaction time; slow for old ships), "Sensor inoperable" (all directors destroyed; the game said "Ready").
+- Weapons that need no sensors (guns, RBU, bombs) no longer show grey "Sensors Offline" when their directors are off.
+
+Version 1.7.0
+- Fixed: turning a forbidden SUR / SUB / LND switch On let the ship fire on Weapons Tight (saves from older versions are corrected on load); now only on Weapons Free.
+- New switch look "forced by Standing Orders" (amber ring, green core): a rule with Always fires at any weapons status, Hold included.
+- The Free and Hold buttons turn amber, with a hint, where the Standing Orders override them.
+- Fixed: on the release build of the game (Standing Orders as switches, no auto-engage rules) the Weapons tab lost its Standing Orders link; it is back (the three auto-use switches and "On Tight: engage hostile aircraft").
+
+Version 1.6.0
+- LOADER CHANGED: the mod now needs R.A.T.S. Keel (recommended) or Anchor Chain; before, only Anchor Chain. See Install in the README.
+- Supports Sea Power 0.9.2 (0.9.0 and later).
+- New option "Fire at a point of the map" (Guns tab, on): a right click on the empty map while guns are being aimed puts an invisible decoy on that point and the guns engage it like a target. The cursor is grey over the map, the order leaves a log line and a voice reply, and the targeting ends after the click like for a real target.
+- Fixed: turning a forbidden SUR / SUB / LND switch On let the ship fire on Weapons Tight (saves with such rules are corrected on load); now only on Weapons Free.
+- The AIR / MSL / SUR / SUB / LND switches now go On, Off, then back to the unit's Standing Orders (an amber "off by Standing Orders" switch when they forbid it).
+- The Reload button of an ammunition reloads that ammunition, not the one the gun happened to have selected.
+- "Bottom panel weapons act as Fire" is on by default.
+- The "Alternative Mods" menu button also works when the mod is started by R.A.T.S. Keel.
+- All texts are translated into the nine languages.
+
+Compatibility with the WW2 mod was worked on; it is recommended to use it without its optional dll. For it:
+- New option "Scatter for every barrel of a turret" (Guns tab, on): each barrel of a twin or triple turret draws its own shell scatter, so the shells no longer fly in one line.
+- New option "Big guns build a solution without a director" (Guns tab, on): a naval gun above about 50 mm with no working director builds its firing solution itself (poorer than a director). Guns without any sensor use the mission's average director.
+- Fire Control tab: "Solution lost when the target manoeuvres" is now a percent of the current solution (10 %), new "Solution build speed without a director" (75 % of the best director).
+- New defaults, the WW2 Mod preset: "Weak directors boost" 10 %, "Solution quality without a director" 0.5, "Firing solution build speed" 0.5. Your own settings are kept.
+
 Version 1.5.0
 - Supports Sea Power 0.9.0 (older versions are no longer supported).
 - Automatic use per launcher now follows the unit's Standing Orders (the game's auto-engage rules). A switch is amber when the rules forbid that weapon against that target type; a click adds a rule to the unit's Standing Orders that allows it. Changes made in the game's own Standing Orders editor are picked up at once.

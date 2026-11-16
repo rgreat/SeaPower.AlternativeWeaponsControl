@@ -31,7 +31,7 @@ namespace AlternativeWeaponsControl
                 {
                     bool radar = _tSensorRadar != null && _tSensorRadar.IsInstanceOfType(fc);
                     var nm = Cap(R.S(R.Rv(R.P(fc, "DisplayName"))) ?? R.S(R.F(fc, "_systemName")) ?? "director");
-                    sb.Append(Loc.F(radar ? "gt.radar" : "gt.optical", nm)).Append('\n');
+                    sb.Append(Loc.F(Trimmed(fc) ? "gt.trimmed" : radar ? "gt.radar" : "gt.optical", nm)).Append('\n');
                     float gain = R.Fl(R.F(fc, "_fcSolutionGainRate")), min = R.Fl(R.F(fc, "_fcMinSolution"));
                     sb.Append(Loc.F("gt.dir", N1(gain), Math.Round(min * 100f).ToString(CultureInfo.InvariantCulture))).Append(R.B(R.F(fc, "_fcTracksRounds")) ? Loc.T("gt.tracks") : "").Append('\n');
                 }

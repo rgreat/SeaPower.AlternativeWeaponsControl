@@ -34,6 +34,25 @@ namespace AlternativeWeaponsControl
         static readonly List<Field> Fields = new List<Field>();
         static readonly List<string> Tabs = new List<string>();
         static string _curTab = "tabs.panel";
+        static string _curSub = "sub.general";   // the inner tab of "Fire Control"
+
+        /// <summary>The inner tab of a field (only the Fire Control tab has them): the director settings on their own, the rest together.</summary>
+        static string SubOf(Field f) { return f.Tab != "tabs.gunsAccuracy" ? null : f.Group == "grp.directors" ? "sub.directors" : "sub.general"; }
+
+        static UIElement SubBar()
+        {
+            var bar = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0f, 0f, 0f, 6f) };
+            foreach (var sub in new[] { "sub.general", "sub.directors" })
+            {
+                string s = sub;
+                bool sel = s == _curSub;
+                var b = new Border { Child = Text(s == "sub.directors" ? Loc.T("grp.directors") : Loc.T(s), sel ? CText : CDim, 12f), Padding = new Thickness(12f, 4f, 12f, 4f), Margin = new Thickness(0f, 0f, 4f, 0f),
+                                     Cursor = Cursors.Hand, Background = B(sel ? CBg : CCard), BorderBrush = B(sel ? CText : CLine), BorderThickness = new Thickness(1f), CornerRadius = new CornerRadius(3f) };
+                b.MouseLeftButtonUp += (o, e) => { _curSub = s; Show(); };
+                bar.Children.Add(b);
+            }
+            return bar;
+        }
 
         static void Add(string tab, string group, string key, string label, string unit, Kind kind, float step, float min, float max, string game = null, string parent = null)
         {
@@ -62,11 +81,13 @@ namespace AlternativeWeaponsControl
             Add(T2, "grp.sam", "Ships/SamAutoCharge", "Charge SAMs when unknown aircraft approach", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T2, "grp.sam", "Ships/SamAutoChargeRange", "Unknown aircraft distance to charge", "nm", Kind.Number, 5f, 5f, 200f, null, "Ships/SamAutoCharge");
             Add(T2, "grp.sam", "Ships/SamKeepLoaded", "Keep SAM missiles on the rails while hot", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T2, "grp.sam", "Fire/SamTightNezOnly", "On Tight: fire only in no-escape zone", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T2, "grp.sam", "Ships/SamAnimFix", "Missile load / unload animation fix", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T3, "grp.aiming", "Guns/AimBeyondMaxRange", "Aim guns at targets beyond max range", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T3, "grp.aiming", "Guns/EngageOutsideSector", "Engage targets outside the firing sector", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T3, "grp.aiming", "Guns/RememberTargets", "Remember earlier targets", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T3, "grp.aiming", "Guns/RerollAimError", "Unstick guns at long range", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T3, "grp.aiming", "Guns/PointFire", "Fire at a point of the map", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T3, "grp.aiming", "Guns/BarrelScatter", "Scatter for every barrel of a turret", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T3, "grp.aiming", "Guns/BigGunsLocalSolution", "Big guns build a solution without a director", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T3, "grp.aiming", "Guns/ClickEngagesAllGuns", "Click on a target: all guns", "", Kind.Bool, 0, 0, 0, "game: one ammunition");
@@ -81,6 +102,7 @@ namespace AlternativeWeaponsControl
             Add(TG, "grp.directors", "Guns/LocalSolutionGrowth", "Solution build speed without a director", "%", Kind.Number, 5f, 10f, 200f, "game: n/a");
             Add(TG, "grp.directors", "Guns/ManeuverSolutionLoss", "Solution lost when the target manoeuvres", "%", Kind.Number, 1f, 0f, 50f, "game: 0");
             Add(TG, "grp.directors", "Guns/LocalControlGain", "Solution quality without a director", "x", Kind.Number, 0.05f, 0.1f, 10f, "game: 1");
+            Add(TG, "grp.directors", "Guns/StrictEmconOpticalShare", "Gun radar director on Strict EMCON: share of radar accuracy", "%", Kind.Number, 5f, 0f, 100f, "game: off");
             Add(TG, "grp.directors", "Guns/OpticalDirectorMinSolution", "Solution quality with optical directors", "x", Kind.Number, 0.1f, 0f, 5f, "game: 1");
             Add(TG, "grp.directors", "Guns/RadarDirectorMinSolution", "Solution quality with radar directors", "x", Kind.Number, 0.1f, 0f, 5f, "game: 1");
             Add(T3, "grp.ammoFix", "Guns/AmmunitionFix", "Custom accuracy and power", "", Kind.Bool, 0, 0, 0, "game: off");
@@ -468,9 +490,11 @@ namespace AlternativeWeaponsControl
                 }
             }
             string group = null;
+            if (_curTab == "tabs.gunsAccuracy") _body.Children.Add(SubBar());
             foreach (var f in Fields)
             {
                 if (f.Tab != _curTab || f.Group == "grp.ammoList" || !ParentOn(f)) continue;
+                if (_curTab == "tabs.gunsAccuracy" && SubOf(f) != _curSub) continue;
                 if (f.Group != group) { group = f.Group; if (group == "grp.directors") PresetBar(); else _body.Children.Add(GroupTitle(Loc.T(group))); }
                 _body.Children.Add(Row(f));
             }
@@ -634,8 +658,8 @@ namespace AlternativeWeaponsControl
 
         // ------------------------------------------------------------------ presets of the fire-control accuracy settings (Guns tab, Accuracy)
         // A preset only fills the settings below with values (nothing is stored but those settings); the bar shows which preset the current values equal.
-        // base = the game as it is; advanced = the mod's default (weak directors lifted, local control a little worse: right for the game and for rule sets with weak
-        // directors); ww2 = for the WW2 pack (directors of gain 0.1-0.6): stronger lift, radars better than optics, local control below the directors.
+        // base = the game as it is; advanced = weak directors lifted, local control a little worse (right for the game and for rule sets with weak
+        // directors); ww2 = the mod's default now, for the WW2 pack (directors of gain 0.1-0.6): stronger lift, radars better than optics, local control below the directors.
         static readonly string[] PresetKeys = { "Guns/WeakDirectorsLift", "Guns/LocalControlGain", "Guns/OpticalDirectorMinSolution", "Guns/RadarDirectorMinSolution", "Guns/SolutionBuildSpeed" };
         static readonly string[] PresetNames = { "base", "advanced", "ww2" };
         static readonly float[][] PresetValues =
@@ -693,7 +717,7 @@ namespace AlternativeWeaponsControl
                 try { e.SetSerializedValue(Get(f)); } catch (Exception ex) { Trace(f.Key + ": " + ex.Message); }
             }
             try { AmmoCommit(); } catch (Exception ex) { Trace("ammo commit: " + ex); }
-            try { P.Cfg.Save(); P.RememberCfgStamp(); } catch (Exception ex) { Warn("Saving the settings failed: " + ex.Message); }
+            try { P.Cfg.Save(); } catch (Exception ex) { Warn("Saving the settings failed: " + ex.Message); }
             if (close) { Close(); return; }
             Load();
             if (langEntry != null && !Same(langBefore, langEntry.GetSerializedValue()))

@@ -14,7 +14,7 @@ namespace AlternativeWeaponsControl
         // error still uses the local control gain (worse than a director). Smaller guns stay as in the game.
         const float LsMinKg = 2f;
 
-        sealed class LsBox { public float Sol, H, V; public bool First; public double LastCheck = -1; public object Tgt; }
+        sealed class LsBox { public float Sol, H, V; public bool First; public double LastCheck = -1; public object Tgt; public bool Elig; public object ElTgt; public float Next; }
         static readonly ConditionalWeakTable<object, LsBox> LsState = new ConditionalWeakTable<object, LsBox>();
         static MethodInfo _lsBuild;
 
@@ -23,11 +23,18 @@ namespace AlternativeWeaponsControl
             tgt = R.F(ws, "_targetObject");
             if (tgt == null) return false;
             var a = Active; if (a == null || !Enabled || a._bigLocal == null || !a._bigLocal.Value) return false;
-            if (R.F(ws, "_currentShootingMode").ToString() != "Naval") return false;
+            if (!object.Equals(R.F(ws, "_currentShootingMode"), NavalMode(ws))) return false;
             if (R.B(R.Call(tgt, "isAirTarget"))) return false;
             var vwp = R.F(ws, "_vwp");
             var ap = R.F(R.F(ws, "_ammoForEngage"), "_ap"); if (ap == null || R.Fl(R.F(ap, "_massInKg")) < LsMinKg) return false;
             return R.Call(ws, "GetFireControlSensor") == null;   // no working director
+        }
+
+        static object _navalMode;
+        static object NavalMode(object ws)
+        {
+            if (_navalMode == null) { var t = R.F(ws, "_currentShootingMode"); if (t != null) _navalMode = Enum.Parse(t.GetType(), "Naval"); }
+            return _navalMode;
         }
 
         /// <summary>Own solution of a big gun without a working director: grows every check like the game's unsensored gun; written to _solution.</summary>
@@ -35,9 +42,14 @@ namespace AlternativeWeaponsControl
         {
             try
             {
-                object tgt;
-                if (!LsEligible(ws, out tgt)) { LsBox old; if (LsState.TryGetValue(ws, out old)) LsState.Remove(ws); return; }
-                LsBox b; if (!LsState.TryGetValue(ws, out b)) { b = new LsBox(); LsState.Add(ws, b); }
+                // (this runs for every gun every frame: the eligibility - several reflection calls and the game's director search - is asked
+                // for a new target and then 4 times a second, not on every call)
+                var tgt = R.F(ws, "_targetObject");
+                LsBox b; if (!LsState.TryGetValue(ws, out b)) { if (tgt == null) return; b = new LsBox(); LsState.Add(ws, b); }
+                if (tgt == null) { b.Elig = false; b.Tgt = null; b.ElTgt = null; return; }
+                float nowT = Time.unscaledTime;
+                if (!ReferenceEquals(b.ElTgt, tgt) || nowT >= b.Next || nowT < b.Next - 1f) { object t2; b.ElTgt = tgt; b.Next = nowT + 0.25f; b.Elig = LsEligible(ws, out t2); }
+                if (!b.Elig) { b.Tgt = null; return; }
                 if (!ReferenceEquals(b.Tgt, tgt)) { b.Tgt = tgt; b.Sol = 0f; b.First = false; b.LastCheck = Convert.ToDouble(R.F(ws, "_checkSolutionTime")); }
                 double ct = Convert.ToDouble(R.F(ws, "_checkSolutionTime"));
                 if (step && ct != b.LastCheck)
@@ -128,7 +140,7 @@ namespace AlternativeWeaponsControl
             {
                 if (!ReferenceEquals(_lsGun, __instance)) return;
                 var l = R.F(__instance, "_pendingSplashes") as IList; if (l == null || l.Count >= _lsPend) return;
-                LsBox b; if (!LsState.TryGetValue(__instance, out b)) return;
+                LsBox b; if (!LsState.TryGetValue(__instance, out b) || !b.Elig) return;
                 bool tracked = R.Call(__instance, "GetRoundTrackingSensor") != null;
                 if (!tracked && !R.B(R.Call(__instance, "CanObserveFallOfShot"))) return;
                 if (_lsSpot == null) _lsSpot = GameAssemblyStatic().GetType("SeaPower.GunFireControlModel").GetMethod("SpotQuality", BindingFlags.Static | BindingFlags.Public);

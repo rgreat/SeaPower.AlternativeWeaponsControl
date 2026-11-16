@@ -65,7 +65,7 @@ namespace AlternativeWeaponsControl
         static void TryStartFinalizer(bool __state) { if (__state && OurFireDepth > 0) OurFireDepth--; }
 
         static bool _bottomOn; static float _nextBottom;
-        static readonly Dictionary<object, Dictionary<string, object>> _bottomEntries = new Dictionary<object, Dictionary<string, object>>(new RefCmp());
+        static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, Dictionary<string, object>> _bottomEntries = new System.Runtime.CompilerServices.ConditionalWeakTable<object, Dictionary<string, object>>();   // (weak: the units of earlier missions are not kept)
         /// <summary>The zones of a targeting started from the bottom panel do not depend on the Weapons tab being open: shown / ended from here.</summary>
         static void BottomZonesStep(float now)
         {
@@ -99,7 +99,7 @@ namespace AlternativeWeaponsControl
                     {
                         object key = unit, e;
                         Dictionary<string, object> per;
-                        if (!_bottomEntries.TryGetValue(unit, out per)) { per = new Dictionary<string, object>(); _bottomEntries[unit] = per; }
+                        if (!_bottomEntries.TryGetValue(unit, out per)) { per = new Dictionary<string, object>(); _bottomEntries.Add(unit, per); }
                         if (!per.TryGetValue(id, out e)) { e = Activator.CreateInstance(_tHoverMgr.Assembly.GetType("SeapowerUI.ViewModels.WeaponEntry"), unit, grp, false); per[id] = e; }
                         list = R.P(e, "WeaponSystems") as IEnumerable;
                     }
@@ -242,12 +242,23 @@ namespace AlternativeWeaponsControl
             {
                 var list = _fArcObjs.GetValue(null) as System.Collections.IEnumerable; if (list == null) return;
                 var col = new UnityEngine.Color32(235, 45, 45, 0x30);
+                var kept = new List<KeyValuePair<UnityEngine.Transform, UnityEngine.Vector3[]>>();
                 foreach (var o in list)
                 {
                     var go = o as UnityEngine.GameObject; if (go == null) continue;
                     var mf = go.GetComponent<UnityEngine.MeshFilter>(); var mesh = mf == null ? null : mf.sharedMesh; if (mesh == null) continue;
                     var cs = new UnityEngine.Color32[mesh.vertexCount]; for (int i = 0; i < cs.Length; i++) cs[i] = col;
                     mesh.colors32 = cs;
+                    // wedges that coincide (the same unit, the same centre within 5 cm, the same edges: torpedo tubes of a submarine): only the first one is drawn
+                    var vs = mesh.vertices; bool dup = false;
+                    foreach (var k in kept)
+                    {
+                        if (!ReferenceEquals(k.Key, go.transform.parent) || k.Value.Length != vs.Length) continue;
+                        bool same = true;
+                        for (int i = 0; i < vs.Length && same; i++) same = (k.Value[i] - vs[i]).sqrMagnitude < 0.0025f;
+                        if (same) { dup = true; break; }
+                    }
+                    if (dup) go.SetActive(false); else kept.Add(new KeyValuePair<UnityEngine.Transform, UnityEngine.Vector3[]>(go.transform.parent, vs));
                 }
             }
             catch (Exception e) { TraceLimited("a3d", 5f, "arc3d: " + e.Message); }
@@ -294,6 +305,7 @@ namespace AlternativeWeaponsControl
             {
                 if (!(bool)_fArcShown.GetValue(__instance)) return;
                 var geom = _fArcGeom.GetValue(__instance); if (geom == null) return;   // Nullable<PieGeometry>: boxed value or null
+                if (!ClaimFill(__instance, geom)) return;   // the same (or nearly the same) wedge already has its fill: no second layer of it
                 if (!_fillInit)
                 {
                     var asm = _tHoverMgr.Assembly;
@@ -315,6 +327,54 @@ namespace AlternativeWeaponsControl
                 _mSlotVisible.Invoke(slot, new object[] { true });
             }
             catch (Exception e) { TraceLimited("fill1", 5f, "arc fill: " + e.Message); }
+        }
+
+        // Many launchers share the same firing arc (the same angles, the same range, the same ship): every wedge adds its own weak fill and the layers add up to an opaque red.
+        // The first wedge of a group of the same / nearly the same ones (angles within a degree and a half, range within 3 %, centre within ~200 m) keeps the fill, the others
+        // do not add one. A claim is dropped when its wedge is hidden, disposed or moved away; the strokes are not touched.
+        sealed class FillClaim { public WeakReference Owner; public double Lat, Lon; public float Head, Width, Range; }
+        static readonly List<FillClaim> _fillClaims = new List<FillClaim>();
+        static FieldInfo _gLat, _gLon, _gHead, _gWidth, _gRange;
+
+        static bool SameArc(FillClaim c, double lat, double lon, float head, float width, float range)
+        {
+            if (Math.Abs(c.Lat - lat) > 0.002 || Math.Abs(c.Lon - lon) > 0.002) return false;
+            if (Math.Abs(c.Width - width) > 1.5f) return false;
+            float dh = Math.Abs(c.Head - head) % 360f; if (dh > 180f) dh = 360f - dh;
+            if (dh > 1.5f) return false;
+            return Math.Abs(c.Range - range) <= 0.03f * Math.Max(c.Range, range);
+        }
+
+        static bool ClaimFill(object owner, object geom)
+        {
+            if (_gLat == null)
+            {
+                var t = geom.GetType();
+                _gLat = t.GetField("CenterLat"); _gLon = t.GetField("CenterLon"); _gHead = t.GetField("Heading"); _gWidth = t.GetField("AngularWidth"); _gRange = t.GetField("RangeDegrees");
+            }
+            if (_gLat == null || _gLon == null || _gHead == null || _gWidth == null || _gRange == null) return true;
+            double lat = (double)_gLat.GetValue(geom), lon = (double)_gLon.GetValue(geom);
+            float head = (float)_gHead.GetValue(geom), width = (float)_gWidth.GetValue(geom), range = (float)_gRange.GetValue(geom);
+            for (int i = _fillClaims.Count - 1; i >= 0; i--)
+            {
+                var c = _fillClaims[i];
+                var o = c.Owner.Target;
+                bool drop = o == null || ReferenceEquals(o, owner);
+                if (!drop)
+                {
+                    try
+                    {
+                        var g = _fArcGeom.GetValue(o);
+                        drop = !(bool)_fArcShown.GetValue(o) || g == null
+                            || !SameArc(c, (double)_gLat.GetValue(g), (double)_gLon.GetValue(g), (float)_gHead.GetValue(g), (float)_gWidth.GetValue(g), (float)_gRange.GetValue(g));
+                    }
+                    catch { drop = true; }
+                }
+                if (drop) _fillClaims.RemoveAt(i);
+            }
+            foreach (var c in _fillClaims) if (SameArc(c, lat, lon, head, width, range)) return false;
+            _fillClaims.Add(new FillClaim { Owner = new WeakReference(owner), Lat = lat, Lon = lon, Head = head, Width = width, Range = range });
+            return true;
         }
 
         static bool ZoneReconcile()

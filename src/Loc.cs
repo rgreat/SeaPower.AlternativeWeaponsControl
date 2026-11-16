@@ -40,6 +40,8 @@ namespace AlternativeWeaponsControl
             D("tab.ammo", "AMMO");
             D("tab.fire", "FIRE");
             D("status.free", "Free"); D("status.tight", "Tight"); D("status.hold", "Hold");
+            D("status.freeWarn", "Free: Standing Orders do not allow auto fire for {0}.");
+            D("status.holdWarn", "Hold: Standing Orders (Always) keep auto fire for {0}.");
             D("tab.onFree", "On Free: engage unidentified aircraft");
             D("tab.onFreeTip", "Ships on Free also engage aircraft that:\n- are not identified yet;\n- are faster than {0} kn;\n- are closer than {1} nm;\n- come towards the ship (within 45° of the bearing to it).\nKeep in mind: war crimes have no statute of limitations.");
             D("tab.expandAll", "Expand all"); D("tab.collapseAll", "Collapse all");
@@ -52,6 +54,7 @@ namespace AlternativeWeaponsControl
             D("dom.0", "AIR"); D("dom.1", "MSL"); D("dom.2", "SUR"); D("dom.3", "SUB"); D("dom.4", "LND");
             D("domLong.0", "aircraft and helicopters"); D("domLong.1", "missiles, torpedoes and other weapons");
             D("domLong.2", "surface ships"); D("domLong.3", "submarines"); D("domLong.4", "land targets");
+            D("domName.0", "aircraft"); D("domName.1", "missiles"); D("domName.2", "surface ships"); D("domName.3", "submarines"); D("domName.4", "land");
             D("section.0", "SAM"); D("section.1", "ANTI-SHIP"); D("section.2", "LAND ATTACK"); D("section.3", "ASW");
             D("section.4", "GUNS"); D("section.5", "CIWS"); D("section.6", "OTHER"); D("section.7", "STORES");
             D("noun.turret", "turret"); D("noun.turrets", "turrets"); D("noun.mount", "mount"); D("noun.mounts", "mounts");
@@ -60,10 +63,10 @@ namespace AlternativeWeaponsControl
             D("loc.fore", "fore"); D("loc.aft", "aft"); D("loc.port", "port"); D("loc.starboard", "starboard");
             // ---- status
             D("cat.ready", "ready"); D("cat.engaging", "engaging"); D("cat.reload", "reload"); D("cat.damaged", "damaged");
-            D("cat.off", "off"); D("cat.waiting", "waiting"); D("cat.sensorsOff", "sensors off");
+            D("cat.off", "off"); D("cat.waiting", "waiting"); D("cat.sensorsOff", "sensors off"); D("cat.sensorBad", "sensor inoperable");
             D("st.queued", "Queued"); D("st.waitFcr", "Waiting for FCR channel"); D("st.reloading", "Reloading: {0}");
-            D("st.localControl", "Local control"); D("st.railsEmpty", "Rails empty"); D("st.empty", "Empty"); D("st.loading", "Loading rails"); D("st.unloading", "Unloading rails"); D("st.unloadPause", "Unloading: {0}");
-            D("target.track", "Track {0} ({1})"); D("target.trackOnly", "Track {0}"); D("target.unknown", "unknown");
+            D("st.localControl", "Local control"); D("st.railsEmpty", "Rails empty"); D("st.empty", "Empty"); D("st.sensorsLost", "Sensor inoperable"); D("st.assessing", "Assessing {0}%"); D("st.waitSensor", "Waiting for sensor"); D("st.loading", "Loading rails"); D("st.unloading", "Unloading rails"); D("st.unloadPause", "Unloading: {0}");
+            D("target.track", "Track {0} ({1})"); D("target.trackOnly", "Track {0}"); D("target.unknown", "unknown"); D("pointfire.log", "Engage position {0} with {1}, roger out.");
             // ---- buttons and tips
             D("btn.fire", "Fire");
             D("btn.salvoTip", "Salvo and launch options");
@@ -101,6 +104,7 @@ namespace AlternativeWeaponsControl
             D("spec.guidance", "Guidance: {0}"); D("spec.range", "Range, nm: {0}");
             D("spec.speed", "Max speed, kt: {0}"); D("spec.warhead", "Warhead power: {0}");
             D("gt.radar", "Aims with the radar director: {0}"); D("gt.optical", "Aims with the optical director: {0}");
+            D("gt.trimmed", "Aims with the director {0}: radar off (Strict EMCON), optical mode"); D("dir.optical", "on, radar off: optical mode");
             D("gt.dir", "Director: solution gain {0}, minimum solution {1}%"); D("gt.tracks", ", tracks shell splashes");
             D("gt.local", "Local control (the gun has no director)"); D("gt.localNoDir", "Local control (no working director)"); D("gt.localGain", "Local control solution gain {0}");
             D("gt.solution", "Firing solution {0}%"); D("gt.waits", "waits for the splashes of the last salvo");
@@ -124,16 +128,22 @@ namespace AlternativeWeaponsControl
             D("chip.thisLauncher", "this launcher");
             D("chip.allOf", "all {0} {1}");
             D("chip.on", "{0}: automatic against {1}.\nClick: off for {2}.");
-            D("chip.off", "{0}: off for {1}.\nClick: automatic again.");
+            D("chip.forced", "{0}: automatic against {1} - forced by the Standing Orders (Always: also at Weapons Hold).\nClick: off for {2}.");
+            D("chip.off", "{0}: off for {1}.\nClick: back to the Standing Orders (or automatic when they have no rule to take out).");
             D("chip.order", "{0}: off by Standing Orders - ");
             D("chip.orderNo", "the auto-engage rules say Never");
+            D("chip.orderItem", "{0}: No");
+            D("tab.onTight", "On Tight: engage hostile aircraft");
+            D("tab.emcon", "Strict EMCON");
+            D("tab.emconTip", "Turns the radars of this unit off, and none can be turned on, even to engage a target. Radar directors that serve only guns keep working as silent optical directors.");
             D("chip.orderEnd", ".\nClick: allow for {0} (a rule allowing it is added to the unit's Standing Orders, the other launchers it covers turn off).");
             D("chip.mixed", "{0}: mixed - ");
-            D("chip.mixedAuto", "automatic"); D("chip.mixedOff", "off"); D("chip.mixedOrder", "off by Standing Orders");
+            D("chip.mixedAuto", "automatic"); D("chip.mixedForced", "forced by Standing Orders"); D("chip.mixedOff", "off"); D("chip.mixedOrder", "off by Standing Orders");
             D("chip.mixedEnd", ".\nClick: the same for all.");
             // ---- legend
             D("legend.dom", "AIR · MSL · SUR · SUB · LND - may the AI use the launcher by itself against aircraft, missiles and torpedoes, surface ships, submarines, land targets:");
             D("legend.auto", "automatic");
+            D("legend.forced", "automatic, forced by the unit's Standing Orders (Always: works at any weapons status)");
             D("legend.off", "off (click to switch; the group's switch sets all its launchers)");
             D("legend.order", "off by the unit's Standing Orders (click: allowed for this launcher)");
             D("legend.mixed", "mixed in the group");
@@ -159,7 +169,7 @@ namespace AlternativeWeaponsControl
             D("set.gameLang", "the game's language");
             D("set.resetTip", "Back to the default");
             D("set.resizeTip", "Drag to resize");
-            D("tabs.panel", "Weapons panel"); D("tabs.fire", "SAM"); D("tabs.ai", "AI"); D("tabs.guns", "Guns"); D("tabs.gunsAccuracy", "Fire Control");
+            D("tabs.panel", "Weapons panel"); D("tabs.fire", "SAM"); D("tabs.ai", "AI"); D("tabs.guns", "Guns"); D("tabs.gunsAccuracy", "Fire Control"); D("sub.general", "General");
             D("tabs.debug", "Debug"); D("tabs.language", "Language");
             D("grp.panel", "Panel"); D("grp.samButton", "SAM readiness button"); D("grp.sam", "SAM");
             D("grp.fireControl", "Fire control"); D("grp.chasing", "Chasing"); D("grp.accuracy", "Accuracy"); D("grp.global", "Global"); D("grp.directors", "Directors"); D("grp.ammoFix", "Ammunition");
@@ -180,7 +190,7 @@ namespace AlternativeWeaponsControl
             D("lbl.Ships/SamKeepLoaded", "Keep SAM missiles on the rails while hot");
             D("lbl.Ships/SamAnimFix", "Missile load / unload animation fix");
             D("lbl.Ships/SamAutoChargeRange", "Unknown aircraft distance to charge");
-            D("lbl.Fire/EngageByPlotRelation", "Disable AI cheating"); D("lbl.Fire/UnknownAirMinKnots", "Engage unidentified aircraft faster than"); D("unit.Fire/UnknownAirMinKnots", "kn");
+            D("lbl.Fire/EngageByPlotRelation", "Disable AI cheating"); D("lbl.Fire/SamTightNezOnly", "On Tight: fire only in no-escape zone"); D("lbl.Fire/UnknownAirMinKnots", "Engage unidentified aircraft faster than"); D("unit.Fire/UnknownAirMinKnots", "kn");
             D("lbl.Fire/UnknownAirMaxNm", "Engage unidentified aircraft closer than"); D("lbl.Fire/UnknownAirDefaultOwn", "On Free by default: your and allied ships");
             D("lbl.Fire/UnknownAirDefaultEnemy", "On Free by default: enemy AI ships");
             D("lbl.Ships/NoRbuSurfaceChase", "No chasing surface targets with ASW mortars");
@@ -190,6 +200,7 @@ namespace AlternativeWeaponsControl
             D("lbl.Guns/RememberTargets", "Remember earlier targets");
             D("lbl.Guns/RerollAimError", "Unstick guns at long range");
             D("lbl.Guns/BigGunsLocalSolution", "Big guns build a solution without a director");
+            D("lbl.Guns/PointFire", "Fire at a point of the map");
             D("lbl.Guns/BarrelScatter", "Scatter for every barrel of a turret");
             D("lbl.Guns/ClickEngagesAllGuns", "Click on a target: all guns");
             D("lbl.Guns/LocalControlKeepsFiring", "Local control: no spotting wait");
@@ -201,6 +212,8 @@ namespace AlternativeWeaponsControl
             D("unit.Guns/AccuracyMultiplier", "x");
             D("lbl.Guns/WeakDirectorsLift", "Weak directors boost");
             D("unit.Guns/WeakDirectorsLift", "%");
+            D("lbl.Guns/StrictEmconOpticalShare", "Gun radar director on Strict EMCON: share of radar accuracy");
+            D("unit.Guns/StrictEmconOpticalShare", "%");
             D("lbl.Guns/LocalControlGain", "Solution quality without a director");
             D("unit.Guns/LocalControlGain", "x");
             D("lbl.Guns/OpticalDirectorMinSolution", "Solution quality with optical directors");

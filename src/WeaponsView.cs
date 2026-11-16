@@ -105,6 +105,8 @@ namespace AlternativeWeaponsControl
             public readonly List<GroupRow> Groups = new List<GroupRow>();
             public Border[] Status = new Border[3];
             public TextBlock[] StatusText = new TextBlock[3];
+            public Border EmconBtn; public TextBlock EmconText;   // Strict EMCON: no radar of the unit is turned on
+            public Border TightBox; public Rectangle TightMark; public StackPanel TightRow;   // release game only: "On Tight: engage hostile aircraft" of the doctrine
             public Border FreeBox; public Rectangle FreeMark; public StackPanel FreeRow;
             public TextBlock ExpandText;
             public float NextRefresh;
@@ -189,6 +191,36 @@ namespace AlternativeWeaponsControl
                 if (at.X + Math.Min(nw, w) > fe.ActualWidth + 0.5f || at.Y + h > fe.ActualHeight + 0.5f) return true;
             }
             return false;
+        }
+
+        /// <summary>A button's colour while the mouse is on it: the solid lighter colour of its state, as the Fire button's hover (a white overlay looked ugly).</summary>
+        sealed class Hv { public Color? Base; public Color Over; public bool In; }
+        static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Border, Hv> _hv = new System.Runtime.CompilerServices.ConditionalWeakTable<Border, Hv>();
+
+        static void HvPaint(Border b, Hv h)
+        {
+            b.Background = h.In ? WC.B(h.Over) : h.Base.HasValue ? WC.B(h.Base.Value) : WC.Clear;
+        }
+
+        /// <summary>Sets the resting colour of the button (null: transparent) and the colour under the mouse; the first call hooks the mouse.</summary>
+        static void Hover(Border b, Color? rest, Color over)
+        {
+            Hv h;
+            if (!_hv.TryGetValue(b, out h))
+            {
+                h = new Hv(); _hv.Add(b, h);
+                b.MouseEnter += (s, e) => { h.In = true; HvPaint(b, h); };
+                b.MouseLeave += (s, e) => { h.In = false; HvPaint(b, h); };
+            }
+            h.Base = rest; h.Over = over;
+            HvPaint(b, h);
+        }
+
+        /// <summary>A tick box lights up while the mouse is on its row.</summary>
+        static void BoxHover(UIElement row, Border box)
+        {
+            row.MouseEnter += (s, e) => box.Background = WC.B(Color.FromArgb(48, 255, 255, 255));
+            row.MouseLeave += (s, e) => box.Background = WC.Clear;
         }
 
         static void Click(UIElement e, Action a, bool sound = true)
@@ -284,13 +316,18 @@ namespace AlternativeWeaponsControl
             bool big = c.Size > 12f;
             c.Outer.Visibility = st == AwcPlugin.Chip.None ? Visibility.Collapsed : Visibility.Visible;
             c.None.Visibility = st == AwcPlugin.Chip.None ? Visibility.Visible : Visibility.Collapsed;
-            c.Dot.Visibility = st == AwcPlugin.Chip.Order && big ? Visibility.Visible : Visibility.Collapsed;
+            // the Standing Orders states share one look: an amber ring with a core - forced: a green core, off: a small amber dot (big chips only)
+            bool forced = st == AwcPlugin.Chip.Forced;
+            c.Dot.Visibility = forced || (st == AwcPlugin.Chip.Order && big) ? Visibility.Visible : Visibility.Collapsed;
+            c.Dot.Width = c.Dot.Height = forced ? c.Size - 6f : 4f;
+            c.Dot.Fill = WC.B(forced ? WC.Ok : WC.Amber);
             c.Bar.Visibility = st == AwcPlugin.Chip.Mixed ? Visibility.Visible : Visibility.Collapsed;
             c.Outer.StrokeThickness = 2f;
             switch (st)
             {
                 case AwcPlugin.Chip.On: c.Outer.Fill = WC.B(WC.Ok); c.Outer.Stroke = null; break;
                 case AwcPlugin.Chip.Off: c.Outer.Fill = WC.Clear; c.Outer.Stroke = WC.B(WC.Ring); break;
+                case AwcPlugin.Chip.Forced: c.Outer.Fill = WC.Clear; c.Outer.Stroke = WC.B(WC.Amber); break;
                 case AwcPlugin.Chip.Order: c.Outer.Fill = WC.Clear; c.Outer.Stroke = WC.B(WC.Amber); break;
                 case AwcPlugin.Chip.Mixed: c.Outer.Fill = WC.Clear; c.Outer.Stroke = WC.B(WC.Ok); break;
             }
@@ -332,11 +369,27 @@ namespace AlternativeWeaponsControl
                 var b = new Border { Child = t, Padding = new Thickness(10f, 2f, 10f, 2f), Background = WC.Clear,
                                      BorderBrush = WC.B(WC.BtnLine), BorderThickness = new Thickness(i == 0 ? 0f : 1f, 0f, 0f, 0f) };
                 Click(b, () => SetWeaponStatus(v, status));
+                Hover(b, null, WC.BtnHover);
                 v.Status[i] = b; v.StatusText[i] = t;
                 segRow.Children.Add(b);
             }
             seg.Children.Add(segBox);
+            v.EmconText = T(Loc.T("tab.emcon"), WC.Dim, 12f);
+            v.EmconBtn = new Border { Child = v.EmconText, Padding = new Thickness(10f, 2f, 10f, 2f), Margin = new Thickness(8f, 0f, 0f, 0f), Background = WC.Clear,
+                                      BorderBrush = WC.B(WC.BtnLine), BorderThickness = new Thickness(1f), CornerRadius = new CornerRadius(3f), VerticalAlignment = VerticalAlignment.Center };
+            SetTip(v.EmconBtn, Loc.T("tab.emconTip"));
+            Hover(v.EmconBtn, null, WC.BtnHover);
+            Click(v.EmconBtn, () => { var uw = W(v.Unit); uw.StrictEmcon = !uw.StrictEmcon; if (uw.StrictEmcon) RadarsOff(v.Unit); else RadarsOn(v.Unit); RetrimStations(v.Unit); Refresh(v, false); });
+            seg.Children.Add(v.EmconBtn);
             Grid.SetColumn(seg, 0); head.Children.Add(seg);
+            v.TightRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(16f, 0f, 0f, 0f), Background = WC.Clear, VerticalAlignment = VerticalAlignment.Center };
+            v.TightBox = new Border { Width = 14f, Height = 14f, BorderBrush = WC.B(WC.Ring), BorderThickness = new Thickness(1f), CornerRadius = new CornerRadius(2f), Margin = new Thickness(0f, 0f, 6f, 0f) };
+            v.TightMark = new Rectangle { Width = 6f, Height = 6f, Fill = WC.B(WC.Ok), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            v.TightBox.Child = v.TightMark;
+            v.TightRow.Children.Add(v.TightBox);
+            v.TightRow.Children.Add(T(Loc.T("tab.onTight"), WC.Sub, 12f));
+            Click(v.TightRow, () => ToggleTightAir(v));
+            BoxHover(v.TightRow, v.TightBox);
             // the switch under the status: On Free: engage approaching fast unidentified aircraft (the mod's own, saved with the unit); the tick is orange-red
             var orange = Color.FromRgb(240, 96, 40);
             v.FreeRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(16f, 0f, 0f, 0f), Background = WC.Clear, VerticalAlignment = VerticalAlignment.Center };
@@ -346,9 +399,10 @@ namespace AlternativeWeaponsControl
             v.FreeRow.Children.Add(v.FreeBox);
             v.FreeRow.Children.Add(T(Loc.T("tab.onFree"), WC.Sub, 12f));
             Click(v.FreeRow, () => { W(v.Unit).FreeAirSet = FreeAirOn(v.Unit) ? 0 : 1; Refresh(v, false); });
+            BoxHover(v.FreeRow, v.FreeBox);
             { var ai = AwcPlugin.Instance; SetTip(v.FreeRow, Loc.F("tab.onFreeTip", Num(ai != null && ai._freeAirKnots != null ? ai._freeAirKnots.Value : 500f), Num(ai != null && ai._freeAirNm != null ? ai._freeAirNm.Value : 50f))); }
             var sw = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0f), VerticalAlignment = VerticalAlignment.Center };
-            sw.Children.Add(v.FreeRow);
+            sw.Children.Add(v.TightRow); sw.Children.Add(v.FreeRow);
             Grid.SetColumn(sw, 1); head.Children.Add(sw);
             // Expand / Collapse all: at the left of the WEAPONS column title, centred in its height
             v.ExpandText = T(Loc.T("tab.expandAll"), WC.Sub, 11f);
@@ -356,6 +410,7 @@ namespace AlternativeWeaponsControl
                                    BorderThickness = new Thickness(1f), CornerRadius = new CornerRadius(3f), VerticalAlignment = VerticalAlignment.Center,
                                    HorizontalAlignment = HorizontalAlignment.Left };
             Click(exp, () => { bool any = v.Groups.Exists(gr => gr.Expandable && !gr.Open); foreach (var gr in v.Groups) SetOpen(v, gr, any); Refresh(v, true); });
+            Hover(exp, WC.BtnBg, WC.BtnHover);
             Grid.SetRow(hb, 0); v.Root.Children.Add(hb);
 
             // column titles
@@ -519,9 +574,7 @@ namespace AlternativeWeaponsControl
             var pairs = new List<KeyValuePair<Launcher, int>>(); Chip st;
             SecPairs(v.Unit, sc, d, pairs, out st);
             if (pairs.Count == 0) return;
-            bool anyOn = false;
-            foreach (var p in pairs) if (State(v.Unit, p.Key, d) == AwcPlugin.Chip.On) anyOn = true;
-            Switch(v.Unit, pairs, !anyOn);
+            Cycle(v.Unit, pairs);
             Refresh(v, false);
         }
 
@@ -719,6 +772,7 @@ namespace AlternativeWeaponsControl
 
             line(Loc.T("legend.dom"), WC.Text, 13f);
             item(chip(Chip.On), Loc.T("legend.auto"));
+            item(chip(Chip.Forced), Loc.T("legend.forced"));
             item(chip(Chip.Off), Loc.T("legend.off"));
             item(chip(Chip.Order), Loc.T("legend.order"));
             item(chip(Chip.Mixed), Loc.T("legend.mixed"));
@@ -1113,7 +1167,20 @@ namespace AlternativeWeaponsControl
             foreach (var l in cu.Scope)
             {
                 if (CanWarm(l.Ws)) { Recharge(l.Ws); continue; }
-                try { if (R.B(R.Call(l.Ws, "CanForceReload"))) R.Call(l.Ws, "ForceReload"); } catch (Exception e) { Trace("reload: " + e.Message); }
+                object prev = null; bool swapped = false;
+                try
+                {
+                    // the game's ForceReload works with the gun's current ammunition (_ammoForEngage): the button of ONE ammunition reloads that one (a group button: as before)
+                    if (cu.Ammo.Count == 1 && l.Ammo.Contains(cu.Ammo[0]))
+                    {
+                        var want = R.Call(v.Unit, "getAmmunitionByName", cu.Ammo[0]);
+                        prev = R.F(l.Ws, "_ammoForEngage");
+                        if (want != null && !ReferenceEquals(want, prev) && !Engaging(l)) { R.SetF(l.Ws, "_ammoForEngage", want); swapped = true; }
+                    }
+                    if (R.B(R.Call(l.Ws, "CanForceReload"))) R.Call(l.Ws, "ForceReload");
+                }
+                catch (Exception e) { Trace("reload: " + e.Message); }
+                finally { if (swapped) R.SetF(l.Ws, "_ammoForEngage", prev); }
             }
             Refresh(v, false);
         }
@@ -1521,27 +1588,176 @@ namespace AlternativeWeaponsControl
             if (R.B(R.Rv(R.P(ws, "Inoperable")))) return 3;
             if (R.B(R.F(ws, "_isOffline")) || R.B(R.F(ws, "_isEmpty"))) return 4;
             if (NoAmmo(l) && !R.B(R.F(ws, "_executingEngageTask"))) return 4;
-            if (PinWait(ws) != null) return 5;
+            if (PinWait(ws) != null || OrientWait(ws) != null) return 5;
             if (R.B(R.F(ws, "_isReloading")) || R.Fl(R.F(ws, "_remainingReloadTime")) > 0f) return 2;
             if (SamBusy(ws)) return 2;
-            if (SensorsOff(ws)) return 6;
+            if (l == null || NeedsSensors(l))
+            {
+                if (SensorsLost(ws)) return 7;
+                if (SensorsOff(ws)) return 6;
+            }
             if (R.B(R.F(ws, "_executingEngageTask")) || R.B(R.F(ws, "_isAutoEngaging"))) return 1;
             return 0;
         }
 
-        const int NCat = 7;
-        static readonly string[] CatKeys = { "ready", "engaging", "reload", "damaged", "off", "waiting", "sensorsOff" };
+        const int NCat = 8;
+        static readonly string[] CatKeys = { "ready", "engaging", "reload", "damaged", "off", "waiting", "sensorsOff", "sensorBad" };
         static string CatName(int c) { return Loc.T("cat." + CatKeys[c]); }
-        static Color CatColor(int c) { return c == 0 ? WC.Ok : c == 1 ? WC.Engage : c == 2 ? WC.Amber : c == 3 ? WC.Red : c == 5 || c == 6 ? WC.Amber : WC.Grey; }
+        static Color CatColor(int c) { return c == 0 ? WC.Ok : c == 1 ? WC.Engage : c == 2 ? WC.Amber : c == 3 || c == 7 ? WC.Red : c == 5 ? WC.Amber : WC.Grey; }
 
-        /// <summary>All the launcher's directors switched off - the game's status "Sensors Offline" (WeaponSystem.GetStatus: it has
-        /// directors, none IsOn).</summary>
-        static bool SensorsOff(object ws)
+        /// <summary>No director of the launcher can work: all switched off (the game's status "Sensors Offline": WeaponSystem.GetStatus,
+        /// it has directors, none IsOn) or the ones that are on are destroyed (Inoperable).</summary>
+        // ---- the state of a launcher's directors: by events (the game's own ReactiveProperty IsOn / Inoperable of each director), not by a timer
+        static int _sensEpoch;
+        sealed class BoolObs : IObserver<bool>
+        {
+            public void OnNext(bool v) { _sensEpoch++; }
+            public void OnError(Exception e) { }
+            public void OnCompleted() { }
+        }
+        static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, object> _watched = new System.Runtime.CompilerServices.ConditionalWeakTable<object, object>();
+
+        sealed class WsCache { public int Epoch = -1; public bool Watched, Poll, Lost, Off, NeedKnown, Needs; }
+        static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, WsCache> _wsCache = new System.Runtime.CompilerServices.ConditionalWeakTable<object, WsCache>();
+
+        /// <summary>The first time a launcher is seen, its directors' IsOn / Inoperable are subscribed to: a change counts the epoch up.</summary>
+        static bool WatchSensors(object ws)
+        {
+            bool ok = true;
+            var sens = R.F(R.F(ws, "_vwp"), "_associatedSensors") as IList;
+            if (sens == null) return false;
+            foreach (var x in sens)
+            {
+                if (x == null) continue;
+                object dummy;
+                if (_watched.TryGetValue(x, out dummy)) continue;
+                _watched.Add(x, x);
+                try
+                {
+                    var a = R.P(x, "IsOn") as IObservable<bool>; if (a != null) a.Subscribe(new BoolObs()); else ok = false;
+                    var b = R.P(x, "Inoperable") as IObservable<bool>; if (b != null) b.Subscribe(new BoolObs()); else ok = false;
+                }
+                catch (Exception e) { ok = false; Trace("sensor watch: " + e.Message); }
+            }
+            return ok;
+        }
+
+        static WsCache WsState(object ws)
+        {
+            var c = _wsCache.GetOrCreateValue(ws);
+            if (!c.Watched) { c.Watched = true; c.Poll = !WatchSensors(ws); }   // Poll: the state could not be subscribed to - looked at on every call
+            if (c.Poll || c.Epoch != _sensEpoch)
+            {
+                c.Epoch = _sensEpoch;
+                c.Lost = SensorsLostRaw(ws);
+                c.Off = SensorsOffRaw(ws);
+            }
+            return c;
+        }
+
+        /// <summary>Whether the launcher cannot use its ammunition without a working director, by the game's own rule (ObjectBase.DoesEngageRequiresSensor: a projectile,
+        /// semi-active radar homing or radio command ammunition). Decided once per launcher and kept. A gun is not one: with no working director it aims on local
+        /// control (FireControlMode.Manual). Everything else that needs no director (RBU, bombs, depth charges, torpedoes, fire-and-forget missiles) shows no sensor status.</summary>
+        static bool NeedsSensors(Launcher l)
+        {
+            var c = _wsCache.GetOrCreateValue(l.Ws);
+            if (c.NeedKnown) return c.Needs;
+            bool needs = true;
+            try
+            {
+                if (R.S(R.F(l.Ws, "_weaponType")) == "Gun") needs = false;
+                else if (l.Ammo.Count > 0)
+                {
+                    var unit = R.F(l.Ws, "_baseObject");
+                    needs = false;
+                    for (int i = 0; i < l.Ammo.Count && !needs; i++)
+                    {
+                        var ap = R.F(R.Call(unit, "getAmmunitionByName", l.Ammo[i]), "_ap"); if (ap == null) continue;
+                        if (R.B(R.Call(unit, "DoesEngageRequiresSensor", ap, null))) needs = true;
+                        else foreach (var f in new[] { "_vesselAttackGuidanceType", "_landAttackGuidanceType" })
+                            if (R.S(R.F(ap, f)) == "SemiActiveRadarHoming") needs = true;
+                    }
+                }
+            }
+            catch (Exception e) { needs = true; Trace("needs sensors: " + e.Message); }
+            c.NeedKnown = true; c.Needs = needs;
+            return needs;
+        }
+
+        static bool SensorsLost(object ws) { return WsState(ws).Lost; }
+        static bool SensorsOff(object ws) { return WsState(ws).Off; }
+
+        static bool SensorsOffRaw(object ws)
         {
             var sens = R.F(R.F(ws, "_vwp"), "_associatedSensors") as IList;
             if (sens == null || sens.Count == 0) return false;
-            foreach (var x in sens) if (x != null && R.B(R.Rv(R.P(x, "IsOn")))) return false;
+            foreach (var x in sens) if (x != null && R.B(R.Rv(R.P(x, "IsOn"))) && !R.B(R.Rv(R.P(x, "Inoperable")))) return false;
             return true;
+        }
+
+        /// <summary>Every director of the launcher is Inoperable (the game's own status still says "Ready" then, but HasFreeGuidingSensors
+        /// skips an Inoperable sensor, so the launcher cannot fire).</summary>
+        static bool SensorsLostRaw(object ws)
+        {
+            var sens = R.F(R.F(ws, "_vwp"), "_associatedSensors") as IList;
+            if (sens == null || sens.Count == 0) return false;
+            foreach (var x in sens) if (x != null && !R.B(R.Rv(R.P(x, "Inoperable")))) return false;
+            return true;
+        }
+
+        // ---- the player's orders that wait for the crew: found once per refresh of the unit's tab, not per launcher
+        public sealed class OrientRec { public object Target, Task, Pin; public string Ammo; public int Pct; }   // Pct -1: the ship's own sensors do not hold the target yet
+        static readonly List<OrientRec> _orders = new List<OrientRec>();
+        static object _ordersUnit;
+
+        /// <summary>The unit's non-automatic engage tasks whose target the unit has not "processed" (AI.IsProcessedForEngagement: the game's reaction time,
+        /// orient phase). Pct: how far the assessment is, -1 when it has not begun (the unit's own sensors do not hold the target).</summary>
+        static void OrientPrepare(object unit)
+        {
+            _orders.Clear(); _ordersUnit = unit;
+            try
+            {
+                var tasks = R.F(unit, "_currentEngageTasks") as IList;
+                if (tasks == null || tasks.Count == 0) return;
+                var ai = R.F(unit, "_ai");
+                if (ai == null) return;
+                IList list = null;
+                foreach (var t in tasks)
+                {
+                    var tgt = t == null ? null : R.F(t, "_targetObject");
+                    if (tgt == null || R.B(R.Call(unit, "IsAutomaticEngagement", t)) || R.B(R.Call(ai, "IsProcessedForEngagement", tgt))) continue;
+                    var rec = new OrientRec { Target = tgt, Task = t, Pin = PinOf(t), Ammo = R.S(R.F(t, "_ammoId")), Pct = -1 };
+                    if (list == null) list = R.F(ai, "_objectsBeingProcessed") as IList;
+                    if (list != null)
+                        foreach (var e in list)
+                        {
+                            if (e == null || !ReferenceEquals(R.F(e, "Item1"), tgt)) continue;
+                            double start = Convert.ToDouble(R.F(e, "Item2"));
+                            float cost = R.Fl(R.Call(ai, "GetOrientCost", tgt));
+                            rec.Pct = R.B(R.Call(ai, "IsOrientQueued", tgt)) || cost <= 0f ? 0 : Math.Max(0, Math.Min(99, (int)((MissionTime() - start) / cost * 100.0)));
+                            break;
+                        }
+                    _orders.Add(rec);
+                }
+            }
+            catch (Exception e) { Trace("orient wait: " + e.Message); }
+        }
+
+        /// <summary>The waiting order of this launcher's ammunition (null when none).</summary>
+        static OrientRec OrientWait(object ws)
+        {
+            if (_orders.Count == 0) return null;
+            try
+            {
+                if (!ReferenceEquals(R.F(ws, "_baseObject"), _ordersUnit) || R.B(R.F(ws, "_executingEngageTask"))) return null;
+                foreach (var r in _orders)
+                {
+                    if (r.Pin != null && !ReferenceEquals(r.Pin, ws)) continue;
+                    if (Loaded(ws, new List<string> { r.Ammo }) > 0 || R.I(R.Call(ws, "getMagazineAmmoCount", r.Ammo)) > 0) return r;
+                }
+            }
+            catch { }
+            return null;
         }
 
         static int Loaded(object ws, List<string> ammo)
@@ -1709,6 +1925,9 @@ namespace AlternativeWeaponsControl
             st = null; tgt = null;
             if (c == 5)
             {
+                // an order for this launcher's ammunition waits for the crew: it has not assessed the target yet
+                var ow = OrientWait(ws);
+                if (ow != null) { st = ow.Pct < 0 ? Loc.T("st.waitSensor") : Loc.F("st.assessing", ow.Pct); tgt = TrackLabel(ow.Target); return; }
                 // a task of this launcher waits: for the launcher, or for a fire-control channel
                 var pw = PinWait(ws);
                 st = pw.Wait == 1 ? Loc.T("st.queued") : Loc.T("st.waitFcr");
@@ -1716,10 +1935,13 @@ namespace AlternativeWeaponsControl
                 return;
             }
             try { st = R.S(R.Call(ws, "GetStatus")); } catch { }
-            st = string.IsNullOrEmpty(st) ? CatName(c) : st;
+            st = string.IsNullOrEmpty(st) ? Cap(CatName(c)) : st;
             if (st.IndexOf("/10000)", StringComparison.Ordinal) > 0) st = System.Text.RegularExpressions.Regex.Replace(st, @"\((\d+)/10000\)", "($1)");   // the game's default capacity of a mount that has none of its own
             if (c == 2 && st.Length > 0 && !char.IsLetter(st[0])) st = Loc.F("st.reloading", st);
             if (c == 0 || c == 2) { var sx = SamStatus(ws); if (sx != null) st = sx; }
+            if (c == 7) st = Loc.T("st.sensorsLost");
+            // the game's status of a launcher whose directors are all off is "Sensors Offline", also for one that needs none (a gun, RBU, bombs): not shown for it
+            if ((c == 0 || c == 1) && l != null && WsState(ws).Off && !NeedsSensors(l)) { st = Cap(CatName(c)); if (c == 0) { try { st += R.S(R.Call(ws, "GetLoadedAmmoSuffix")); } catch { } } }
             // not a gun, nothing left (rails and magazine): the game keeps saying "Ready" / "Reloading" for such a launcher
             if (c == 4 && l != null && !R.B(R.F(ws, "_isOffline")) && !R.B(R.F(ws, "_isEmpty")) && NoAmmo(l)) st = Loc.T("st.empty");   // the game says "Ready" for a launcher whose rails are empty (it loads them at the next order)
             if (c != 3 && c != 4)
@@ -1861,6 +2083,7 @@ namespace AlternativeWeaponsControl
             var unit = v.Unit;
             var w = W(unit);
             SyncDoctrine(unit, w);
+            OrientPrepare(unit);
             foreach (var tt in v.Titles) { var txt = TitleText(tt); if (tt.Tb.Text != txt) tt.Tb.Text = txt; }
             // header
             var ws = R.S(R.F(unit, "_weaponStatus"));
@@ -1868,9 +2091,26 @@ namespace AlternativeWeaponsControl
             for (int i = 0; i < 3; i++)
             {
                 bool on = ws == sn[i];
-                v.Status[i].Background = on ? WC.B(WC.Sel) : WC.Clear;
+                Hover(v.Status[i], on ? (Color?)WC.Sel : null, on ? Color.FromRgb(72, 130, 156) : WC.BtnHover);
                 v.StatusText[i].Foreground = WC.B(on ? Color.FromRgb(255, 255, 255) : WC.Dim);
                 v.StatusText[i].FontWeight = on ? FontWeights.SemiBold : FontWeights.Normal;
+                // Free / Hold that the Standing Orders may override: amber, with the hint saying where
+                string ov = i == 0 ? StatusOverride(unit, false) : i == 2 ? StatusOverride(unit, true) : null;
+                if (ov != null) v.StatusText[i].Foreground = WC.B(WC.Amber);
+                Tip(v.Status[i], ov == null ? null : Loc.F(i == 0 ? "status.freeWarn" : "status.holdWarn", ov));
+            }
+            v.EmconBtn.Visibility = HasRadar(unit) ? Visibility.Visible : Visibility.Collapsed;
+            Hover(v.EmconBtn, w.StrictEmcon ? (Color?)Color.FromRgb(96, 34, 34) : null, w.StrictEmcon ? Color.FromRgb(124, 46, 46) : WC.BtnHover);
+            v.EmconBtn.BorderBrush = WC.B(w.StrictEmcon ? WC.Red : WC.BtnLine);
+            v.EmconText.Foreground = WC.B(w.StrictEmcon ? Color.FromRgb(255, 255, 255) : WC.Dim);
+            v.EmconText.FontWeight = w.StrictEmcon ? FontWeights.SemiBold : FontWeights.Normal;
+            var tight = TightAirItem(unit);
+            v.TightRow.Visibility = tight != null ? Visibility.Visible : Visibility.Collapsed;
+            if (tight != null)
+            {
+                bool t = R.B(R.P(tight, "ResolvedValue"));
+                v.TightMark.Visibility = t ? Visibility.Visible : Visibility.Hidden;
+                v.TightBox.BorderBrush = WC.B(t ? WC.Ok : WC.Ring);
             }
             v.FreeRow.Visibility = R.Is(unit, _tVessel) ? Visibility.Visible : Visibility.Collapsed;
             if (R.Is(unit, _tVessel))
@@ -1914,6 +2154,13 @@ namespace AlternativeWeaponsControl
                 }
                 bool plain = gr.Ls.TrueForAll(IsGun);
                 SetStock(gr.Stock, Stock(gr.Ls), StockMax(gr.Ls), plain);
+                // the ammunition cards of the group: the stock of each type (the maximum only where a magazine tells it: a launcher's own capacity is for all of its types)
+                foreach (var kv in gr.AmmoStocks)
+                {
+                    var with = gr.Ls.FindAll(x => x.Ammo.Contains(kv.Key));
+                    bool mags = with.Count > 0 && with.TrueForAll(x => R.F(R.F(x.Ws, "_vwp"), "_associatedMagazine") != null);
+                    SetStock(kv.Value, Stock(gr.Ls, kv.Key), mags ? StockMax(gr.Ls, kv.Key) : 0, plain);
+                }
                 {
                     // one launcher: what is on its rails (the stock above is all that the launcher holds, the magazine behind it included)
                     var rails = gr.Ls.Count == 1 && !plain ? Rails(gr.Ls[0].Ws) : null;
@@ -2134,7 +2381,7 @@ namespace AlternativeWeaponsControl
             {
                 var s = kv.Key;
                 bool on = R.B(R.Rv(R.P(s, "IsOn"))), bad = R.B(R.Rv(R.P(s, "Inoperable")));
-                SetText(kv.Value[0], bad ? Loc.T("dir.damaged") : on ? Loc.T("dir.on") : Loc.T("dir.off"), bad ? WC.Red : on ? WC.Ok : WC.Amber);
+                SetText(kv.Value[0], bad ? Loc.T("dir.damaged") : on ? Loc.T(Trimmed(s) ? "dir.optical" : "dir.on") : Loc.T("dir.off"), bad ? WC.Red : on ? WC.Ok : WC.Amber);
                 int w = R.I(R.P(s, "EffectiveWeaponChannels")), w0 = Count(R.F(s, "_associatedWeapons"));
                 int t = R.I(R.F(s, "_targetChannels")), t0 = Count(R.F(s, "_associatedTargets"));
                 bool full = t0 >= t || (guided && w0 >= w);
@@ -2390,7 +2637,7 @@ namespace AlternativeWeaponsControl
                 var s = State(unit, l, d);
                 if (s == AwcPlugin.Chip.None) continue;
                 sb.Append(k++ > 0 ? ", " : "").Append(string.IsNullOrEmpty(l.Loc) ? l.Name : l.Loc).Append(": ")
-                  .Append(s == AwcPlugin.Chip.On ? Loc.T("chip.mixedAuto") : s == AwcPlugin.Chip.Off ? Loc.T("chip.mixedOff") : Loc.T("chip.mixedOrder"));
+                  .Append(s == AwcPlugin.Chip.On ? Loc.T("chip.mixedAuto") : s == AwcPlugin.Chip.Forced ? Loc.T("chip.mixedForced") : s == AwcPlugin.Chip.Off ? Loc.T("chip.mixedOff") : Loc.T("chip.mixedOrder"));
             }
             sb.Append(Loc.T("chip.mixedEnd"));
             return sb.ToString();
@@ -2408,16 +2655,13 @@ namespace AlternativeWeaponsControl
         void ClickGroup(WeaponsView v, GroupRow gr, int d)
         {
             var pairs = new List<KeyValuePair<Launcher, int>>();
-            bool anyOn = false;
             foreach (var l in gr.Ls)
             {
-                var s = State(v.Unit, l, d);
-                if (s == AwcPlugin.Chip.None) continue;
+                if (State(v.Unit, l, d) == AwcPlugin.Chip.None) continue;
                 pairs.Add(new KeyValuePair<Launcher, int>(l, d));
-                if (s == AwcPlugin.Chip.On) anyOn = true;
             }
             if (pairs.Count == 0) return;
-            Switch(v.Unit, pairs, !anyOn);
+            Cycle(v.Unit, pairs);
             Refresh(v, false);
         }
 
@@ -2425,7 +2669,18 @@ namespace AlternativeWeaponsControl
         {
             var s = State(v.Unit, l, d);
             if (s == AwcPlugin.Chip.None) return;
-            Switch(v.Unit, new List<KeyValuePair<Launcher, int>> { new KeyValuePair<Launcher, int>(l, d) }, s != AwcPlugin.Chip.On);
+            Cycle(v.Unit, new List<KeyValuePair<Launcher, int>> { new KeyValuePair<Launcher, int>(l, d) });
+            Refresh(v, false);
+        }
+
+        void ToggleTightAir(WeaponsView v)
+        {
+            var it = TightAirItem(v.Unit);
+            if (it == null) return;
+            bool val = R.B(R.P(it, "ResolvedValue"));
+            R.SetP(it, "IsSet", true);
+            R.SetP(it, "Value", !val);
+            try { R.Call(it, "Refresh"); } catch { }
             Refresh(v, false);
         }
 

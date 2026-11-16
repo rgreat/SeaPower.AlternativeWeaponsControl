@@ -58,10 +58,26 @@ namespace AlternativeWeaponsControl
         /// ships the contacts hostile on the plot are added when the unit's auto-engage rules let it engage them.
         /// </summary>
         /// <summary>AutoEngageRules.UnitMayAutoEngage: do the unit's rules let it engage the contact by itself in its weapon status?</summary>
+        static bool IsFreeStatus(object unit) { var ws = R.F(unit, "_weaponStatus"); return ws != null && ws.ToString() == "Free"; }
+
+        /// <summary>Release game (doctrine switches): Free - every contact, a surface one only with AutoAttackSurface; Tight - aircraft and helicopters with "On Tight: engage hostile aircraft"; Hold - none.</summary>
+        static bool LegacyMayEngage(object unit, object target)
+        {
+            var ws = R.F(unit, "_weaponStatus");
+            string st = ws == null ? null : ws.ToString();
+            bool air = R.B(R.P(target, "IsAirUnit"));
+            if (st == "Free") return air || ItemValue(unit, 0);
+            if (st != "Tight") return false;
+            var it = TightAirItem(unit);
+            return it != null && R.B(R.P(it, "ResolvedValue")) && (R.Is(target, _tAircraft) || R.Is(target, _tHelicopter));
+        }
+
         static bool MayAutoEngage(object unit, object target)
         {
-            if (_miMayEngage == null) return true;
-            try { return (bool)_miMayEngage.Invoke(null, new[] { unit, target }); } catch { return true; }
+            if (_legacy) return LegacyMayEngage(unit, target);
+            // without the game's rules (not found) the game's own answer is used: no doctrine = Weapons Free only
+            if (_miMayEngage == null) return IsFreeStatus(unit);
+            try { return (bool)_miMayEngage.Invoke(null, new[] { unit, target }); } catch { return IsFreeStatus(unit); }
         }
 
         static void PlotHostilePostfix(object __instance)
