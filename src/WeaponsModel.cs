@@ -619,7 +619,7 @@ namespace AlternativeWeaponsControl
         static object RuleSet(object unit) { return R.P(R.P(unit, "TacticalDoctrine"), "AutoEngageRuleSet"); }
 
         /// <summary>Does the unit's rule set let the launcher engage the domain by itself (at Free: only a rule saying Never, or no rule, forbids)? Conditions of a rule count as allowed.</summary>
-        static bool DocAllowed(object unit, Launcher l, int d, string status = "Free")
+        static bool DocAllowed(object unit, Launcher l, int d, string status = "Free", bool nothingToEngage = true)
         {
             if (_legacy) return LegacyAllowed(unit, l, d, null);
             if (!RulesAvailable || !R.B(R.P(unit, "IsPlayerObject"))) return true;
@@ -645,7 +645,7 @@ namespace AlternativeWeaponsControl
                             if ((bool)_miPermits.Invoke(null, a)) return true;
                         }
                 }
-                return !engageable;   // nothing the rules speak about: not blocked
+                return engageable ? false : nothingToEngage;   // nothing the rules speak about: not blocked (and not forced either)
             }
             catch (Exception e) { TraceLimited("docallowed", 60f, "auto-engage rules: " + e.Message); return true; }
         }
@@ -654,7 +654,7 @@ namespace AlternativeWeaponsControl
         static bool DocForced(object unit, Launcher l, int d)
         {
             if (!RulesAvailable || !R.B(R.P(unit, "IsPlayerObject"))) return false;
-            return DocAllowed(unit, l, d, "Hold");   // at Hold only a rule saying Always permits
+            return DocAllowed(unit, l, d, "Hold", false);   // at Hold only a rule saying Always permits (a launcher with nothing to engage in the domain, e.g. depth charges vs ships, is not forced)
         }
 
         /// <summary>The domains (AIR, MSL, ...) where the Standing Orders override the weapon status button: for Hold - rules saying Always keep the fire going,
@@ -882,9 +882,9 @@ namespace AlternativeWeaponsControl
             int di = Array.IndexOf(Domains, d);
             var st = State(unit, l, d);
             if (whom == null) whom = Loc.T("chip.thisLauncher");
-            if (st == Chip.Forced) return Loc.F("chip.forced", Loc.T("dom." + di), Loc.T("domLong." + di), whom);
-            if (st == Chip.On) return Loc.F("chip.on", Loc.T("dom." + di), Loc.T("domLong." + di), whom);
-            if (st == Chip.Off) return Loc.F("chip.off", Loc.T("dom." + di), whom);
+            if (st == Chip.Forced) return Loc.F("chip.forced", Loc.T("dom." + di), Loc.T("domLong." + di), whom) + RulesNote(unit, l, d);
+            if (st == Chip.On) return Loc.F("chip.on", Loc.T("dom." + di), Loc.T("domLong." + di), whom) + RulesNote(unit, l, d);
+            if (st == Chip.Off) return Loc.F("chip.off", Loc.T("dom." + di), whom) + RulesNote(unit, l, d);
             var sb = new StringBuilder(Loc.F("chip.order", Loc.T("dom." + di)));
             if (_legacy)
             {
@@ -892,8 +892,9 @@ namespace AlternativeWeaponsControl
                 LegacyAllowed(unit, l, d, b);
                 for (int i = 0; i < b.Count; i++) sb.Append(i > 0 ? ", " : "").Append(Loc.F("chip.orderItem", ItemLabels[b[i]]));
             }
-            else sb.Append(Loc.T("chip.orderNo"));
+            else sb.Append(Loc.T("chip.orderNo")).Append(RuleRefs(unit, l, d, false));
             sb.Append(Loc.F("chip.orderEnd", whom));
+            if (!_legacy) sb.Append(RulesNote(unit, l, d));
             return sb.ToString();
         }
 

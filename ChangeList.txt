@@ -1,7 +1,16 @@
 Version 1.8.0
+- Beta game: the "On Tight: engage hostile aircraft" tick is back (the release game has it as a doctrine item). The tick reads what the unit's Standing Orders say (do all its air-capable weapons engage at Weapons Tight); a click puts a rule on top of the unit's own Standing Orders (a local override), another click takes it out. Amber while the rule overrides the other rules or only some weapons engage.
+- Beta game 0.9.3: SAM charging (Ready button, auto-charge) counts the warm-up after the load again, as in the release game (the beta no longer counts it by itself); the launcher is not usable during the count.
+- Beta game: the hint of the On Tight box lists the numbered Standing Orders rules that decide the ship's air launchers against aircraft (the box's own rule and the ones it overrides).
+- Beta game: the hints of the amber Free / Hold buttons list the numbered Standing Orders rules behind it (Always rules for Hold, Never rules for Free).
+- Beta game: new option "Weapons that no Standing Orders rule covers" (Settings, Fire: Free / Tight / Hold = from which weapon status such a weapon fires by itself; default Free). Before, such a weapon never fired by itself.
+- Beta game: the hint of a launcher chip lists the Standing Orders rules that apply to it (number, policy, domains | weapons -> targets, conditions; in the game's own words), or says that no rule covers the weapon.
+- Fixed: the hints of the Weapons tab stay while the mouse is over them (they disappeared after a few seconds).
+- Fixed: X on the map (deleting an attack order that is already being carried out) now cancels it like Stop: the weapons firing it stop, not only the orders still waiting.
 - New: "Strict EMCON" switch next to Free / Tight / Hold: turns the unit's radars off and none can be turned on, even to engage a target (saved with the unit).
 - The header buttons and ticks light up under the mouse; the radars Strict EMCON turned off come back on when it ends.
 - New: Strict EMCON no longer switches off radar directors that serve only guns: they work as silent optical directors (not heard by ESM; accuracy between local control and the radar, setting Guns/StrictEmconOpticalShare; no shell tracking; night by the rules of optics, splashes unseen in the dark; targets only within the range of optics); the directors window and the gun tooltip say "radar off: optical mode".
+- Fixed: deleting an attack order on the map (X: sonobuoy pattern points, bombing points) left its tasks in the unit's list and the unit went on with them; now they are removed with the order.
 - Fixed: the mod lowered FPS (big-gun local solution asked on every frame of every gun; director profile hook ran on every call; the settings file was checked on disk every second - no longer). Fixed: the bottom-panel fire zones kept the units of earlier missions in memory.
 - New option "On Tight: fire only in no-escape zone" (Fire; off): the ships' automatic SAM fire on Weapons Tight waits until the aircraft is inside the missile's no-escape zone.
 - Settings: the Fire Control tab has two inner tabs, General and Directors.
@@ -46,3 +55,6 @@ Version 1.5.0
 - Settings regrouped: the tab with the SAM options is called SAM, the director and accuracy settings are on a new Fire Control tab.
 - Fixed: "Guns: change maximum accuracy" changed only the tooltip; now it changes the real aiming error at close range too (default 5 m, the game has about 40 m).
 - All texts are translated into the nine languages.
+
+- Chips of weapons that cannot engage a domain (RBU vs ships, torpedoes vs submarines) no longer show "forced by Standing Orders".
+- Settings window restructured: Weapons panel, Auto fire (Standing Orders, unidentified aircraft, SAM), Guns (targets, fire control), Accuracy (aiming, global, ammunition, directors), AI, Language, Debug. Settings keep their values.

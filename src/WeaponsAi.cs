@@ -255,6 +255,7 @@ namespace AlternativeWeaponsControl
                 {
                     var t = tasks[i];
                     if (t == null || R.B(R.F(t, "_isAutoAttack")) || R.S(R.F(t, "_ammoId")) != ammo || (target != null && !ReferenceEquals(R.F(t, "_targetObject"), target))) continue;
+                    if (target != null && PfIsDummy(target)) R.SetF(t, "_ignoreIfUndetected", true);   // a point of the map: no sensor has it as a contact, the gun would break the order off ("no longer detected")
                     if (R.I(R.F(t, "_priority")) == 0) break;
                     R.SetF(t, "_priority", 0);
                     tasks.RemoveAt(i); tasks.Insert(0, t);

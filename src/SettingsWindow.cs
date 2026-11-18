@@ -22,19 +22,20 @@ namespace AlternativeWeaponsControl
         public static Action<string> Trace = s => { };
         public static Action<string> Warn = s => { };
 
-        enum Kind { Number, Bool, Lang }
+        enum Kind { Number, Bool, Lang, Pick }
 
         sealed class Field
         {
             public string Tab, Group, Key, Label, Unit, Game, Parent;
             public Kind Kind;
             public float Step, Min, Max;
+            public string[] Options;   // Pick: the values of the setting (their texts are "pick.<value>")
         }
 
         static readonly List<Field> Fields = new List<Field>();
         static readonly List<string> Tabs = new List<string>();
         static string _curTab = "tabs.panel";
-        static string _curSub = "sub.general";   // the inner tab of "Fire Control"
+        static string _curSub = "sub.general";   // the inner tab of "Accuracy"
 
         /// <summary>The inner tab of a field (only the Fire Control tab has them): the director settings on their own, the rest together.</summary>
         static string SubOf(Field f) { return f.Tab != "tabs.gunsAccuracy" ? null : f.Group == "grp.directors" ? "sub.directors" : "sub.general"; }
@@ -71,32 +72,31 @@ namespace AlternativeWeaponsControl
             Add(T1, "grp.panel", "UI/ClickVolume", "Click sound volume", "0..1 · 0 = no sound", Kind.Number, 0.1f, 0f, 1f);
             Add(T1, "grp.samButton", "UI/SamReadyButton", "SAM readiness button", "", Kind.Bool, 0, 0, 0);
             Add(T1, "grp.samButton", "UI/SamReadyMinutes", "SAM readiness limit", "1..60", Kind.Number, 1f, 1f, 60f, null, "UI/SamReadyButton");
-            Add(TA, "grp.targeting", "Fire/EngageByPlotRelation", "Disable AI cheating", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(TA, "grp.freeAir", "Fire/UnknownAirMinKnots", "Engage unidentified aircraft faster than", "kn", Kind.Number, 10f, 100f, 2000f);
-            Add(TA, "grp.freeAir", "Fire/UnknownAirMaxNm", "Engage unidentified aircraft closer than", "nm", Kind.Number, 5f, 5f, 200f);
-            Add(TA, "grp.freeAir", "Fire/UnknownAirDefaultOwn", "On Free by default: your and allied ships", "", Kind.Bool, 0, 0, 0);
-            Add(TA, "grp.freeAir", "Fire/UnknownAirDefaultEnemy", "On Free by default: enemy AI ships", "", Kind.Bool, 0, 0, 0);
-            Add(TA, "grp.chasing", "Ships/NoRbuSurfaceChase", "No chasing surface targets with ASW mortars", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(TA, "grp.chasing", "Ships/NoAirChase", "No chasing air targets", "", Kind.Bool, 0, 0, 0, "game: off");
+            Fields.Add(new Field { Tab = T2, Group = "grp.so", Key = "Fire/UncoveredWeapons", Label = "Weapons that no Standing Orders rule covers", Unit = "", Kind = Kind.Pick, Options = AwcPlugin.UncoveredNames, Game = "game: off" });
+            Add(T2, "grp.freeAir", "Fire/UnknownAirMinKnots", "Engage unidentified aircraft faster than", "kn", Kind.Number, 10f, 100f, 2000f);
+            Add(T2, "grp.freeAir", "Fire/UnknownAirMaxNm", "Engage unidentified aircraft closer than", "nm", Kind.Number, 5f, 5f, 200f);
+            Add(T2, "grp.freeAir", "Fire/UnknownAirDefaultOwn", "On Free by default: your and allied ships", "", Kind.Bool, 0, 0, 0);
+            Add(T2, "grp.freeAir", "Fire/UnknownAirDefaultEnemy", "On Free by default: enemy AI ships", "", Kind.Bool, 0, 0, 0);
             Add(T2, "grp.sam", "Ships/SamAutoCharge", "Charge SAMs when unknown aircraft approach", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T2, "grp.sam", "Ships/SamAutoChargeRange", "Unknown aircraft distance to charge", "nm", Kind.Number, 5f, 5f, 200f, null, "Ships/SamAutoCharge");
             Add(T2, "grp.sam", "Ships/SamKeepLoaded", "Keep SAM missiles on the rails while hot", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T2, "grp.sam", "Fire/SamTightNezOnly", "On Tight: fire only in no-escape zone", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T2, "grp.sam", "Ships/SamAnimFix", "Missile load / unload animation fix", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(T3, "grp.aiming", "Guns/AimBeyondMaxRange", "Aim guns at targets beyond max range", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(T3, "grp.aiming", "Guns/EngageOutsideSector", "Engage targets outside the firing sector", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(T3, "grp.aiming", "Guns/RememberTargets", "Remember earlier targets", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(T3, "grp.aiming", "Guns/RerollAimError", "Unstick guns at long range", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(T3, "grp.aiming", "Guns/PointFire", "Fire at a point of the map", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(T3, "grp.aiming", "Guns/BarrelScatter", "Scatter for every barrel of a turret", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(T3, "grp.aiming", "Guns/BigGunsLocalSolution", "Big guns build a solution without a director", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(T3, "grp.aiming", "Guns/ClickEngagesAllGuns", "Click on a target: all guns", "", Kind.Bool, 0, 0, 0, "game: one ammunition");
-            Add(T3, "grp.aiming", "Guns/LocalControlKeepsFiring", "Local control: no spotting wait", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(TG, "grp.fireControl", "FireControl/GunOneDirector", "Guns take one director", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(TG, "grp.fireControl", "FireControl/GunChannelLimit", "Guns without a free channel: local control", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T3, "grp.gunTargets", "Guns/RememberTargets", "Remember earlier targets", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T3, "grp.gunTargets", "Guns/ClickEngagesAllGuns", "Click on a target: all guns", "", Kind.Bool, 0, 0, 0, "game: one ammunition");
+            Add(T3, "grp.gunTargets", "Guns/PointFire", "Fire at a point of the map", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T3, "grp.gunTargets", "Guns/EngageOutsideSector", "Engage targets outside the firing sector", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T3, "grp.gunTargets", "Guns/LocalControlKeepsFiring", "Local control: no spotting wait", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T3, "grp.fireControl", "FireControl/GunOneDirector", "Guns take one director", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(T3, "grp.fireControl", "FireControl/GunChannelLimit", "Guns without a free channel: local control", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(TG, "grp.aiming", "Guns/AimBeyondMaxRange", "Aim guns at targets beyond max range", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(TG, "grp.aiming", "Guns/RerollAimError", "Unstick guns at long range", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(TG, "grp.aiming", "Guns/BarrelScatter", "Scatter for every barrel of a turret", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(TG, "grp.aiming", "Guns/BigGunsLocalSolution", "Big guns build a solution without a director", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(TG, "grp.global", "Guns/MaxAccuracyMeters", "Maximum accuracy", "m", Kind.Number, 1f, 0f, 100f, "~40");
             Add(TG, "grp.global", "Guns/AccuracyMultiplier", "Shell accuracy", "x", Kind.Number, 0.1f, 0.1f, 20f, "1");
             Add(TG, "grp.global", "Guns/FireControlAccuracy", "Aiming accuracy", "x", Kind.Number, 0.1f, 0.1f, 20f, "1");
+            Add(TG, "grp.ammoFix", "Guns/AmmunitionFix", "Custom accuracy and power", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(TG, "grp.directors", "Guns/WeakDirectorsLift", "Weak directors boost", "%", Kind.Number, 5f, 0f, 100f, "game: 0");
             Add(TG, "grp.directors", "Guns/SolutionBuildSpeed", "Firing solution build speed", "x", Kind.Number, 0.05f, 0.05f, 5f, "game: 1");
             Add(TG, "grp.directors", "Guns/LocalSolutionGrowth", "Solution build speed without a director", "%", Kind.Number, 5f, 10f, 200f, "game: n/a");
@@ -105,9 +105,11 @@ namespace AlternativeWeaponsControl
             Add(TG, "grp.directors", "Guns/StrictEmconOpticalShare", "Gun radar director on Strict EMCON: share of radar accuracy", "%", Kind.Number, 5f, 0f, 100f, "game: off");
             Add(TG, "grp.directors", "Guns/OpticalDirectorMinSolution", "Solution quality with optical directors", "x", Kind.Number, 0.1f, 0f, 5f, "game: 1");
             Add(TG, "grp.directors", "Guns/RadarDirectorMinSolution", "Solution quality with radar directors", "x", Kind.Number, 0.1f, 0f, 5f, "game: 1");
-            Add(T3, "grp.ammoFix", "Guns/AmmunitionFix", "Custom accuracy and power", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(T5, "grp.diagnostics", "General/Debug", "Debug trace", "", Kind.Bool, 0, 0, 0);
+            Add(TA, "grp.targeting", "Fire/EngageByPlotRelation", "Disable AI cheating", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(TA, "grp.chasing", "Ships/NoRbuSurfaceChase", "No chasing surface targets with ASW mortars", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(TA, "grp.chasing", "Ships/NoAirChase", "No chasing air targets", "", Kind.Bool, 0, 0, 0, "game: off");
             Add("tabs.language", "grp.language", "General/Language", "Language", "", Kind.Lang, 0, 0, 0);
+            Add(T5, "grp.diagnostics", "General/Debug", "Debug trace", "", Kind.Bool, 0, 0, 0);
         }
 
         // ------------------------------------------------------------ colours (the game's dark panels)
@@ -498,7 +500,7 @@ namespace AlternativeWeaponsControl
                 if (f.Group != group) { group = f.Group; if (group == "grp.directors") PresetBar(); else _body.Children.Add(GroupTitle(Loc.T(group))); }
                 _body.Children.Add(Row(f));
             }
-            if (_curTab == "tabs.guns" && Flag("Guns/AmmunitionFix")) AmmoTable();
+            if (_curTab == "tabs.gunsAccuracy" && _curSub == "sub.general" && Flag("Guns/AmmunitionFix")) AmmoTable();
             UpdateStatus();
         }
 
@@ -519,7 +521,7 @@ namespace AlternativeWeaponsControl
 
         static bool TabChanged(string tab)
         {
-            if (tab == "tabs.guns" && AmmoListDirty()) return true;
+            if (tab == "tabs.gunsAccuracy" && AmmoListDirty()) return true;
             foreach (var f in Fields) if (f.Tab == tab && !Same(Get(f), Saved(f))) return true;
             return false;
         }
@@ -555,13 +557,15 @@ namespace AlternativeWeaponsControl
             Action mark = () => { dot.Visibility = Same(Get(f), Saved(f)) ? Visibility.Hidden : Visibility.Visible; UpdateStatus(); UpdateTabDots(); };
             _marks.Add(mark);
             Action refresh;
-            var editor = f.Kind == Kind.Bool ? BoolEditor(f, mark, out refresh) : f.Kind == Kind.Lang ? LangEditor(f, mark, out refresh) : NumberEditor(f, mark, out refresh);
+            var editor = f.Kind == Kind.Bool ? BoolEditor(f, mark, out refresh) : f.Kind == Kind.Lang ? LangEditor(f, mark, out refresh) : f.Kind == Kind.Pick ? PickEditor(f, mark, out refresh) : NumberEditor(f, mark, out refresh);
             Grid.SetColumn(editor, 1);
             g.Children.Add(editor);
 
             string d = Default(f).Replace("True", Loc.T("set.on")).Replace("False", Loc.T("set.off")).Replace("true", Loc.T("set.on")).Replace("false", Loc.T("set.off"));
             if (f.Kind == Kind.Lang) d = Loc.T("set.gameLang");
-            var game = new TextBlock { Text = Loc.F("set.default", d) + (f.Game == null ? "" : "\n" + (f.Game == "game: off" ? Loc.T("set.gameOff") : Loc.F("set.gameVal", f.Game))), Foreground = B(CDim), FontSize = 11f, TextAlignment = TextAlignment.Right,
+            if (f.Kind == Kind.Pick) d = PickText(Default(f));
+            string gv = f.Game;
+            var game = new TextBlock { Text = Loc.F("set.default", d) + (f.Game == null ? "" : "\n" + (f.Game == "game: off" ? Loc.T("set.gameOff") : Loc.F("set.gameVal", gv))), Foreground = B(CDim), FontSize = 11f, TextAlignment = TextAlignment.Right,
                                        VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
             Grid.SetColumn(game, 2);
             g.Children.Add(game);
@@ -632,6 +636,25 @@ namespace AlternativeWeaponsControl
             var cb = new CheckBox { IsChecked = Get(f).Trim().Equals("true", StringComparison.OrdinalIgnoreCase), VerticalAlignment = VerticalAlignment.Center };
             cb.Click += (o, e) => { _work[f.Key] = cb.IsChecked == true ? "true" : "false"; mark(); DepsChanged(f.Key); };
             refresh = () => cb.IsChecked = Get(f).Trim().Equals("true", StringComparison.OrdinalIgnoreCase);
+            return cb;
+        }
+
+        /// <summary>The text of a Pick value: the weapon status names of the game (Free / Tight / Hold).</summary>
+        static string PickText(string o) { return Loc.T("status." + (o ?? "").ToLowerInvariant()); }
+
+        static FrameworkElement PickEditor(Field f, Action mark, out Action refresh)
+        {
+            var cb = new ComboBox { Width = 200f, MinHeight = 24f, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center };
+            foreach (var o in f.Options) cb.Items.Add(PickText(o));
+            Func<int> index = () => { int i = Array.FindIndex(f.Options, o => string.Equals(o, (Get(f) ?? "").Trim(), StringComparison.OrdinalIgnoreCase)); return i < 0 ? 0 : i; };
+            cb.SelectedIndex = index();
+            cb.SelectionChanged += (o, e) =>
+            {
+                int i = cb.SelectedIndex;
+                if (i < 0 || i >= f.Options.Length || f.Options[i] == (Get(f) ?? "").Trim()) return;
+                _work[f.Key] = f.Options[i]; mark();
+            };
+            refresh = () => cb.SelectedIndex = index();
             return cb;
         }
 

@@ -56,7 +56,7 @@ Special effects (flashes, fire light, binoculars normal view, machine gun and hi
 [h3]Settings and languages[/h3]
 [olist]
 [*]Settings open from the main menu and the pause menu (one shared "Alternative Mods" entry for the author's mods).
-[*]Settings window in the game with tabs: Weapons panel, SAM, AI, Guns, Fire Control (General, Directors), Debug, Language.
+[*]Settings window in the game with tabs: Weapons panel, Auto fire, Guns, Accuracy (General, Directors), AI, Language, Debug.
 [*]Localized into 9 languages (en, ru, cn, de, es, fr, ko, ja, vn). Edit [b]lang/<code>.ini[/b] to change texts.
 [/olist]
 

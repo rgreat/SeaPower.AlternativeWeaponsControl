@@ -134,12 +134,18 @@ namespace AlternativeWeaponsControl
             D("chip.orderNo", "the auto-engage rules say Never");
             D("chip.orderItem", "{0}: No");
             D("tab.onTight", "On Tight: engage hostile aircraft");
+            D("tab.onTightTip", "Ships on Weapons Tight also engage hostile aircraft and helicopters.\nTick: a rule goes on top of this unit's own Standing Orders (a local override of the doctrine). Untick: the rule is taken out.");
+            D("tab.onTightOver", "\nAmber: this rule overrides the other Standing Orders rules of these weapons against aircraft.");
+            D("tab.onTightPart", "\nAmber: only some of the weapons engage aircraft on Weapons Tight (the Standing Orders say so). Click: all of them.");
             D("tab.emcon", "Strict EMCON");
             D("tab.emconTip", "Turns the radars of this unit off, and none can be turned on, even to engage a target. Radar directors that serve only guns keep working as silent optical directors.");
             D("chip.orderEnd", ".\nClick: allow for {0} (a rule allowing it is added to the unit's Standing Orders, the other launchers it covers turn off).");
             D("chip.mixed", "{0}: mixed - ");
             D("chip.mixedAuto", "automatic"); D("chip.mixedForced", "forced by Standing Orders"); D("chip.mixedOff", "off"); D("chip.mixedOrder", "off by Standing Orders");
             D("chip.mixedEnd", ".\nClick: the same for all.");
+            D("chip.rules", "Standing Orders rules applied:"); D("chip.rulesNone", "no rule covers some of the weapons: the option decides ({0})"); D("chip.rulesMore", "... and {0} more");
+            D("grp.so", "Standing Orders");
+            D("lbl.Fire/UncoveredWeapons", "Weapons that no Standing Orders rule covers");
             // ---- legend
             D("legend.dom", "AIR · MSL · SUR · SUB · LND - may the AI use the launcher by itself against aircraft, missiles and torpedoes, surface ships, submarines, land targets:");
             D("legend.auto", "automatic");
@@ -169,7 +175,7 @@ namespace AlternativeWeaponsControl
             D("set.gameLang", "the game's language");
             D("set.resetTip", "Back to the default");
             D("set.resizeTip", "Drag to resize");
-            D("tabs.panel", "Weapons panel"); D("tabs.fire", "SAM"); D("tabs.ai", "AI"); D("tabs.guns", "Guns"); D("tabs.gunsAccuracy", "Fire Control"); D("sub.general", "General");
+            D("tabs.panel", "Weapons panel"); D("tabs.fire", "Auto fire"); D("tabs.ai", "AI"); D("tabs.guns", "Guns"); D("tabs.gunsAccuracy", "Accuracy"); D("sub.general", "General");
             D("tabs.debug", "Debug"); D("tabs.language", "Language");
             D("grp.panel", "Panel"); D("grp.samButton", "SAM readiness button"); D("grp.sam", "SAM");
             D("grp.fireControl", "Fire control"); D("grp.chasing", "Chasing"); D("grp.accuracy", "Accuracy"); D("grp.global", "Global"); D("grp.directors", "Directors"); D("grp.ammoFix", "Ammunition");
@@ -228,7 +234,7 @@ namespace AlternativeWeaponsControl
             D("lbl.General/Language", "Language of the texts (empty = the game's)");
             D("unit.General/Language", "code, e.g. en, ru");
             D("menu.button", "Weapons Control");
-            D("grp.aiming", "Aiming");
+            D("grp.aiming", "Aiming"); D("grp.gunTargets", "Targets");
             D("grp.ammoList", "Gun ammunition");
             D("ammo.note", "Accuracy: circular error probable, the radius in metres at maximum range within which shells land (smaller = more accurate). Power: warhead power. The values of the game are shown beside the fields; the arrow puts them back. ✕ removes a row from the table; the list below the table adds any other gun ammunition of the game. Applied to ammunition loaded after Apply (a mission start).");
             D("preset.title", "Directors preset"); D("preset.base", "Base"); D("preset.advanced", "Advanced"); D("preset.ww2", "WW2 Mod"); D("preset.custom", "custom values");

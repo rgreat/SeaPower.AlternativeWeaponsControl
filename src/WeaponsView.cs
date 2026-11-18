@@ -142,7 +142,8 @@ namespace AlternativeWeaponsControl
             return s == null ? null : new TextBlock { Text = s, TextWrapping = TextWrapping.NoWrap, MaxWidth = float.PositiveInfinity };
         }
 
-        static void SetTip(DependencyObject e, string s) { ToolTipService.SetToolTip(e, TipOf(s)); }
+        /// <summary>The tooltip stays while the mouse is over the element (the game's default duration is a few seconds: a long text cannot be read).</summary>
+        static void SetTip(DependencyObject e, string s) { ToolTipService.SetToolTip(e, TipOf(s)); if (s != null) ToolTipService.SetShowDuration(e, int.MaxValue); }
 
         /// <summary>A text that does not fit its place (trimmed, cut by its column or a clipping parent, more lines than shown) gets its
         /// whole text as the tooltip when the mouse comes over it - unless it or an element around it has a tooltip of its own.</summary>
@@ -158,6 +159,7 @@ namespace AlternativeWeaponsControl
             var o = TipOf(want);
             if (want != null) AutoTips.Add(t, new AutoBox { S = want, O = o });
             t.ToolTip = o;
+            if (o != null) ToolTipService.SetShowDuration(t, int.MaxValue);
         }
 
         static bool OuterTip(TextBlock t)
@@ -313,14 +315,13 @@ namespace AlternativeWeaponsControl
         {
             if (c.Painted && c.Last == st) return;
             c.Painted = true; c.Last = st;
-            bool big = c.Size > 12f;
             c.Outer.Visibility = st == AwcPlugin.Chip.None ? Visibility.Collapsed : Visibility.Visible;
             c.None.Visibility = st == AwcPlugin.Chip.None ? Visibility.Visible : Visibility.Collapsed;
-            // the Standing Orders states share one look: an amber ring with a core - forced: a green core, off: a small amber dot (big chips only)
+            // the Standing Orders states share one look: an amber ring - forced: with a green core, off by the orders: the empty ring
             bool forced = st == AwcPlugin.Chip.Forced;
-            c.Dot.Visibility = forced || (st == AwcPlugin.Chip.Order && big) ? Visibility.Visible : Visibility.Collapsed;
-            c.Dot.Width = c.Dot.Height = forced ? c.Size - 6f : 4f;
-            c.Dot.Fill = WC.B(forced ? WC.Ok : WC.Amber);
+            c.Dot.Visibility = forced ? Visibility.Visible : Visibility.Collapsed;
+            c.Dot.Width = c.Dot.Height = c.Size - 6f;
+            c.Dot.Fill = WC.B(WC.Ok);
             c.Bar.Visibility = st == AwcPlugin.Chip.Mixed ? Visibility.Visible : Visibility.Collapsed;
             c.Outer.StrokeThickness = 2f;
             switch (st)
@@ -824,7 +825,7 @@ namespace AlternativeWeaponsControl
             var l0 = gr.Ls[0];
             var top = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
             var sysLink = Link(Cap(l0.Name) + (gr.Suffix.Length > 0 ? " " + gr.Suffix : ""), WC.Text, 13f, FontWeights.Medium, null, () => OpenSystemReference(v, l0));
-            ToolTipService.SetToolTip(sysLink, DescTip(R.S(R.P(SystemEntry(l0), "Description")), "Reference of " + Cap(l0.Name)));
+            ToolTipService.SetToolTip(sysLink, DescTip(R.S(R.P(SystemEntry(l0), "Description")), "Reference of " + Cap(l0.Name))); ToolTipService.SetShowDuration(sysLink, int.MaxValue);
             top.Children.Add(sysLink);
             if (gr.Ls.Count > 1)
             {
@@ -959,7 +960,7 @@ namespace AlternativeWeaponsControl
             if (all.Length > 0) SetTip(clip, all.ToString());
             At(g, clip, 3);
             var desc = R.S(R.P(mw, "Description"));
-            ToolTipService.SetToolTip(nl, DescTip(desc, Loc.T("tip.refWeapon")));
+            ToolTipService.SetToolTip(nl, DescTip(desc, Loc.T("tip.refWeapon"))); ToolTipService.SetShowDuration(nl, int.MaxValue);
             return g;
         }
 
@@ -2097,7 +2098,7 @@ namespace AlternativeWeaponsControl
                 // Free / Hold that the Standing Orders may override: amber, with the hint saying where
                 string ov = i == 0 ? StatusOverride(unit, false) : i == 2 ? StatusOverride(unit, true) : null;
                 if (ov != null) v.StatusText[i].Foreground = WC.B(WC.Amber);
-                Tip(v.Status[i], ov == null ? null : Loc.F(i == 0 ? "status.freeWarn" : "status.holdWarn", ov));
+                Tip(v.Status[i], ov == null ? null : Loc.F(i == 0 ? "status.freeWarn" : "status.holdWarn", ov) + StatusRulesNote(unit, i == 2));
             }
             v.EmconBtn.Visibility = HasRadar(unit) ? Visibility.Visible : Visibility.Collapsed;
             Hover(v.EmconBtn, w.StrictEmcon ? (Color?)Color.FromRgb(96, 34, 34) : null, w.StrictEmcon ? Color.FromRgb(124, 46, 46) : WC.BtnHover);
@@ -2105,12 +2106,23 @@ namespace AlternativeWeaponsControl
             v.EmconText.Foreground = WC.B(w.StrictEmcon ? Color.FromRgb(255, 255, 255) : WC.Dim);
             v.EmconText.FontWeight = w.StrictEmcon ? FontWeights.SemiBold : FontWeights.Normal;
             var tight = TightAirItem(unit);
-            v.TightRow.Visibility = tight != null ? Visibility.Visible : Visibility.Collapsed;
+            bool tightShown = TightAirShown(unit);
+            v.TightRow.Visibility = tightShown ? Visibility.Visible : Visibility.Collapsed;
             if (tight != null)
             {
                 bool t = R.B(R.P(tight, "ResolvedValue"));
                 v.TightMark.Visibility = t ? Visibility.Visible : Visibility.Hidden;
                 v.TightBox.BorderBrush = WC.B(t ? WC.Ok : WC.Ring);
+            }
+            else if (tightShown)
+            {
+                // the beta: what the rules say; amber while the box's own rule overrides the others (or only some weapons engage)
+                int ts = TightAirState(unit);
+                bool over = TightAirOverrides(unit), amber = ts == 1 || (ts == 2 && over);
+                v.TightMark.Visibility = ts > 0 ? Visibility.Visible : Visibility.Hidden;
+                v.TightMark.Fill = WC.B(amber ? WC.Amber : WC.Ok);
+                v.TightBox.BorderBrush = WC.B(ts <= 0 ? WC.Ring : amber ? WC.Amber : WC.Ok);
+                Tip(v.TightRow, Loc.T("tab.onTightTip") + (ts == 1 ? Loc.T("tab.onTightPart") : over ? Loc.T("tab.onTightOver") : "") + TightRulesNote(v.Unit));
             }
             v.FreeRow.Visibility = R.Is(unit, _tVessel) ? Visibility.Visible : Visibility.Collapsed;
             if (R.Is(unit, _tVessel))
@@ -2637,7 +2649,7 @@ namespace AlternativeWeaponsControl
                 var s = State(unit, l, d);
                 if (s == AwcPlugin.Chip.None) continue;
                 sb.Append(k++ > 0 ? ", " : "").Append(string.IsNullOrEmpty(l.Loc) ? l.Name : l.Loc).Append(": ")
-                  .Append(s == AwcPlugin.Chip.On ? Loc.T("chip.mixedAuto") : s == AwcPlugin.Chip.Forced ? Loc.T("chip.mixedForced") : s == AwcPlugin.Chip.Off ? Loc.T("chip.mixedOff") : Loc.T("chip.mixedOrder"));
+                  .Append(s == AwcPlugin.Chip.On ? Loc.T("chip.mixedAuto") : s == AwcPlugin.Chip.Forced ? Loc.T("chip.mixedForced") + RuleRefs(unit, l, d, true) : s == AwcPlugin.Chip.Off ? Loc.T("chip.mixedOff") : Loc.T("chip.mixedOrder") + RuleRefs(unit, l, d, false));
             }
             sb.Append(Loc.T("chip.mixedEnd"));
             return sb.ToString();
@@ -2676,7 +2688,7 @@ namespace AlternativeWeaponsControl
         void ToggleTightAir(WeaponsView v)
         {
             var it = TightAirItem(v.Unit);
-            if (it == null) return;
+            if (it == null) { ToggleTightRules(v.Unit); Refresh(v, false); return; }
             bool val = R.B(R.P(it, "ResolvedValue"));
             R.SetP(it, "IsSet", true);
             R.SetP(it, "Value", !val);
@@ -2724,7 +2736,7 @@ namespace AlternativeWeaponsControl
         static TextBlock DescLink(string name, string desc, string fallback, Action a)
         {
             var t = Link(name, WC.Text, 12.5f, FontWeights.SemiBold, null, a);
-            ToolTipService.SetToolTip(t, DescTip(desc, fallback));
+            ToolTipService.SetToolTip(t, DescTip(desc, fallback)); ToolTipService.SetShowDuration(t, int.MaxValue);
             return t;
         }
 

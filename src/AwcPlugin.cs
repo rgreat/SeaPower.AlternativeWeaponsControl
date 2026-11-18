@@ -44,7 +44,7 @@ namespace AlternativeWeaponsControl
         // ------------------------------------------------------------ settings
         public ConfigFile Cfg;
         internal ConfigEntry<string> _language; internal ConfigEntry<bool> _debugEntry, _gunChannels, _gunOneDirector, _noRbuSurfaceChase, _noAirChase;
-        internal ConfigEntry<string> _secOrder;
+        internal ConfigEntry<string> _secOrder, _uncovered;
         internal ConfigEntry<float> _clickVolume, _samMinutes, _samAutoRange, _gunMinError, _accuracyMult, _fcAccuracy, _weakBoost, _gainLocal, _emconOptical, _minSolOptical, _minSolRadar, _solSpeed, _solLoss, _localGrowth;
         internal ConfigEntry<bool> _ammoFix, _samTightNez, _plotHostile, _tabAir, _tabLand, _samButton, _zoneFire, _samAuto, _samKeep, _samAnim, _gunAimBeyond, _engageOutside, _gunMemory, _gunReroll, _barrelScatter, _pointFire, _bigLocal, _clickAllGuns, _gunLocalFire, _bottomFire, _secTargets;
         public static string UserDir { get; private set; }
@@ -152,6 +152,10 @@ namespace AlternativeWeaponsControl
                 "Units (the enemy's too) charge their SAM launchers (missiles onto the rails) when an unknown aircraft comes closer than the " +
                 "range below. Only contacts the unit's crew has already processed (the game's OODA loop) count. Off = the game's own warm-up, " +
                 "which starts when a hostile target is known.");
+            _uncovered = Cfg.Bind("Fire", "UncoveredWeapons", "Free",
+                new ConfigDescription("What a weapon does when no rule of the unit's Standing Orders covers it (the weapon class x target pair matches no rule): it fires by itself from this weapon status up. " +
+                "Free = on Weapons Free only (the default). Tight = on Weapons Tight and Free. Hold = at any weapon status, also Weapons Hold. The game itself never fires such a weapon by itself. Manual orders are not affected.",
+                new AcceptableValueList<string>("Free", "Tight", "Hold")));
             _samKeep = Cfg.Bind("Ships", "SamKeepLoaded", true,
                 "A charged (hot) launcher keeps the missiles on its rails after a launch: the game unloads them into the magazine " +
                 "when the launcher has been idle for a while (a second missile 'disappears' after the first shot). Off = as in the game.");
@@ -246,7 +250,7 @@ namespace AlternativeWeaponsControl
                 "Verbose logging and BepInEx/AlternativeWeaponsControl.trace.txt.");
             _language = Cfg.Bind("General", "Language", "",
                 "Language of the mod's texts: a code of a game language (en, ru ...); empty = the game's own language. The texts are in the files lang/<code>.ini in the mod folder - edit them to translate.");
-            Entries.Add(_gunMemory); Entries.Add(_gunReroll); Entries.Add(_barrelScatter); Entries.Add(_pointFire); Entries.Add(_bigLocal); Entries.Add(_clickAllGuns); Entries.Add(_gunLocalFire); Entries.Add(_bottomFire); Entries.Add(_secTargets); Entries.Add(_clickVolume); Entries.Add(_samButton); Entries.Add(_zoneFire); Entries.Add(_plotHostile); Entries.Add(_samTightNez); Entries.Add(_freeAirKnots); Entries.Add(_freeAirNm); Entries.Add(_freeAirOwn); Entries.Add(_freeAirEnemy); Entries.Add(_tabLand); Entries.Add(_tabAir); Entries.Add(_samAuto); Entries.Add(_samKeep); Entries.Add(_samAnim); Entries.Add(_samAutoRange); Entries.Add(_samMinutes); Entries.Add(_gunOneDirector); Entries.Add(_gunChannels); Entries.Add(_noRbuSurfaceChase); Entries.Add(_noAirChase); Entries.Add(_gunAimBeyond); Entries.Add(_engageOutside); Entries.Add(_gunMinError); Entries.Add(_accuracyMult); Entries.Add(_fcAccuracy); Entries.Add(_weakBoost); Entries.Add(_gainLocal); Entries.Add(_emconOptical); Entries.Add(_minSolOptical); Entries.Add(_minSolRadar); Entries.Add(_solSpeed); Entries.Add(_solLoss); Entries.Add(_localGrowth); Entries.Add(_ammoFix); Entries.Add(_debugEntry); Entries.Add(_language);
+            Entries.Add(_uncovered); Entries.Add(_gunMemory); Entries.Add(_gunReroll); Entries.Add(_barrelScatter); Entries.Add(_pointFire); Entries.Add(_bigLocal); Entries.Add(_clickAllGuns); Entries.Add(_gunLocalFire); Entries.Add(_bottomFire); Entries.Add(_secTargets); Entries.Add(_clickVolume); Entries.Add(_samButton); Entries.Add(_zoneFire); Entries.Add(_plotHostile); Entries.Add(_samTightNez); Entries.Add(_freeAirKnots); Entries.Add(_freeAirNm); Entries.Add(_freeAirOwn); Entries.Add(_freeAirEnemy); Entries.Add(_tabLand); Entries.Add(_tabAir); Entries.Add(_samAuto); Entries.Add(_samKeep); Entries.Add(_samAnim); Entries.Add(_samAutoRange); Entries.Add(_samMinutes); Entries.Add(_gunOneDirector); Entries.Add(_gunChannels); Entries.Add(_noRbuSurfaceChase); Entries.Add(_noAirChase); Entries.Add(_gunAimBeyond); Entries.Add(_engageOutside); Entries.Add(_gunMinError); Entries.Add(_accuracyMult); Entries.Add(_fcAccuracy); Entries.Add(_weakBoost); Entries.Add(_gainLocal); Entries.Add(_emconOptical); Entries.Add(_minSolOptical); Entries.Add(_minSolRadar); Entries.Add(_solSpeed); Entries.Add(_solLoss); Entries.Add(_localGrowth); Entries.Add(_ammoFix); Entries.Add(_debugEntry); Entries.Add(_language);
             Loc.Trace = Trace; Loc.Forced = () => _language == null ? "" : _language.Value;
             foreach (var en in Entries) Loc.Register("help." + en.Definition.Section + "/" + en.Definition.Key, en.Description == null ? "" : en.Description.Description);
 
@@ -322,6 +326,8 @@ namespace AlternativeWeaponsControl
             try { HookAmmoFix(harmony, asm); } catch (Exception e) { Warn("Ammunition fix failed: " + e.Message); }
             try { HookGunTargets(harmony, asm); } catch (Exception e) { Warn("Gun targets failed: " + e.Message); }
             try { HookPointFire(harmony, asm); } catch (Exception e) { Warn("Point fire failed: " + e.Message); }
+            try { HookUncovered(harmony); } catch (Exception e) { Warn("Weapons without a Standing Orders rule failed: " + e.Message); }
+            try { HookWaypointFix(harmony, asm); } catch (Exception e) { Warn("Waypoint orders failed: " + e.Message); }
             try { HookGunFixes(harmony, asm); } catch (Exception e) { Warn("Gun fixes failed: " + e.Message); }
             try { HookWeapons(harmony, asm); } catch (Exception e) { Warn("Weapons hooks failed: " + e.Message); Trace(e.ToString()); }
             try

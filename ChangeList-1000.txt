@@ -6,3 +6,5 @@ Version 1.8.0
 - Fixed: FPS drop caused by the mod.
 - Fixed: empty ammunition cells of aircraft hardpoints.
 - Overlapping firing arcs are drawn without a dark red patch.
+- Fixed: deleting a sonobuoy / attack point on the map with X left its orders running.
+- Beta: the "On Tight: engage hostile aircraft" tick is back. It shows what the Standing Orders say and adds its own rule to the unit; amber when that rule overrides the others.

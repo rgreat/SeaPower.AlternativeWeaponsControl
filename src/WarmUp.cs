@@ -120,12 +120,43 @@ namespace AlternativeWeaponsControl
 
         static void ResetReload(object ws) { R.SetF(ws, "_isReloading", false); R.SetF(ws, "_remainingReloadTime", 0f); R.SetF(ws, "_reloadStartTime", -1000.0); }
 
+        // The newer game (0.9.3 beta): WarmUp() only makes the launcher hot, the count of the warm-up is gone; the launcher's "reload cycle" is a flag
+        // (_reloadCycleReady) that the game sets when a count ends after the load began and clears on a load / after the idle shut-down.
+        // Probed once by the method the game asks it with; the release game and 0.9.2 have neither, nothing below runs for them.
+        static bool? _cycleModel;
+        static bool CycleModel()
+        {
+            if (_cycleModel == null)
+            {
+                try { _cycleModel = _tLauncher != null && _tLauncher.GetMethod("NeedsReloadCycleBeforeFiring", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic) != null; }
+                catch { _cycleModel = false; }
+            }
+            return _cycleModel.Value;
+        }
+
+        /// <summary>Cycle model: the rails are gone (our own unload, cold), so the next order from empty rails pays the cycle again, as in the game's own shut-down.</summary>
+        static void ClearCycle(object ws) { if (CycleModel()) R.SetF(ws, "_reloadCycleReady", false); }
+
+        /// <summary>The warm-up of loaded rails. The release game / 0.9.2: WarmUp() counts by itself. The cycle model: the count is started here, after the load
+        /// began, so the game itself marks the cycle ready when it ends and the launcher is not usable during it (as before).</summary>
+        static void WarmRails(object ws)
+        {
+            bool was = R.B(R.P(ws, "IsHot"));
+            R.Call(ws, "WarmUp");
+            if (!was && CycleModel() && R.B(R.P(ws, "IsHot")) && !R.B(R.F(ws, "_isReloading")))
+            {
+                R.Call(ws, "StartReload", false);
+                if (_debug) Trace("sam warm-up count started (cycle model) " + SamName(ws));
+            }
+        }
+
         /// <summary>Cold: no reload count, not hot (the box goes with it).</summary>
         static void GoCold(object ws)
         {
             // the reload clock is reset too: the game's load flow (InitiateLoading) sets _isReloading again and counts from the LAST StartReload, so the count
             // of the launch would run once more during the load, and the warm-up on the rails after it (two counts in a row)
             ResetReload(ws); R.SetP(ws, "IsHot", false);
+            ClearCycle(ws);
             _warmBox.Remove(ws);
         }
 
@@ -220,7 +251,7 @@ namespace AlternativeWeaponsControl
                         if (ae != null) { R.Call(ws, "triggerLoadSystem"); if (!Idle(ws) || R.B(R.F(ws, "_isReloading"))) return; }
                     }
                     // the rails are loaded: the warm-up runs on them, the time limit starts when it is over
-                    if (b.Warm && Loaded(ws) > 0 && !R.B(R.P(ws, "IsHot"))) { b.Warm = false; R.Call(ws, "WarmUp"); return; }
+                    if (b.Warm && Loaded(ws) > 0 && !R.B(R.P(ws, "IsHot"))) { b.Warm = false; WarmRails(ws); return; }
                     b.Warm = false; b.Pending = false;
                     if (Loaded(ws) > 0) b.Until = now + WarmSeconds(); else _warmBox.Remove(ws);
                     return;
@@ -269,6 +300,7 @@ namespace AlternativeWeaponsControl
                 if (b.Real) StartPause(ws);   // the missiles stay down for a while before they go up again
                 b.Unload = false; b.Started = false; b.Recharge = false; b.Real = false;
                 R.SetP(ws, "IsHot", false);
+                ClearCycle(ws);
                 if (again && MagazineCount(ws) > 0) Charge(ws, "after unload");
                 else _warmBox.Remove(ws);
             }
@@ -471,6 +503,7 @@ namespace AlternativeWeaponsControl
             R.SetF(ws, "_ammunitionOnWeapon", null); R.SetF(ws, "_spawnedAmmunition", null);
             try { var st = R.F(ws, "_state"); if (st != null) R.SetF(ws, "_state", Enum.Parse(st.GetType(), "Idle")); } catch { }
             R.SetP(ws, "IsHot", false);
+            ClearCycle(ws);
         }
 
         /// <summary>The launcher can be charged (a SAM / missile launcher with a warm-up and a magazine).</summary>

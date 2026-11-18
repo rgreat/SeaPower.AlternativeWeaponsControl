@@ -57,8 +57,8 @@ namespace AlternativeWeaponsControl
         static void AmmoEnsureField(string n)
         {
             if (AmmoField(n, 0) != null) return;
-            Fields.Add(new Field { Tab = "tabs.guns", Group = "grp.ammoList", Key = "Ammo/" + n + "/0", Label = n, Unit = "", Kind = Kind.Number, Step = 1f, Min = 0f, Max = 100000f });
-            Fields.Add(new Field { Tab = "tabs.guns", Group = "grp.ammoList", Key = "Ammo/" + n + "/1", Label = n, Unit = "", Kind = Kind.Number, Step = 0.1f, Min = 0f, Max = 100000f });
+            Fields.Add(new Field { Tab = "tabs.gunsAccuracy", Group = "grp.ammoList", Key = "Ammo/" + n + "/0", Label = n, Unit = "", Kind = Kind.Number, Step = 1f, Min = 0f, Max = 100000f });
+            Fields.Add(new Field { Tab = "tabs.gunsAccuracy", Group = "grp.ammoList", Key = "Ammo/" + n + "/1", Label = n, Unit = "", Kind = Kind.Number, Step = 0.1f, Min = 0f, Max = 100000f });
         }
 
         static void EnsureAmmoFields()
