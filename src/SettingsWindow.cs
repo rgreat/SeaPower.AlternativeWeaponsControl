@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Reflection;
 using BepInEx.Configuration;
 using Noesis;
+using Rgreat.Kit;
 
 namespace AlternativeWeaponsControl
 {
@@ -22,13 +23,14 @@ namespace AlternativeWeaponsControl
         public static Action<string> Trace = s => { };
         public static Action<string> Warn = s => { };
 
-        enum Kind { Number, Bool, Lang, Pick }
+        enum Kind { Number, Bool, Lang, Pick, Action }
 
         sealed class Field
         {
             public string Tab, Group, Key, Label, Unit, Game, Parent;
             public Kind Kind;
             public float Step, Min, Max;
+            public Action Act;         // Kind.Action: what the button does
             public string[] Options;   // Pick: the values of the setting (their texts are "pick.<value>")
         }
 
@@ -53,6 +55,13 @@ namespace AlternativeWeaponsControl
                 bar.Children.Add(b);
             }
             return bar;
+        }
+
+        /// <summary>A button in the list of options (no value, nothing to save).</summary>
+        static void AddAction(string tab, string group, string key, string label, Action act)
+        {
+            if (!Tabs.Contains(tab)) Tabs.Add(tab);
+            Fields.Add(new Field { Tab = tab, Group = group, Key = key, Label = label, Unit = "", Kind = Kind.Action, Act = act });
         }
 
         static void Add(string tab, string group, string key, string label, string unit, Kind kind, float step, float min, float max, string game = null, string parent = null)
@@ -110,6 +119,7 @@ namespace AlternativeWeaponsControl
             Add(TA, "grp.chasing", "Ships/NoAirChase", "No chasing air targets", "", Kind.Bool, 0, 0, 0, "game: off");
             Add("tabs.language", "grp.language", "General/Language", "Language", "", Kind.Lang, 0, 0, 0);
             Add(T5, "grp.diagnostics", "General/Debug", "Debug trace", "", Kind.Bool, 0, 0, 0);
+            AddAction(T5, "grp.diagnostics", "Debug/ScreenshotTabs", "Screenshot all tabs now", StartShots);
         }
 
         // ------------------------------------------------------------ colours (the game's dark panels)
@@ -126,6 +136,8 @@ namespace AlternativeWeaponsControl
         static Grid _root;
         static TextBlock _help, _status;
         static StackPanel _body, _tabBar;
+        static ScrollViewer _scroll;   // the scroll area of the options
+        static TabScroll _tabScroll;   // the one-line strip of tabs (Rgreat.Kit)
         static Panel _host;                // the top panel of the screen the window was put into (null: shown in a Popup)
         static TranslateTransform _move;
         static readonly Dictionary<string, string> _work = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -323,11 +335,13 @@ namespace AlternativeWeaponsControl
             Draggable(title);
             layout.Children.Add(title);
 
-            _tabBar = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(12f, 10f, 12f, 0f) };
-            Grid.SetRow(_tabBar, 1); layout.Children.Add(_tabBar);
+            _tabBar = new StackPanel { Orientation = Orientation.Horizontal };
+            _tabScroll = new TabScroll(_tabBar, B(CTitle), B(CLine), B(CText));   // one line, scrolled by the arrows at its ends / the wheel; the chosen tab is kept in view
+            _tabScroll.Root.Margin = new Thickness(12f, 10f, 12f, 0f);
+            Grid.SetRow(_tabScroll.Root, 1); layout.Children.Add(_tabScroll.Root);
 
             _body = new StackPanel { Orientation = Orientation.Vertical, Margin = new Thickness(0f, 6f, 0f, 6f) };
-            var scroll = new ScrollViewer { Content = _body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+            var scroll = _scroll = new ScrollViewer { Content = _body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
             var area = new Border { Child = scroll, Background = B(CCard), BorderBrush = B(CLine), BorderThickness = new Thickness(1f), Margin = new Thickness(12f, 4f, 12f, 0f) };
             Grid.SetRow(area, 2); layout.Children.Add(area);
 
@@ -478,6 +492,7 @@ namespace AlternativeWeaponsControl
             if (_tabBar != null)
             {
                 _tabBar.Children.Clear();
+                Border chosen = null;
                 foreach (var t in Tabs)
                 {
                     string tab = t;
@@ -489,7 +504,9 @@ namespace AlternativeWeaponsControl
                                          Background = B(sel ? CCard : CTitle), BorderBrush = B(CLine), BorderThickness = new Thickness(1f, 1f, 1f, 0f), CornerRadius = new CornerRadius(3f, 3f, 0f, 0f) };
                     b.MouseLeftButtonUp += (o, e) => { _curTab = tab; Show(); };
                     _tabBar.Children.Add(b);
+                    if (sel) chosen = b;
                 }
+                if (_tabScroll != null && chosen != null) _tabScroll.Reveal(chosen);
             }
             string group = null;
             if (_curTab == "tabs.gunsAccuracy") _body.Children.Add(SubBar());
@@ -539,8 +556,55 @@ namespace AlternativeWeaponsControl
             return new TextBlock { Text = s.ToUpperInvariant(), Foreground = B(CDim), FontSize = 11f, Margin = new Thickness(12f, 10f, 12f, 2f) };
         }
 
+        /// <summary>A row with a button (Kind.Action): the label, the button, the help on hover.</summary>
+        static FrameworkElement ActionRow(Field f)
+        {
+            var g = new Grid { Background = B(Color.FromArgb(0, 0, 0, 0)) };
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1f, GridUnitType.Star), MinWidth = 330f });
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1f, GridUnitType.Star), MinWidth = 200f });
+            var outer = new Border { Child = g, Padding = new Thickness(12f, 4f, 6f, 4f), Background = B(Color.FromArgb(0, 0, 0, 0)) };
+            var lab = Text(Loc.T("lbl." + f.Key), CText); lab.VerticalAlignment = VerticalAlignment.Center;
+            g.Children.Add(lab);
+            var btn = Btn(Loc.T("btn.run"), f.Act, 70f); btn.HorizontalAlignment = HorizontalAlignment.Left; btn.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(btn, 1); g.Children.Add(btn);
+            outer.MouseEnter += (o, e) =>
+            {
+                outer.Background = B(CHl);
+                _help.Inlines.Clear();
+                var r = new Run(Loc.T("lbl." + f.Key)); r.FontWeight = FontWeight.Bold; r.Foreground = B(CText);
+                _help.Inlines.Add(r);
+                _help.Inlines.Add(new Run(" - " + Loc.Or("help." + f.Key, "")));
+            };
+            outer.MouseLeave += (o, e) => outer.Background = B(Color.FromArgb(0, 0, 0, 0));
+            return outer;
+        }
+
+        // ---- screenshots of every tab (the settings kit, SettingsShotKit.cs): the window fitted to each tab, a PNG in BepInEx/AlternativeWeaponsControl_screens
+        static void StartShots()
+        {
+            if (P == null || SettingsShots.Busy) return;
+            P.StartCoroutine(SettingsShots.Run(new ShotAdapter(), System.IO.Path.Combine(BepInEx.Paths.BepInExRootPath, "AlternativeWeaponsControl_screens"), s => Trace(s), s => Warn(s)));
+        }
+
+        sealed class ShotAdapter : IShotWindow
+        {
+            string _tab0, _sub0;
+            public bool Begin() { if (_root == null || _body == null || !_root.IsVisible) return false; _tab0 = _curTab; _sub0 = _curSub; return true; }
+            public int TabCount { get { return Tabs.Count; } }
+            public bool TabUsable(int tab) { return true; }
+            public int Pages(int tab) { return Tabs[tab] == "tabs.gunsAccuracy" ? 2 : 1; }   // the inner tabs of "Accuracy"
+            public void Show(int tab, int page) { _curTab = Tabs[tab]; if (_curTab == "tabs.gunsAccuracy") _curSub = page == 1 ? "sub.directors" : "sub.general"; SettingsWindow.Show(); }
+            public string Name(int tab, int page) { return Loc.T(Tabs[tab]) + (Tabs[tab] == "tabs.gunsAccuracy" ? "_p" + (page + 1) : ""); }
+            public bool Rect(out float x, out float y, out float w, out float h) { return ShotFit.Rect(_root, out x, out y, out w, out h); }
+            public void FitMax() { ShotFit.Max(_root, _move); }
+            public void FitWidth() { ShotFit.Width(_root, _body, _scroll, _move, 560f); }
+            public void FitHeight() { ShotFit.Height(_root, _scroll, _move, 420f); }
+            public void End() { _curTab = _tab0; _curSub = _sub0; ShotFit.Restore(_root, _move, _winW, _winH); SettingsWindow.Show(); }
+        }
+
         static FrameworkElement Row(Field f)
         {
+            if (f.Kind == Kind.Action) return ActionRow(f);
             var g = new Grid { Background = B(Color.FromArgb(0, 0, 0, 0)) };
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1f, GridUnitType.Star), MinWidth = 330f });   // the names take what the window gains
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1f, GridUnitType.Star), MinWidth = 200f });

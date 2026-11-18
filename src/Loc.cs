@@ -231,6 +231,7 @@ namespace AlternativeWeaponsControl
             D("unit.Guns/RadarDirectorMinSolution", "x");
             D("lbl.Guns/AmmunitionFix", "Custom accuracy and power");
             D("lbl.General/Debug", "Debug trace");
+            D("lbl.Debug/ScreenshotTabs", "Screenshot all tabs now"); D("btn.run", "Run");
             D("lbl.General/Language", "Language of the texts (empty = the game's)");
             D("unit.General/Language", "code, e.g. en, ru");
             D("menu.button", "Weapons Control");
