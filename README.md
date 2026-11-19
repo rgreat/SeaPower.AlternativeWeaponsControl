@@ -13,7 +13,7 @@ Adds a new **Weapons** tab in the Unit Status window of your units, and a set of
    Drag a group title (SAM, GUNS, …) to reorder the groups.
 2. **Ground vehicles, land installations, aircraft and helicopters** get the tab too.
 3. **Fire orders** for a group, an ammunition or one launcher: pick the target on the map, salvo and launch options, cease fire, reload. A launcher given its own target fires at it and waits while it is busy or no fire-control channel is free. Kept in saved games.
-4. **Automatic use** per launcher and target domain (aircraft, missiles, surface ships, submarines, land): switch off what the AI may use by itself - e.g. keep the long-range SAMs for aircraft. Merged with the unit's Standing Orders; kept in saved games. Manual fire is never restricted. A click on a switch goes On, Off, then back to the unit's Standing Orders. A rule with Always forces a switch on at any status, Hold included (amber ring, green core); Free / Hold turn amber where rules override them.
+4. **Automatic use** per launcher and target domain (aircraft, missiles, surface ships, submarines, land): switch off what the AI may use by itself - e.g. keep the long-range SAMs for aircraft. Merged with the unit's Standing Orders (hints list the rules behind a switch; the option "Weapons that no Standing Orders rule covers" sets from which status such a weapon fires); kept in saved games. Manual fire is never restricted. A click on a switch goes On, Off, then back to the unit's Standing Orders. A rule with Always forces a switch on at any status, Hold included (amber ring, green core); Free / Hold turn amber where rules override them.
 5. **Weapons status** (Free / Tight / Hold) with "On Tight: engage hostile aircraft" and "On Free: engage unidentified aircraft" at the top of the tab. The second one engages fast (500 kn+) unidentified aircraft heading towards the ship within 20 nm. It does not know whose aircraft it is. Default: off for your ships, on for enemy AI.
 6. **Strict EMCON** next to Free / Tight / Hold: turns the unit's radars off and none can be turned on, even to engage a target (saved with the unit); they come back on when it ends. Radar directors that serve only guns are not switched off: they work as silent optical directors - not heard by ESM, accuracy between the guns' local control and the radar (a setting of the Guns tab), no tracking of shells in flight, range and night by the rules of optics. The directors window and the gun tooltip say "radar off: optical mode".
 7. **Launcher statuses** also tell "Assessing n%" and "Waiting for sensor" (the crew has not assessed the target yet), and "Sensor inoperable" (all directors destroyed). Weapons that need no sensors (guns, RBU, bombs) do not show "Sensors Offline".
@@ -53,8 +53,8 @@ Special effects (flashes, fire light, binoculars normal view, machine gun and hi
 
 ### Settings and languages
 
-1. Settings can be opened from the main menu and the pause menu; with several of the author's mods installed there is one shared "Alternative Mods" entry.
-2. Settings window in the game with tabs: Weapons panel, SAM, AI, Guns, Fire Control (General, Directors), Debug, Language.
+1. Settings can be opened from the main menu and the pause menu; one shared "Alternative Mods" entry for the author's mods opens the window of the mod used last.
+2. Settings window in the game with tabs: Weapons panel, Auto fire, Guns, Accuracy (General, Directors), AI, Debug; search by option names; one Language drop-down shared by the Alternative mods.
 3. Localized into 9 languages (en, ru, cn, de, es, fr, ko, ja, vn). The **lang/<code>.ini** files can be edited to translate or change texts.
 
 # Compatibility
