@@ -1,3 +1,14 @@
+Version 1.9.0
+- Settings window (the same window and rules in all four Alternative mods):
+  - One-line tab strip with arrows; the mouse wheel scrolls it.
+  - Search box: finds options by their names (not by descriptions); the X clears it; the text stays when you switch to another mod's window.
+  - The tab and every group have a back button (undo the edits not applied yet).
+  - The row of the installed mods at the top of the window: a click opens that mod's window (the edits are kept). Language is now one drop-down at its right for all mods ("Default" = the game's language).
+  - Ctrl+C copies the help text of the option under the mouse.
+  - The settings window opens on the mod used last (menu button; the gear of the World View window).
+- Debug: "Screenshot all tabs now" (all installed Alternative mods, BepInEx/<Mod>_screens).
+- Game terms in the texts are written as in the game's own language files.
+
 Version 1.8.0
 - Beta game: the "On Tight: engage hostile aircraft" tick is back (the release game has it as a doctrine item). The tick reads what the unit's Standing Orders say (do all its air-capable weapons engage at Weapons Tight); a click puts a rule on top of the unit's own Standing Orders (a local override), another click takes it out. Amber while the rule overrides the other rules or only some weapons engage.
 - Beta game 0.9.3: SAM charging (Ready button, auto-charge) counts the warm-up after the load again, as in the release game (the beta no longer counts it by itself); the launcher is not usable during the count.

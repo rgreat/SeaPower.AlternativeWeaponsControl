@@ -69,12 +69,26 @@ namespace Rgreat.Kit
         {
             if (root == null || body == null || area == null) return;
             float k = K(root), maxW = (UnityEngine.Screen.width - 40f) / k;
+            // a long text that wraps (a note, a help line) would make the natural width as wide as its one line: it is measured at most 260 units wide (short labels keep their width), the rows decide
+            var wrapped = new System.Collections.Generic.List<TextBlock>(); var olds = new System.Collections.Generic.List<float>();
+            Wrapping(body, wrapped);
+            foreach (var tb in wrapped) { olds.Add(tb.MaxWidth); tb.MaxWidth = 260f; }
             body.Measure(new Size(float.PositiveInfinity, float.PositiveInfinity));
             float nat = (float)body.DesiredSize.Width;
+            for (int i = 0; i < wrapped.Count; i++) wrapped[i].MaxWidth = olds[i];
             body.InvalidateMeasure();
             float chrome = (float)(root.Width - area.ViewportWidth);
-            root.Width = Math.Max(minW, Math.Min(maxW, Math.Min(1600f, nat + chrome + 4f)));
+            root.Width = Math.Max(minW, Math.Min(maxW, Math.Min(1600f, nat + chrome + 24f)));
             Corner(root, move, k);
+        }
+
+        static void Wrapping(DependencyObject d, System.Collections.Generic.List<TextBlock> list)
+        {
+            var tb = d as TextBlock;
+            if (tb != null && tb.TextWrapping != TextWrapping.NoWrap) list.Add(tb);
+            int n = 0;
+            try { n = VisualTreeHelper.GetChildrenCount(d); } catch { }
+            for (int i = 0; i < n; i++) { DependencyObject c = null; try { c = VisualTreeHelper.GetChild(d, i); } catch { } if (c != null) Wrapping(c, list); }
         }
 
         /// <summary>The height the options need, minH .. 1400 units.</summary>

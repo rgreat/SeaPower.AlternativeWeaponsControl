@@ -1,7 +1,7 @@
 // ======================================================================================================================
 // rgreat settings hub, protocol v1 - THE SAME FILE IN EVERY rgreat MOD (Alternative Game Interface, Alternative Weapons
 // Control, Alternative Damage Model, Alternative Special Effects). The canonical copy is src/SettingsHub.cs of
-// https://github.com/rgreat/SeaPower.AlternativeSpecialEffects ; change it there and copy it to the other mods unchanged
+// https://github.com/rgreat/SeaPower.AlternativeBase (src/SettingsHub.cs) ; change it there and copy it to the mods with tools/sync.sh, unchanged
 // (only the 'using' lines and the namespace below may differ if a mod needs it; the logic and the protocol must not).
 //
 // What it does: one entry for the settings of ALL the rgreat mods that are installed and ticked, in the main menu (under Mod Manager)
@@ -10,10 +10,16 @@
 //    (List<object[]>, Func<>, Action<>), so copies of this code in different dlls share it.
 //    Entry: [0] string id, [1] Func<string> title (localized, short), [2] string version, [3] int order, [4] Action<object> open(anchor UIElement),
 //    [5] Func<bool> active (the mod is ticked in the Mods menu). New protocol versions append fields; readers ignore what they do not know.
+//    Appended (the switch between the mods' windows): [6] Func<bool> dirty (edits not applied), [7] Action commit (apply the kept edits and drop the state),
+//    [8] Action discard (drop the kept edits), [9] Action hide (take the window off the screen, KEEPING the edits), [10] Func<bool> kept (hidden with edits kept),
+//    [11] Func<IEnumerator> shots (Debug: the coroutine of the screenshots of the tabs of the window that is on the screen; the Game Interface's Debug runs it for every mod).
+//  - The windows of the mods are separate, but each has a row with the mods' names at the top: a click hides this window (the edits stay) and opens the
+//    other mod's window at the same place and size (the rectangle goes through AppDomain data "rgreat.settings.v1.geom", float[x, y, w, h] in screen pixels).
+//    Apply / OK in any window applies the kept edits of the others too, Cancel / ✕ drops them. A yellow dot on a mod's name marks edits not applied yet.
 //  - The mod whose hook runs first when a menu is built puts the button in; the others find it there (main menu: a Button named
 //    "rgreatSettings"; pause menu: the list object noted in AppDomain data "rgreat.settings.v1.pause") and add nothing.
-//  - One active mod: the button carries its name and opens its settings window. Two or more: the button is "Alternative Mods"
-//    and opens a small list, one button per mod, in the order of the entries (then by id).
+//  - One active mod: the button carries its name and opens its settings window. Two or more: the button is "Alternative Mods" and opens the window
+//    of the mod used last (else the first in the order of the entries, then by id); the row of the mods at the top of the window switches between them.
 //  - The hub logs to LogOutput.log (source 'rgreat settings hub'): every click, every failure.
 //  - Menus are built each time they are shown, so the label always reflects the mods that are active now. No polling anywhere.
 //  - A mod that registers later than the first one (early start under Keel) refreshes the text of the buttons already in the menus (RefreshLabels, in Register and in Install).
@@ -61,6 +67,115 @@ namespace Rgreat.Hub
                 r.Add(new object[] { id, title, version, order, open, active });
             }
             RefreshLabels();
+        }
+
+        /// <summary>As above, with what the switch between the mods' windows needs (see the header).</summary>
+        public static void Register(string id, Func<string> title, string version, int order, Action<object> open, Func<bool> active,
+                                    Func<bool> dirty, Action commit, Action discard, Action hide, Func<bool> kept, Func<IEnumerator> shots = null)
+        {
+            var r = Registry();
+            lock (r)
+            {
+                r.RemoveAll(e => e.Length > 0 && string.Equals(e[0] as string, id, StringComparison.Ordinal));
+                r.Add(new object[] { id, title, version, order, open, active, dirty, commit, discard, hide, kept, shots });
+            }
+            RefreshLabels();
+        }
+
+        /// <summary>[11] (appended later) the coroutine that takes the screenshots of the tabs of the mod's window that is on the screen now (Debug); null when the mod has none.</summary>
+        public static Func<IEnumerator> ShotsOf(object[] e) { return e.Length > 11 ? e[11] as Func<IEnumerator> : null; }
+
+        // ------------------------------------------------------------ the switch between the mods' windows
+
+        const string GeomKey = "rgreat.settings.v1.geom";
+        const string LangKey = "rgreat.settings.v1.lang", LangSinksKey = "rgreat.settings.v1.langsinks";
+
+        // ------------------------------------------------------------ the language shared by the mods
+        // One setting for all the rgreat mods: a language code ("" = the default, the game's own) in AppDomain data; every mod joins with a sink
+        // that stores the code in its own config and makes its texts follow. The first mod that joins brings its stored value; the others take the shared one.
+
+        const string CarryKey = "rgreat.settings.v1.querycarry";
+        /// <summary>The text of the search box goes with the user to the window of another mod: stored when a window is switched, taken (once) by the next window's search box.</summary>
+        public static void CarryQuery(string q) { AppDomain.CurrentDomain.SetData(CarryKey, q ?? ""); }
+        public static string TakeQuery() { var q = (AppDomain.CurrentDomain.GetData(CarryKey) as string) ?? ""; AppDomain.CurrentDomain.SetData(CarryKey, ""); return q; }
+
+        /// <summary>The shared language code ("" = the game's own).</summary>
+        public static string SharedLanguage() { return (AppDomain.CurrentDomain.GetData(LangKey) as string) ?? ""; }
+
+        /// <summary>Once per mod at start: 'own' is the language stored in the mod's config, 'apply' stores a code there and refreshes the texts.</summary>
+        public static void JoinLanguage(string own, Action<string> apply)
+        {
+            own = own ?? "";
+            lock (typeof(object))
+            {
+                var sinks = AppDomain.CurrentDomain.GetData(LangSinksKey) as List<Action<string>>;
+                if (sinks == null) { sinks = new List<Action<string>>(); AppDomain.CurrentDomain.SetData(LangSinksKey, sinks); }
+                sinks.Add(apply);
+                var shared = AppDomain.CurrentDomain.GetData(LangKey) as string;
+                if (shared == null) { AppDomain.CurrentDomain.SetData(LangKey, own); return; }
+                if (shared != own) { try { apply(shared); } catch (Exception e) { Log("language: " + e.Message); } }
+            }
+        }
+
+        /// <summary>The user chose a language: every mod stores it and follows.</summary>
+        public static void SetLanguage(string code)
+        {
+            code = code ?? "";
+            AppDomain.CurrentDomain.SetData(LangKey, code);
+            var sinks = AppDomain.CurrentDomain.GetData(LangSinksKey) as List<Action<string>>;
+            if (sinks == null) return;
+            foreach (var s in sinks.ToArray()) { try { s(code); } catch (Exception e) { Log("language: " + e.Message); } }
+        }
+
+        /// <summary>The mods that are active now, in order.</summary>
+        public static List<object[]> ActiveMods() { return Active(); }
+        public static string IdOf(object[] e) { return e[0] as string; }
+        public static string TitleOf(object[] e) { return Title(e); }
+        /// <summary>The title of a settings window: the mod's own when it is alone, the common one (as on the menu button) when several mods are installed.</summary>
+        public static string WindowTitle(string own) { return Active().Count > 1 ? Hub() : own; }
+
+        static bool Call(object[] e, int i) { try { var f = e.Length > i ? e[i] as Func<bool> : null; return f != null && f(); } catch { return false; } }
+        static void Do(object[] e, int i) { try { var a = e.Length > i ? e[i] as Action : null; if (a != null) a(); } catch (Exception ex) { Log("settings switch: " + e[0] + ": " + ex.Message); } }
+
+        public static bool IsDirty(object[] e) { return Call(e, 6); }
+
+        /// <summary>The rectangle of the window being replaced (screen pixels), taken by the next window that is put on the screen; null when there is none.</summary>
+        public static float[] TakeGeometry()
+        {
+            var g = AppDomain.CurrentDomain.GetData(GeomKey) as float[];
+            if (g != null) AppDomain.CurrentDomain.SetData(GeomKey, null);
+            return g != null && g.Length >= 4 ? g : null;
+        }
+
+        /// <summary>The window of 'selfId' goes (its edits stay), the window of 'targetId' comes at the same place and size.</summary>
+        public static void SwitchTo(string selfId, string targetId, UIElement anchor, float[] rect)
+        {
+            var r = Registry(); object[] self = null, target = null;
+            lock (r) foreach (var e in r) { var id = e[0] as string; if (id == selfId) self = e; else if (id == targetId) target = e; }
+            if (target == null) { Log("switch: " + targetId + " is not registered"); return; }
+            Log("switch: " + selfId + " -> " + targetId);
+            AppDomain.CurrentDomain.SetData(LastKey, targetId);
+            try
+            {
+                if (rect != null) AppDomain.CurrentDomain.SetData(GeomKey, rect);
+                if (self != null) Do(self, 9);
+                var open = target[4] as Action<object>;
+                if (open != null) open(anchor);
+            }
+            catch (Exception ex) { Log("switch to " + targetId + " failed: " + ex); }
+            finally { AppDomain.CurrentDomain.SetData(GeomKey, null); }
+        }
+
+        /// <summary>Apply / OK in the window of 'selfId': the edits kept in the hidden windows of the other mods are applied too.</summary>
+        public static void CommitOthers(string selfId)
+        {
+            foreach (var e in Active()) if ((e[0] as string) != selfId && Call(e, 10) && Call(e, 6)) Do(e, 7);
+        }
+
+        /// <summary>Cancel / ✕ in the window of 'selfId': the edits kept in the other mods are dropped.</summary>
+        public static void DiscardOthers(string selfId)
+        {
+            foreach (var e in Active()) if ((e[0] as string) != selfId && Call(e, 10)) Do(e, 8);
         }
 
         /// <summary>The buttons already in the menus get the text for the mods registered now (a mod that starts later than the first one).</summary>
@@ -330,90 +445,44 @@ namespace Rgreat.Hub
             return f == null ? null : f.GetValue(null) as UIElement;
         }
 
-        /// <summary>One active mod: its window at once. Several: the list.</summary>
+        const string LastKey = "rgreat.settings.v1.last";
+
+        /// <summary>The window of the mod used last (else the first one); the others are reached by the row of the mods at the top of the window.</summary>
         static void Open(UIElement anchor)
         {
             if (anchor == null) { Log("click: the menu screen was not found"); _trace("SettingsHub: the menu screen was not found."); return; }
             var a = Active();
             Log("click: " + a.Count + " active mod(s): " + string.Join(", ", a.ConvertAll(e => (string)e[0]).ToArray()));
             if (a.Count == 0) return;
-            if (a.Count == 1) { Run(a[0], anchor); return; }
-            ShowList(anchor, a);
+            DiscardOthers(null);   // a new start from the menu: edits left in a hidden window (the game closed the visible one without Cancel) are dropped
+            string last = AppDomain.CurrentDomain.GetData(LastKey) as string;
+            Run(a.Find(e => (string)e[0] == last) ?? a[0], anchor);
+        }
+
+        /// <summary>A window of the mod 'id' is on the screen: the menu and the gears open this mod's window next time.</summary>
+        public static void MarkLast(string id)
+        {
+            if (!string.IsNullOrEmpty(id)) AppDomain.CurrentDomain.SetData(LastKey, id);
+        }
+
+        /// <summary>The gear of a window of 'ownId' (World View): opens the window of the mod used last when that is another active mod; false when it is 'ownId' itself, none, or not active (the caller opens its own).</summary>
+        public static bool OpenLastOther(UIElement anchor, string ownId)
+        {
+            try
+            {
+                string last = AppDomain.CurrentDomain.GetData(LastKey) as string;
+                if (string.IsNullOrEmpty(last) || last == ownId) return false;
+                var e = Active().Find(x => (string)x[0] == last);
+                if (e == null) return false;
+                Run(e, anchor); return true;
+            }
+            catch (Exception ex) { Log("open the last mod failed: " + ex.Message); return false; }
         }
 
         static void Run(object[] e, UIElement anchor)
         {
-            try { var open = e[4] as Action<object>; if (open != null) open(anchor); }
+            try { AppDomain.CurrentDomain.SetData(LastKey, e[0] as string); var open = e[4] as Action<object>; if (open != null) open(anchor); }
             catch (Exception ex) { Log("opening " + e[0] + " failed: " + ex); _trace("SettingsHub: opening " + e[0] + " failed: " + ex); }
-        }
-
-        // ------------------------------------------------------------ the list of mods
-        // Hosted like the mods' settings windows: added to the top Grid / Canvas of the menu screen with a high z-index (a Popup is not used:
-        // it was not shown in the menus). A dim layer behind the frame closes the list on a click outside it.
-
-        static Panel _host;
-        static FrameworkElement _overlay;
-
-        static DependencyObject Parent(DependencyObject e) { try { return VisualTreeHelper.GetParent(e); } catch { return null; } }
-
-        static void ShowList(UIElement anchor, List<object[]> entries)
-        {
-            try
-            {
-                CloseList();
-                Panel panel = null;
-                for (DependencyObject p = anchor; p != null; p = Parent(p))
-                {
-                    var pn = p as Panel;
-                    bool itemsHost = false;
-                    try { itemsHost = pn != null && pn.IsItemsHost; } catch { }
-                    if (pn != null && !itemsHost && (pn is Grid || pn is Canvas)) panel = pn;
-                }
-                if (panel == null) { Log("the list of mods: no panel to host it in; opening the first mod's settings"); Run(entries[0], anchor); return; }
-
-                var column = new StackPanel { Margin = new Thickness(16f) };
-                column.Children.Add(new TextBlock { Text = Hub(), FontSize = 18f, FontWeight = FontWeight.Bold, Foreground = new SolidColorBrush(Color.FromRgb(242, 245, 250)), Margin = new Thickness(0f, 0f, 0f, 12f) });
-                foreach (var e in entries)
-                {
-                    var entry = e;
-                    var b = new Button { Content = Title(e), FontSize = 16f, MinWidth = 280f, Margin = new Thickness(0f, 0f, 0f, 8f), Padding = new Thickness(18f, 8f, 18f, 8f) };
-                    b.Click += (s, a) => { CloseList(); Log("opening the settings of " + entry[0]); Run(entry, anchor); };
-                    column.Children.Add(b);
-                }
-                var frame = new Border
-                {
-                    Background = new SolidColorBrush(Color.FromRgb(27, 42, 64)), BorderBrush = new SolidColorBrush(Color.FromRgb(95, 200, 228)),
-                    BorderThickness = new Thickness(2.5f), CornerRadius = new CornerRadius(12f), Child = column,
-                    HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
-                };
-                frame.MouseLeftButtonDown += (s, a) => { a.Handled = true; };
-                var overlay = new Grid { Background = new SolidColorBrush(Color.FromArgb(110, 0, 0, 0)) };
-                overlay.Children.Add(frame);
-                overlay.MouseLeftButtonDown += (s, a) => { a.Handled = true; CloseList(); };
-
-                var grid = panel as Grid;
-                if (grid != null)
-                {
-                    Grid.SetRow(overlay, 0); Grid.SetColumn(overlay, 0);
-                    Grid.SetRowSpan(overlay, Math.Max(1, grid.RowDefinitions.Count)); Grid.SetColumnSpan(overlay, Math.Max(1, grid.ColumnDefinitions.Count));
-                }
-                else
-                {
-                    overlay.Width = panel.ActualWidth > 0 ? panel.ActualWidth : 1280f; overlay.Height = panel.ActualHeight > 0 ? panel.ActualHeight : 720f;
-                    Canvas.SetLeft(overlay, 0f); Canvas.SetTop(overlay, 0f);
-                }
-                Panel.SetZIndex(overlay, 30000);
-                panel.Children.Add(overlay);
-                _host = panel; _overlay = overlay;
-                Log("the list of mods shown (" + entries.Count + " mods) in " + panel.GetType().Name + " " + panel.ActualWidth + " x " + panel.ActualHeight);
-            }
-            catch (Exception e) { Log("the list of mods failed: " + e); _trace("SettingsHub list: " + e); }
-        }
-
-        static void CloseList()
-        {
-            try { if (_host != null && _overlay != null) _host.Children.Remove(_overlay); } catch { }
-            _host = null; _overlay = null;
         }
     }
 }

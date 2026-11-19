@@ -1,10 +1,10 @@
-Version 1.8.0
-- New: Strict EMCON switch next to Free / Tight / Hold. It turns the ship's radars off and none can be turned on. Radar directors of guns keep working as silent optical ones: the enemy does not hear them, but they are less accurate, poor at night and see only a limited range.
-- New option: SAM on Tight fires only when the aircraft is inside the missile's no-escape zone.
-- New launcher statuses: Assessing n%, Waiting for sensor, Sensor inoperable.
-- Guns and other weapons that need no sensors no longer show grey "Sensors Offline".
-- Fixed: FPS drop caused by the mod.
-- Fixed: empty ammunition cells of aircraft hardpoints.
-- Overlapping firing arcs are drawn without a dark red patch.
-- Fixed: deleting a sonobuoy / attack point on the map with X left its orders running.
-- Beta: the "On Tight: engage hostile aircraft" tick is back. It shows what the Standing Orders say and adds its own rule to the unit; amber when that rule overrides the others.
+Version 1.9.0
+- One settings window for all four Alternative mods:
+  - Find any option by typing its name in the search box.
+  - Switch between the mods' settings with one click; your edits are kept.
+  - Choose the language once for all mods.
+  - Undo changes you have not applied yet.
+- Hints of Free / Hold buttons, the On Tight tick and launcher chips list the Standing Orders rules behind them; long hints stay while the mouse is over them.
+- New option "Weapons that no Standing Orders rule covers": from which weapon status such a weapon fires by itself (it never did before).
+- Fixed: deleting an attack order (X) now fully cancels it.
+- Game beta 0.9.3: the "On Tight: engage hostile aircraft" tick is back; SAM charging counts the warm-up again.

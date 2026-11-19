@@ -29,7 +29,7 @@ namespace AlternativeWeaponsControl
     {
         public const string PluginGuid = "com.rgreat.seapower.alternativeweaponscontrol";
         public const string PluginName = "Alternative Weapons Control";
-        public const string PluginVersion = "1.8.0";
+        public const string PluginVersion = "1.9.0";
 
         public static readonly string BuildId = ReadBuildId();
 
@@ -252,6 +252,7 @@ namespace AlternativeWeaponsControl
                 "Language of the mod's texts: a code of a game language (en, ru ...); empty = the game's own language. The texts are in the files lang/<code>.ini in the mod folder - edit them to translate.");
             Entries.Add(_uncovered); Entries.Add(_gunMemory); Entries.Add(_gunReroll); Entries.Add(_barrelScatter); Entries.Add(_pointFire); Entries.Add(_bigLocal); Entries.Add(_clickAllGuns); Entries.Add(_gunLocalFire); Entries.Add(_bottomFire); Entries.Add(_secTargets); Entries.Add(_clickVolume); Entries.Add(_samButton); Entries.Add(_zoneFire); Entries.Add(_plotHostile); Entries.Add(_samTightNez); Entries.Add(_freeAirKnots); Entries.Add(_freeAirNm); Entries.Add(_freeAirOwn); Entries.Add(_freeAirEnemy); Entries.Add(_tabLand); Entries.Add(_tabAir); Entries.Add(_samAuto); Entries.Add(_samKeep); Entries.Add(_samAnim); Entries.Add(_samAutoRange); Entries.Add(_samMinutes); Entries.Add(_gunOneDirector); Entries.Add(_gunChannels); Entries.Add(_noRbuSurfaceChase); Entries.Add(_noAirChase); Entries.Add(_gunAimBeyond); Entries.Add(_engageOutside); Entries.Add(_gunMinError); Entries.Add(_accuracyMult); Entries.Add(_fcAccuracy); Entries.Add(_weakBoost); Entries.Add(_gainLocal); Entries.Add(_emconOptical); Entries.Add(_minSolOptical); Entries.Add(_minSolRadar); Entries.Add(_solSpeed); Entries.Add(_solLoss); Entries.Add(_localGrowth); Entries.Add(_ammoFix); Entries.Add(_debugEntry); Entries.Add(_language);
             Loc.Trace = Trace; Loc.Forced = () => _language == null ? "" : _language.Value;
+            Rgreat.Hub.SettingsHub.JoinLanguage(_language.Value, v => { _language.Value = v; Loc.Refresh(); });   // one language for all the rgreat mods
             foreach (var en in Entries) Loc.Register("help." + en.Definition.Section + "/" + en.Definition.Key, en.Description == null ? "" : en.Description.Description);
 
             _debug = _debugEntry.Value;
@@ -350,7 +351,8 @@ namespace AlternativeWeaponsControl
             {
                 // the shared settings entry of the author's mods in the main and the pause menu (Rgreat.Hub, SettingsHub.cs is the same file in every mod)
                 Rgreat.Hub.SettingsHub.Register("alternative-weapons-control", () => Loc.T("menu.button"), PluginVersion, 20,
-                    anchor => SettingsWindow.Open(anchor as Noesis.UIElement, null), () => Enabled);
+                    anchor => SettingsWindow.Open(anchor as Noesis.UIElement, null), () => Enabled,
+                    SettingsWindow.IsDirty, SettingsWindow.CommitKept, SettingsWindow.DiscardKept, SettingsWindow.Hide, SettingsWindow.Kept, SettingsWindow.ShotsRun);
                 Rgreat.Hub.SettingsHub.Install(harmony, asm, Trace, () => Loc.Language);
             }
             catch (Exception e) { Warn("Settings menu entry failed: " + e.Message); }

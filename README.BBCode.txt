@@ -1,4 +1,4 @@
-Version 1.8.0.
+Version 1.9.0.
 
 Adds a new [b]Weapons[/b] tab in the Unit Status window of your units, and a set of combat improvements.
 

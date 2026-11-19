@@ -117,29 +117,35 @@ namespace AlternativeWeaponsControl
             Add(TA, "grp.targeting", "Fire/EngageByPlotRelation", "Disable AI cheating", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(TA, "grp.chasing", "Ships/NoRbuSurfaceChase", "No chasing surface targets with ASW mortars", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(TA, "grp.chasing", "Ships/NoAirChase", "No chasing air targets", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add("tabs.language", "grp.language", "General/Language", "Language", "", Kind.Lang, 0, 0, 0);
             Add(T5, "grp.diagnostics", "General/Debug", "Debug trace", "", Kind.Bool, 0, 0, 0);
             AddAction(T5, "grp.diagnostics", "Debug/ScreenshotTabs", "Screenshot all tabs now", StartShots);
         }
 
         // ------------------------------------------------------------ colours (the game's dark panels)
-        static readonly Color CBg = Color.FromRgb(30, 33, 38), CCard = Color.FromRgb(45, 50, 57),
-                              CLine = Color.FromRgb(70, 76, 86), CText = Color.FromRgb(230, 232, 235), CDim = Color.FromRgb(150, 156, 162),
-                              CWarn = Color.FromRgb(236, 212, 110), CTitle = Color.FromRgb(43, 48, 56), CField = Color.FromRgb(21, 24, 28),
-                              CHl = Color.FromRgb(52, 58, 66);
+        static readonly Color CBg = WinStyle.Bg, CCard = WinStyle.Card, CLine = WinStyle.Line, CText = WinStyle.Text, CDim = WinStyle.Dim,
+                              CWarn = WinStyle.Warn, CTitle = WinStyle.Title, CField = WinStyle.Field, CHl = WinStyle.Hl;
 
-        static SolidColorBrush B(Color c) { return new SolidColorBrush(c); }
+        static SolidColorBrush B(Color c) { return WinStyle.B(c); }
 
         // ------------------------------------------------------------ state
-        static Popup _popup;
-        static UIElement _top;             // the screen the window is centred on (mouse positions for dragging)
-        static Grid _root;
+        // the window itself (Rgreat.Kit): where it is, its size, dragging, resizing, the game's keyboard
+        static readonly WinFrame _f = MakeFrame();
+
+        static WinFrame MakeFrame()
+        {
+            var f = new WinFrame(820f, 805f);   // screen pixels: converted to UI units at the first opening
+            f.Id = SelfId;
+            f.Trace = s => Trace(s);
+            f.ResizeTip = () => Loc.T("set.resizeTip");
+            f.LanguageLabel = () => Loc.T("lang.caption");
+            f.Languages = () => { var l = new List<KeyValuePair<string, string>> { new KeyValuePair<string, string>("", Loc.T("lang.default")) }; l.AddRange(Loc.GameLanguages()); return l; };
+            f.LanguageChanged = () => { Loc.Refresh(); _redraw = 2; };   // the window is rebuilt a couple of frames later (Tick)
+            return f;
+        }
         static TextBlock _help, _status;
         static StackPanel _body, _tabBar;
         static ScrollViewer _scroll;   // the scroll area of the options
         static TabScroll _tabScroll;   // the one-line strip of tabs (Rgreat.Kit)
-        static Panel _host;                // the top panel of the screen the window was put into (null: shown in a Popup)
-        static TranslateTransform _move;
         static readonly Dictionary<string, string> _work = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         static AwcPlugin P { get { return AwcPlugin.Instance; } }
@@ -151,7 +157,18 @@ namespace AlternativeWeaponsControl
             return null;
         }
 
-        public static bool IsOpen { get { return (_host != null && _root != null && SafeParent(_root) != null) || (_popup != null && _popup.IsOpen); } }
+        public static bool IsOpen { get { return _f.Attached; } }
+
+        // ------------------------------------------------------------ the switch between the mods' windows (Rgreat.Hub.SettingsHub)
+        const string SelfId = "alternative-weapons-control";
+        static bool _kept;   // taken off the screen by the switch to another mod's window, the edits kept (Open puts them back)
+        public static bool IsDirty() { return (_kept || IsOpen) && Dirty(); }
+        public static bool Kept() { return _kept; }
+        public static void Hide() { Close(); _kept = true; }
+        public static void CommitKept() { Commit(true); _kept = false; }
+        public static void DiscardKept() { Load(); Close(); _kept = false; }
+        /// <summary>Cancel / ✕: the edits are dropped, here and in the windows of the other mods that are kept.</summary>
+        static void Cancel() { Rgreat.Hub.SettingsHub.DiscardOthers(SelfId); Load(); Close(); }
 
         // ------------------------------------------------------------ open / close
 
@@ -165,70 +182,25 @@ namespace AlternativeWeaponsControl
                 if (IsOpen)
                 {
                     bool shown = false;
-                    try { shown = _root != null && _root.IsVisible; } catch { }
+                    try { shown = _f.Root != null && _f.Root.IsVisible; } catch { }
                     if (shown) return;
                 }
                 Close();
-                DependencyObject top = anchor; Panel panel = null;
-                foreach (var start in new[] { anchor, other })
-                {
-                    if (start == null || panel != null) continue;
-                    for (DependencyObject p = start; p != null; p = SafeParent(p))
-                    {
-                        top = p;
-                        var pn = p as Panel;
-                        bool itemsHost = false;
-                        try { itemsHost = pn != null && pn.IsItemsHost; } catch { }
-                        if (pn != null && !itemsHost && (pn is Grid || pn is Canvas)) panel = pn;
-                    }
-                }
-                _top = top as UIElement ?? anchor;
+                var panel = _f.Locate(anchor, other);
                 EnsureAmmoFields();
-                Load();
+                if (_kept) _kept = false; else Load();   // put back after a switch to another mod's window: the edits are kept
                 BuildWindow();
-                _move = new TranslateTransform(0f, 0f);
-                _place = 0;
-                _root.LayoutUpdated += OnLayout;
-                _root.RenderTransform = _move;
-                if (panel != null)
-                {
-                    var grid = panel as Grid;
-                    if (grid != null)
-                    {
-                        _root.HorizontalAlignment = HorizontalAlignment.Center;
-                        _root.VerticalAlignment = VerticalAlignment.Center;
-                        Grid.SetRow(_root, 0); Grid.SetColumn(_root, 0);
-                        Grid.SetRowSpan(_root, Math.Max(1, grid.RowDefinitions.Count));
-                        Grid.SetColumnSpan(_root, Math.Max(1, grid.ColumnDefinitions.Count));
-                    }
-                    else
-                    {
-                        float w = panel.ActualWidth > 0 ? panel.ActualWidth : 1280f, h = panel.ActualHeight > 0 ? panel.ActualHeight : 720f;
-                        Canvas.SetLeft(_root, Math.Max(0f, (w - _root.Width) / 2f));
-                        Canvas.SetTop(_root, Math.Max(0f, (h - _root.Height) / 2f));
-                    }
-                    Panel.SetZIndex(_root, 30000);
-                    panel.Children.Add(_root);
-                    _host = panel;
-                }
-                else
-                {
-                    _popup = new Popup { Child = _root, StaysOpen = true, AllowsTransparency = true, Placement = PlacementMode.Center, PlacementTarget = _top };
-                    _popup.IsOpen = true;
-                }
+                _f.Mount(panel);
                 Show();
             }
             catch (Exception e) { Warn("Settings window could not be opened: " + e.Message); Trace("SettingsWindow.Open: " + e); }
         }
 
-        static DependencyObject SafeParent(DependencyObject e) { try { return VisualTreeHelper.GetParent(e); } catch { return null; } }
 
         static void Close()
         {
             Typing(false);
-            try { var pp = _root == null ? null : SafeParent(_root) as Panel; if (pp != null) pp.Children.Remove(_root); } catch { }
-            try { if (_popup != null) { _popup.IsOpen = false; _popup.Child = null; } } catch { }
-            _host = null; _popup = null;
+            _f.Unmount();
         }
 
         /// <summary>The .cfg was changed outside the window: the window shows it, unless there are unsaved edits.</summary>
@@ -262,221 +234,46 @@ namespace AlternativeWeaponsControl
 
         static bool Dirty() { if (AmmoListDirty()) return true; foreach (var f in Fields) if (!Same(Get(f), Saved(f))) return true; return false; }
 
-        // ------------------------------------------------------------ the game's keyboard while typing
-
-        static PropertyInfo _ihInstance; static FieldInfo _ihTyping; static bool _ihTried;
-
-        static void Typing(bool on)
-        {
-            try
-            {
-                if (!_ihTried)
-                {
-                    _ihTried = true;
-                    foreach (var a in AppDomain.CurrentDomain.GetAssemblies())
-                    {
-                        if (a.GetName().Name != "Seapower-Scripts") continue;
-                        var ih = a.GetType("SeaPower.InputHandler"); var sg = a.GetType("SeaPower.Singleton`1");
-                        if (ih != null && sg != null)
-                        {
-                            _ihInstance = sg.MakeGenericType(ih).GetProperty("Instance", BindingFlags.Static | BindingFlags.Public);
-                            _ihTyping = ih.GetField("typingActive", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                        }
-                    }
-                }
-                if (_ihInstance == null || _ihTyping == null) return;
-                var inst = _ihInstance.GetValue(null, null);
-                if (inst != null) _ihTyping.SetValue(inst, on);
-            }
-            catch (Exception e) { Trace("typing: " + e.Message); }
-        }
 
         // ------------------------------------------------------------ building
 
-        static TextBlock Text(string s, Color c, float size = 13f)
-        {
-            return new TextBlock { Text = s, Foreground = B(c), FontSize = size, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.NoWrap };
-        }
+        static TextBlock Text(string s, Color c, float size = 13f) { return _f.Text(s, c, size); }
+        static Button Btn(string s, Action click, float minW = 0f) { return _f.Btn(s, click, minW); }
+        static TextBox Edit(string text, float width) { return _f.Edit(text, width); }
+        static void Typing(bool on) { _f.Typing(on); }
+        static Path Cross(float size) { return WinStyle.Cross(size); }
+        static bool TryNum(string s, out float v) { return WinStyle.TryNum(s, out v); }
+        static float Num(string s) { return WinStyle.Num(s); }
+        static TextBlock GroupTitle(string s) { return WinStyle.GroupTitle(s); }
+        static DependencyObject SafeParent(DependencyObject e) { return WinStyle.SafeParent(e); }
 
-        static Button Btn(string s, Action click, float minW = 0f)
-        {
-            var b = new Button { Content = s, Padding = new Thickness(10f, 2f, 10f, 2f), Margin = new Thickness(0f, 0f, 6f, 0f), MinHeight = 26f, MinWidth = minW };
-            b.Click += (o, e) => { try { click(); } catch (Exception ex) { Trace("button " + s + ": " + ex); } };
-            return b;
-        }
 
-        // size in UI units (the game's UI scale applies): everything fits at once; kept while the game runs, at most the screen less 40 px
-        const float WinW = 820f, WinH = 805f   /* screen pixels: converted to UI units at the first opening */;
-        static float _winW = WinW, _winH = WinH;
-        static int _place;
-        static bool _sizedOnce;
 
         static void BuildWindow(bool keepRoot = false)
         {
-            if (keepRoot && _root != null) _root.Children.Clear();
-            else _root = new Grid { Width = _winW, Height = _winH };
-            var win = new Border { Background = B(CBg), BorderBrush = B(CLine), BorderThickness = new Thickness(1f), CornerRadius = new CornerRadius(4f) };
-            _root.Children.Add(win);
-            var layout = new Grid();
-            for (int r = 0; r < 5; r++) layout.RowDefinitions.Add(new RowDefinition { Height = r == 2 ? new GridLength(1f, GridUnitType.Star) : GridLength.Auto });
-            win.Child = layout;
-
-            // title bar: drag to move, ✕ to close
-            var title = new Grid { Background = B(CTitle), Height = 32f };
-            title.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1f, GridUnitType.Star) });
-            title.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            var tt = Text(Loc.T("set.title"), CText, 14f); tt.Margin = new Thickness(10f, 0f, 0f, 0f);
-            title.Children.Add(tt);
-            var x = new Button { Content = Cross(10f), Width = 28f, Height = 24f, Padding = new Thickness(0f), Margin = new Thickness(0f, 0f, 4f, 0f),
-                                 HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-            x.Click += (o, e) => Close();
-            Grid.SetColumn(x, 1);
-            title.Children.Add(x);
-            Draggable(title);
-            layout.Children.Add(title);
+            if (keepRoot && _f.Root != null) _f.Root.Children.Clear();
+            else _f.NewRoot();
+            var win = _f.Window();
+            var parts = new List<UIElement>();
+            parts.Add(_f.TitleBar(Loc.T("set.title"), Cancel));
+            var modRow = _f.ModRow();   // the installed mods: a click switches to that mod's window
+            if (modRow != null) parts.Add(modRow);
 
             _tabBar = new StackPanel { Orientation = Orientation.Horizontal };
             _tabScroll = new TabScroll(_tabBar, B(CTitle), B(CLine), B(CText));   // one line, scrolled by the arrows at its ends / the wheel; the chosen tab is kept in view
-            _tabScroll.Root.Margin = new Thickness(12f, 10f, 12f, 0f);
-            Grid.SetRow(_tabScroll.Root, 1); layout.Children.Add(_tabScroll.Root);
+            parts.Add(_f.ToolRow(_tabScroll.Root, Loc.T("set.search"), () => Show(), () => TabChanged(_curTab), RevertTab, Loc.T("set.revertTab")));   // the strip of tabs, the search, the revert of the tab
 
             _body = new StackPanel { Orientation = Orientation.Vertical, Margin = new Thickness(0f, 6f, 0f, 6f) };
             var scroll = _scroll = new ScrollViewer { Content = _body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
-            var area = new Border { Child = scroll, Background = B(CCard), BorderBrush = B(CLine), BorderThickness = new Thickness(1f), Margin = new Thickness(12f, 4f, 12f, 0f) };
-            Grid.SetRow(area, 2); layout.Children.Add(area);
+            var area = _f.Card(scroll);
+            parts.Add(area);
 
-            _help = new TextBlock { Foreground = B(Color.FromRgb(194, 199, 204)), FontSize = 12f, TextWrapping = TextWrapping.Wrap, Text = Loc.T("set.hint") };
-            var hb = new Border { Child = _help, Background = B(Color.FromRgb(34, 38, 44)), BorderBrush = B(CLine), BorderThickness = new Thickness(1f),
-                                  Padding = new Thickness(10f, 8f, 10f, 8f), Margin = new Thickness(12f, 8f, 12f, 0f), Height = 108f, CornerRadius = new CornerRadius(3f) };
-            Grid.SetRow(hb, 3); layout.Children.Add(hb);
+            parts.Add(_f.HelpPane(Loc.T("set.hint")));
+            _help = _f.Help;
 
-            var foot = new Grid { Margin = new Thickness(12f, 10f, 12f, 12f) };
-            foot.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            foot.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1f, GridUnitType.Star) });
-            foot.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            _status = Text("", CDim, 11f); _status.HorizontalAlignment = HorizontalAlignment.Right; _status.Margin = new Thickness(0f, 0f, 10f, 0f);
-            Grid.SetColumn(_status, 1); foot.Children.Add(_status);
-            var right = new StackPanel { Orientation = Orientation.Horizontal };
-            right.Children.Add(Btn(Loc.T("set.cancel"), () => { Load(); Close(); }, 70f));   // the saved values back: edits not applied are dropped
-            right.Children.Add(Btn(Loc.T("set.apply"), () => Commit(false), 70f));
-            var ok = Btn(Loc.T("set.ok"), () => Commit(true), 70f); ok.Margin = new Thickness(0f);
-            right.Children.Add(ok);
-            Grid.SetColumn(right, 2); foot.Children.Add(right);
-            Grid.SetRow(foot, 4); layout.Children.Add(foot);
-
-            AddResizeHandles();
-        }
-
-        /// <summary>
-        /// Resizing by the window's edges (5 px strips) and corners (16 px; the bottom right one shows the grip lines), as in
-        /// Alternative Damage Model: 560..1600 x 420..1400, the settings area takes the change. Dragging the left or top side keeps
-        /// the opposite side in place. The size is kept while the game runs.
-        /// </summary>
-        static void AddResizeHandles()
-        {
-            for (int sy = -1; sy <= 1; sy++)
-                for (int sx = -1; sx <= 1; sx++)
-                    if (sx != 0 || sy != 0) _root.Children.Add(ResizeHandle(sx, sy));
-        }
-
-        /// <param name="sx">-1 left, 1 right, 0 neither</param>
-        /// <param name="sy">-1 top, 1 bottom, 0 neither</param>
-        static FrameworkElement ResizeHandle(int sx, int sy)
-        {
-            const float Edge = 5f, Corner = 16f;
-            bool corner = sx != 0 && sy != 0;
-            var h = new Border { Background = B(Color.FromArgb(0, 0, 0, 0)),
-                                 HorizontalAlignment = sx < 0 ? HorizontalAlignment.Left : sx > 0 ? HorizontalAlignment.Right : HorizontalAlignment.Stretch,
-                                 VerticalAlignment = sy < 0 ? VerticalAlignment.Top : sy > 0 ? VerticalAlignment.Bottom : VerticalAlignment.Stretch };
-            if (sx != 0) h.Width = corner ? Corner : Edge;
-            if (sy != 0) h.Height = corner ? Corner : Edge;
-            if (sx == 0) h.Margin = new Thickness(Corner, 0f, Corner, 0f);        // the corners belong to the corner handles
-            else if (sy == 0) h.Margin = new Thickness(0f, Corner, 0f, Corner);
-            if (sx > 0 && sy > 0)
-            {
-                h.Margin = new Thickness(0f, 0f, 1f, 1f);
-                h.Child = new Path { Data = new StreamGeometry("M15,4 L4,15 M15,8 L8,15 M15,12 L12,15"), Stroke = B(CDim), StrokeThickness = 1f };
-                try { ToolTipService.SetToolTip(h, Loc.T("set.resizeTip")); } catch { }
-            }
-            try { h.Cursor = corner ? (sx == sy ? Cursors.SizeNWSE : Cursors.SizeNESW) : sx != 0 ? Cursors.SizeWE : Cursors.SizeNS; } catch { }
-            bool down = false; Point start = new Point(); float w0 = 0f, h0 = 0f;
-            h.MouseLeftButtonDown += (o, e) =>
-            {
-                down = true; start = e.GetPosition(_top); w0 = _winW; h0 = _winH;
-                h.CaptureMouse(); e.Handled = true;
-            };
-            h.MouseMove += (o, e) =>
-            {
-                if (!down || _root == null) return;
-                var p = e.GetPosition(_top);
-                float w = sx == 0 ? _winW : Math.Max(560f, Math.Min(1600f, w0 + sx * (p.X - start.X)));
-                float hh = sy == 0 ? _winH : Math.Max(420f, Math.Min(1400f, h0 + sy * (p.Y - start.Y)));
-                float dw = w - _winW, dh = hh - _winH;
-                if (Math.Abs(dw) < 0.5f && Math.Abs(dh) < 0.5f) return;
-                _winW = w; _winH = hh;
-                _root.Width = w; _root.Height = hh;
-                if (_move == null) return;
-                // a window centred in a Grid grows both ways; one placed by its top left corner grows right / down:
-                // move it so that only the dragged side moves
-                bool centred = _host is Grid;
-                if (sx != 0) _move.X += centred ? sx * dw / 2f : (sx < 0 ? -dw : 0f);
-                if (sy != 0) _move.Y += centred ? sy * dh / 2f : (sy < 0 ? -dh : 0f);
-            };
-            h.MouseLeftButtonUp += (o, e) => { if (!down) return; down = false; h.ReleaseMouseCapture(); e.Handled = true; };
-            return h;
-        }
-
-        static Path Cross(float size)
-        {
-            return new Path { Data = new StreamGeometry("M0,0 L10,10 M10,0 L0,10"), Stroke = B(CText), StrokeThickness = 1.5f, Stretch = Stretch.Uniform,
-                              Width = size, Height = size, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-        }
-
-        static void Draggable(FrameworkElement handle)
-        {
-            bool down = false; Point start = new Point(); float h0 = 0f, v0 = 0f;
-            handle.MouseLeftButtonDown += (o, e) =>
-            {
-                if (_move == null) return;
-                down = true; start = e.GetPosition(_top); h0 = _move.X; v0 = _move.Y;
-                handle.CaptureMouse(); e.Handled = true;
-            };
-            handle.MouseMove += (o, e) =>
-            {
-                if (!down || _move == null) return;
-                var p = e.GetPosition(_top);
-                _move.X = h0 + (p.X - start.X);
-                _move.Y = v0 + (p.Y - start.Y);
-            };
-            handle.MouseLeftButtonUp += (o, e) => { if (!down) return; down = false; handle.ReleaseMouseCapture(); e.Handled = true; };
-        }
-
-        // The game scales its UI: the size (UI units) is cut to the screen less 40 px and the window is centred on the screen.
-        static void OnLayout(object sender, Noesis.EventArgs e)
-        {
-            if (_root == null || _place >= 2) return;
-            try
-            {
-                if (_root.ActualWidth <= 0f) return;
-                var a = _root.PointToScreen(new Point(0f, 0f)); var b = _root.PointToScreen(new Point(100f, 0f));
-                float k = (float)Math.Sqrt((b.X - a.X) * (b.X - a.X) + (b.Y - a.Y) * (b.Y - a.Y)) / 100f;
-                if (k <= 0.01f || float.IsNaN(k)) { _place = 2; return; }
-                float sw = UnityEngine.Screen.width, sh = UnityEngine.Screen.height;
-                if (_place == 0)
-                {
-                    if (!_sizedOnce) { _winH = WinH / k; _sizedOnce = true; }
-                    _root.Width = Math.Min(_winW, (sw - 40f) / k);
-                    _root.Height = Math.Min(_winH, (sh - 40f) / k);
-                    _place = 1;
-                    return;
-                }
-                float w = _root.Width * k, h = _root.Height * k;
-                _move.X += ((sw - w) / 2f - a.X) / k;
-                _move.Y += ((sh - h) / 2f - a.Y) / k;
-                _place = 2;
-                _root.LayoutUpdated -= OnLayout;
-            }
-            catch (Exception ex) { _place = 2; Trace("settings window placing: " + ex.Message); }
+            parts.Add(_f.Footer(null, out _status, Loc.T("set.cancel"), Cancel,   // the saved values back: edits not applied are dropped (here and in the other mods' windows)
+                                Loc.T("set.apply"), () => Commit(false), Loc.T("set.ok"), () => Commit(true)));
+            _f.Assemble(win, parts, area);
         }
 
         // ------------------------------------------------------------ rows
@@ -489,37 +286,79 @@ namespace AlternativeWeaponsControl
             if (_body == null) return;
             _marks.Clear();
             _body.Children.Clear();
+            bool searching = !string.IsNullOrEmpty(_f.Query);
+            if (searching && !TabHasHits(_curTab)) foreach (var t0 in Tabs) if (TabHasHits(t0)) { _curTab = t0; break; }   // the search: a tab with nothing found is left
             if (_tabBar != null)
             {
                 _tabBar.Children.Clear();
                 Border chosen = null;
                 foreach (var t in Tabs)
                 {
+                    if (searching && !TabHasHits(t)) continue;   // the tabs with nothing found are hidden
                     string tab = t;
-                    bool sel = tab == _curTab, chg = TabChanged(tab);
-                    var lab = new StackPanel { Orientation = Orientation.Horizontal };
-                    if (chg) lab.Children.Add(new Ellipse { Width = 6f, Height = 6f, Fill = B(CWarn), Margin = new Thickness(0f, 0f, 6f, 0f), VerticalAlignment = VerticalAlignment.Center });
-                    lab.Children.Add(Text(Loc.T(tab), sel ? CText : CDim, 13f));
-                    var b = new Border { Child = lab, Padding = new Thickness(14f, 6f, 14f, 6f), Margin = new Thickness(0f, 0f, 3f, 0f), Cursor = Cursors.Hand,
-                                         Background = B(sel ? CCard : CTitle), BorderBrush = B(CLine), BorderThickness = new Thickness(1f, 1f, 1f, 0f), CornerRadius = new CornerRadius(3f, 3f, 0f, 0f) };
-                    b.MouseLeftButtonUp += (o, e) => { _curTab = tab; Show(); };
+                    bool sel = tab == _curTab;
+                    var b = _f.TabButton(Loc.T(tab), sel, TabChanged(tab), () => { _curTab = tab; Show(); });
                     _tabBar.Children.Add(b);
                     if (sel) chosen = b;
                 }
                 if (_tabScroll != null && chosen != null) _tabScroll.Reveal(chosen);
             }
+            if (!string.IsNullOrEmpty(_f.Query)) { ShowFound(); UpdateStatus(); return; }
             string group = null;
             if (_curTab == "tabs.gunsAccuracy") _body.Children.Add(SubBar());
             foreach (var f in Fields)
             {
                 if (f.Tab != _curTab || f.Group == "grp.ammoList" || !ParentOn(f)) continue;
                 if (_curTab == "tabs.gunsAccuracy" && SubOf(f) != _curSub) continue;
-                if (f.Group != group) { group = f.Group; if (group == "grp.directors") PresetBar(); else _body.Children.Add(GroupTitle(Loc.T(group))); }
+                if (f.Group != group)
+                {
+                    group = f.Group;
+                    if (group == "grp.directors") PresetBar();
+                    else { string gr = group, tabNow = _curTab; _body.Children.Add(_f.GroupHeader(Loc.T(gr), () => GroupChanged(tabNow, gr), () => RevertWhere(x => x.Tab == _curTab && x.Group == gr, false), Loc.T("set.revertGroup"))); }
+                }
                 _body.Children.Add(Row(f));
             }
             if (_curTab == "tabs.gunsAccuracy" && _curSub == "sub.general" && Flag("Guns/AmmunitionFix")) AmmoTable();
             UpdateStatus();
         }
+
+        static bool FieldHit(Field f)
+        {
+            return f.Group != "grp.ammoList" && ParentOn(f) && _f.Match(Loc.T("lbl." + f.Key));
+        }
+
+        static bool TabHasHits(string tab) { foreach (var f in Fields) if (f.Tab == tab && FieldHit(f)) return true; return false; }
+
+        /// <summary>The search: the options of the tab that fit, all its pages one under the other.</summary>
+        static void ShowFound()
+        {
+            string group = null; int n = 0;
+            foreach (var f in Fields)
+            {
+                if (f.Tab != _curTab || !FieldHit(f)) continue;
+                FrameworkElement row;
+                try { row = Row(f); } catch (Exception e) { Trace("settings row '" + f.Key + "' failed: " + e); continue; }   // the title of a group goes in only with a row under it
+                if (f.Group != group) { group = f.Group; _body.Children.Add(GroupTitle(Loc.T(group))); }
+                _body.Children.Add(row); n++;
+            }
+            if (n == 0) { var t = Text(Loc.T("set.nothing"), CDim, 13f); t.Margin = new Thickness(12f, 14f, 12f, 0f); _body.Children.Add(t); }
+        }
+
+        static bool GroupChanged(string tab, string group)
+        {
+            foreach (var f in Fields) if (f.Tab == tab && f.Group == group && f.Kind != Kind.Action && !Same(Get(f), Saved(f))) return true;
+            return false;
+        }
+
+        /// <summary>The saved values back into the options picked (not applied edits dropped; nothing closes). ammo: the list of ammunition too.</summary>
+        static void RevertWhere(Func<Field, bool> pick, bool ammo)
+        {
+            foreach (var f in Fields) if (f.Kind != Kind.Action && pick(f)) _work[f.Key] = Saved(f);
+            if (ammo) { AmmoReload(); foreach (var f in Fields) if (IsAmmo(f.Key)) _work[f.Key] = AmmoSavedText(f.Key); }
+            _f.KeepScroll(_scroll, Show);
+        }
+
+        static void RevertTab() { string t = _curTab; RevertWhere(x => x.Tab == t, t == "tabs.gunsAccuracy"); }
 
         static void UpdateTabDots()
         {
@@ -527,6 +366,8 @@ namespace AlternativeWeaponsControl
             int i = 0;
             foreach (var t in Tabs)
             {
+                if (!string.IsNullOrEmpty(_f.Query) && !TabHasHits(t)) continue;   // the tabs with nothing found are not in the bar (search)
+                if (i >= _tabBar.Children.Count) break;
                 var b = _tabBar.Children[i++] as Border; var sp = b == null ? null : b.Child as StackPanel;
                 if (sp == null) continue;
                 bool has = sp.Children.Count > 1, want = TabChanged(t);
@@ -545,16 +386,14 @@ namespace AlternativeWeaponsControl
 
         static void UpdateStatus()
         {
+            _f.UpdateModDots();
             if (_status == null) return;
             bool any = AmmoListDirty();
             foreach (var f in Fields) if (!Same(Get(f), Saved(f))) { any = true; break; }
-            _status.Text = any ? Loc.T("set.changed") : "";
+            _status.Text = Loc.T(any ? "set.changed" : "set.clean");
+            _f.UpdateTools();
         }
 
-        static TextBlock GroupTitle(string s)
-        {
-            return new TextBlock { Text = s.ToUpperInvariant(), Foreground = B(CDim), FontSize = 11f, Margin = new Thickness(12f, 10f, 12f, 2f) };
-        }
 
         /// <summary>A row with a button (Kind.Action): the label, the button, the help on hover.</summary>
         static FrameworkElement ActionRow(Field f)
@@ -570,16 +409,16 @@ namespace AlternativeWeaponsControl
             outer.MouseEnter += (o, e) =>
             {
                 outer.Background = B(CHl);
-                _help.Inlines.Clear();
-                var r = new Run(Loc.T("lbl." + f.Key)); r.FontWeight = FontWeight.Bold; r.Foreground = B(CText);
-                _help.Inlines.Add(r);
-                _help.Inlines.Add(new Run(" - " + Loc.Or("help." + f.Key, "")));
+                _f.ShowHelp(Loc.T("lbl." + f.Key), Loc.Or("help." + f.Key, ""));
             };
             outer.MouseLeave += (o, e) => outer.Background = B(Color.FromArgb(0, 0, 0, 0));
             return outer;
         }
 
         // ---- screenshots of every tab (the settings kit, SettingsShotKit.cs): the window fitted to each tab, a PNG in BepInEx/AlternativeWeaponsControl_screens
+        /// <summary>The screenshots of the tabs of the window on the screen (the Game Interface\'s Debug runs it for every mod).</summary>
+        internal static System.Collections.IEnumerator ShotsRun() { return SettingsShots.Run(new ShotAdapter(), System.IO.Path.Combine(BepInEx.Paths.BepInExRootPath, "AlternativeWeaponsControl_screens"), s => Trace(s), s => Warn(s)); }
+
         static void StartShots()
         {
             if (P == null || SettingsShots.Busy) return;
@@ -589,17 +428,17 @@ namespace AlternativeWeaponsControl
         sealed class ShotAdapter : IShotWindow
         {
             string _tab0, _sub0;
-            public bool Begin() { if (_root == null || _body == null || !_root.IsVisible) return false; _tab0 = _curTab; _sub0 = _curSub; return true; }
+            public bool Begin() { if (_f.Root == null || _body == null || !_f.Root.IsVisible) return false; _tab0 = _curTab; _sub0 = _curSub; return true; }
             public int TabCount { get { return Tabs.Count; } }
             public bool TabUsable(int tab) { return true; }
             public int Pages(int tab) { return Tabs[tab] == "tabs.gunsAccuracy" ? 2 : 1; }   // the inner tabs of "Accuracy"
             public void Show(int tab, int page) { _curTab = Tabs[tab]; if (_curTab == "tabs.gunsAccuracy") _curSub = page == 1 ? "sub.directors" : "sub.general"; SettingsWindow.Show(); }
             public string Name(int tab, int page) { return Loc.T(Tabs[tab]) + (Tabs[tab] == "tabs.gunsAccuracy" ? "_p" + (page + 1) : ""); }
-            public bool Rect(out float x, out float y, out float w, out float h) { return ShotFit.Rect(_root, out x, out y, out w, out h); }
-            public void FitMax() { ShotFit.Max(_root, _move); }
-            public void FitWidth() { ShotFit.Width(_root, _body, _scroll, _move, 560f); }
-            public void FitHeight() { ShotFit.Height(_root, _scroll, _move, 420f); }
-            public void End() { _curTab = _tab0; _curSub = _sub0; ShotFit.Restore(_root, _move, _winW, _winH); SettingsWindow.Show(); }
+            public bool Rect(out float x, out float y, out float w, out float h) { return ShotFit.Rect(_f.Root, out x, out y, out w, out h); }
+            public void FitMax() { _f.ClearHelp(); ShotFit.Max(_f.Root, _f.Move); }
+            public void FitWidth() { ShotFit.Width(_f.Root, _body, _scroll, _f.Move, _f.ShotMinW); }
+            public void FitHeight() { ShotFit.Height(_f.Root, _scroll, _f.Move, 420f); }
+            public void End() { _curTab = _tab0; _curSub = _sub0; ShotFit.Restore(_f.Root, _f.Move, _f.W, _f.H); SettingsWindow.Show(); }
         }
 
         static FrameworkElement Row(Field f)
@@ -634,73 +473,27 @@ namespace AlternativeWeaponsControl
             Grid.SetColumn(game, 2);
             g.Children.Add(game);
 
-            var rst = new Button { Content = "↺", Width = 24f, Height = 22f, Padding = new Thickness(0f), HorizontalAlignment = HorizontalAlignment.Right };
-            try { ToolTipService.SetToolTip(rst, Loc.T("set.resetTip")); } catch { }
-            rst.Click += (o, e) => { _work[f.Key] = Default(f); refresh(); mark(); DepsChanged(f.Key); };
+            var rst = _f.ResetButton(Loc.T("set.resetTip"), () => { _work[f.Key] = Default(f); refresh(); mark(); DepsChanged(f.Key); });
             Grid.SetColumn(rst, 3);
             g.Children.Add(rst);
 
             mark();
-            outer.MouseEnter += (o, e) =>
-            {
-                outer.Background = B(CHl);
-                var en = Entry(f.Key);
-                _help.Inlines.Clear();
-                var r = new Run(Loc.T("lbl." + f.Key)); r.FontWeight = FontWeight.Bold; r.Foreground = B(CText);
-                _help.Inlines.Add(r);
-                _help.Inlines.Add(new Run(" - " + Loc.Or("help." + f.Key, en != null && en.Description != null ? en.Description.Description : "")));
-            };
-            outer.MouseLeave += (o, e) => outer.Background = B(Color.FromArgb(0, 0, 0, 0));
+            _f.Hover(outer, () => Loc.T("lbl." + f.Key), () => { var en = Entry(f.Key); return Loc.Or("help." + f.Key, en != null && en.Description != null ? en.Description.Description : ""); });
             return outer;
         }
 
-        static TextBox Edit(string text, float width)
-        {
-            var t = new TextBox { Text = text ?? "", Width = width, Height = 24f, TextAlignment = TextAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center,
-                                  Background = B(CField), Foreground = B(CText), BorderBrush = B(CLine), Padding = new Thickness(2f, 0f, 2f, 0f) };
-            t.GotFocus += (s, e) => { Typing(true); try { t.SelectAll(); } catch { } };
-            t.LostFocus += (s, e) => Typing(false);
-            return t;
-        }
 
-        static bool TryNum(string s, out float v)
-        {
-            return float.TryParse((s ?? "").Trim().Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out v) && !float.IsNaN(v) && !float.IsInfinity(v);
-        }
 
-        static float Num(string s) { float v; return TryNum(s, out v) ? v : 0f; }
 
         static FrameworkElement NumberEditor(Field f, Action mark, out Action refresh)
         {
-            var sp = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            var box = Edit(Get(f), 66f);
-            Action<float> put = v =>
-            {
-                v = Math.Max(f.Min, Math.Min(f.Max, v));
-                string s = v.ToString("0.##", CultureInfo.InvariantCulture);
-                box.Text = s;
-                _work[f.Key] = s;
-                mark();
-            };
-            var minus = new Button { Content = "−", Width = 24f, Height = 24f, Padding = new Thickness(0f) };
-            var plus = new Button { Content = "+", Width = 24f, Height = 24f, Padding = new Thickness(0f) };
-            minus.Click += (o, e) => put((float)Math.Round((Num(box.Text) - f.Step) / f.Step) * f.Step);
-            plus.Click += (o, e) => put((float)Math.Round((Num(box.Text) + f.Step) / f.Step) * f.Step);
-            Action typed = () => { float v; if (TryNum(box.Text, out v)) put(v); else box.Text = Get(f); };
-            box.LostFocus += (o, e) => typed();
-            box.KeyDown += (o, e) => { if (e.Key == Key.Return) { typed(); e.Handled = true; } };
-            sp.Children.Add(minus); sp.Children.Add(box); sp.Children.Add(plus);
-            if (!string.IsNullOrEmpty(f.Unit)) { var u = Text(Loc.Or("unit." + f.Key, f.Unit), CDim, 12f); u.Margin = new Thickness(8f, 0f, 0f, 0f); sp.Children.Add(u); }
-            refresh = () => box.Text = Get(f);
-            return sp;
+            return _f.Number(() => Get(f), null, v => _work[f.Key] = v.ToString("0.##", CultureInfo.InvariantCulture), f.Step, f.Min, f.Max,
+                             string.IsNullOrEmpty(f.Unit) ? null : Loc.Or("unit." + f.Key, f.Unit), mark, out refresh);
         }
 
         static FrameworkElement BoolEditor(Field f, Action mark, out Action refresh)
         {
-            var cb = new CheckBox { IsChecked = Get(f).Trim().Equals("true", StringComparison.OrdinalIgnoreCase), VerticalAlignment = VerticalAlignment.Center };
-            cb.Click += (o, e) => { _work[f.Key] = cb.IsChecked == true ? "true" : "false"; mark(); DepsChanged(f.Key); };
-            refresh = () => cb.IsChecked = Get(f).Trim().Equals("true", StringComparison.OrdinalIgnoreCase);
-            return cb;
+            return _f.Check(() => Get(f).Trim().Equals("true", StringComparison.OrdinalIgnoreCase), on => { _work[f.Key] = on ? "true" : "false"; mark(); DepsChanged(f.Key); }, out refresh);
         }
 
         /// <summary>The text of a Pick value: the weapon status names of the game (Free / Tight / Hold).</summary>
@@ -708,18 +501,16 @@ namespace AlternativeWeaponsControl
 
         static FrameworkElement PickEditor(Field f, Action mark, out Action refresh)
         {
-            var cb = new ComboBox { Width = 200f, MinHeight = 24f, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center };
-            foreach (var o in f.Options) cb.Items.Add(PickText(o));
-            Func<int> index = () => { int i = Array.FindIndex(f.Options, o => string.Equals(o, (Get(f) ?? "").Trim(), StringComparison.OrdinalIgnoreCase)); return i < 0 ? 0 : i; };
-            cb.SelectedIndex = index();
-            cb.SelectionChanged += (o, e) =>
-            {
-                int i = cb.SelectedIndex;
-                if (i < 0 || i >= f.Options.Length || f.Options[i] == (Get(f) ?? "").Trim()) return;
-                _work[f.Key] = f.Options[i]; mark();
-            };
-            refresh = () => cb.SelectedIndex = index();
-            return cb;
+            var labels = new List<string>();
+            foreach (var o in f.Options) labels.Add(PickText(o));
+            return CodeCombo(f, new List<string>(f.Options), labels, mark, out refresh);
+        }
+
+        /// <summary>A drop-down over a list of values (codes) with their texts.</summary>
+        static FrameworkElement CodeCombo(Field f, List<string> codes, List<string> labels, Action mark, out Action refresh)
+        {
+            return _f.Combo(labels, () => { int i = codes.FindIndex(o => string.Equals(o, (Get(f) ?? "").Trim(), StringComparison.OrdinalIgnoreCase)); return i < 0 ? 0 : i; },
+                            i => { if (i >= codes.Count || codes[i] == (Get(f) ?? "").Trim()) return; _work[f.Key] = codes[i]; mark(); }, 200f, 24f, out refresh);
         }
 
         static FrameworkElement LangEditor(Field f, Action mark, out Action refresh)
@@ -728,19 +519,9 @@ namespace AlternativeWeaponsControl
             foreach (var l in Loc.GameLanguages()) if (!codes.Contains(l.Key)) codes.Add(l.Key);
             var names = new Dictionary<string, string>();
             foreach (var l in Loc.GameLanguages()) names[l.Key] = l.Value;
-            Func<string, string> show = c => string.IsNullOrEmpty(c) ? Loc.T("set.gameLang") : (names.ContainsKey(c) ? names[c] + " (" + c + ")" : c);
-            var cb = new ComboBox { Width = 200f, MinHeight = 24f, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center };
-            foreach (var c in codes) cb.Items.Add(show(c));
-            Func<int> index = () => { int i = codes.IndexOf((Get(f) ?? "").Trim()); return i < 0 ? 0 : i; };
-            cb.SelectedIndex = index();
-            cb.SelectionChanged += (o, e) =>
-            {
-                int i = cb.SelectedIndex;
-                if (i < 0 || i >= codes.Count || codes[i] == (Get(f) ?? "").Trim()) return;
-                _work[f.Key] = codes[i]; mark();
-            };
-            refresh = () => cb.SelectedIndex = index();
-            return cb;
+            var labels = new List<string>();
+            foreach (var c in codes) labels.Add(string.IsNullOrEmpty(c) ? Loc.T("set.gameLang") : (names.ContainsKey(c) ? names[c] + " (" + c + ")" : c));
+            return CodeCombo(f, codes, labels, mark, out refresh);
         }
 
         // ------------------------------------------------------------------ presets of the fire-control accuracy settings (Guns tab, Accuracy)
@@ -795,6 +576,7 @@ namespace AlternativeWeaponsControl
         static void Commit(bool close)
         {
             Typing(false);
+            Rgreat.Hub.SettingsHub.CommitOthers(SelfId);   // the edits kept in the other mods' windows are applied too
             var langEntry = Entry("General/Language");
             string langBefore = langEntry == null ? "" : langEntry.GetSerializedValue();
             foreach (var f in Fields)
@@ -835,10 +617,10 @@ namespace AlternativeWeaponsControl
         /// <summary>Called every frame: the delayed rebuild of the window after Apply (the texts follow the new language).</summary>
         public static void Tick()
         {
-            if (_reshow > 0 && --_reshow == 0 && IsOpen && _root != null) { try { Show(); } catch (Exception ex) { Trace("reshow: " + ex); } }
+            if (_reshow > 0 && --_reshow == 0 && IsOpen && _f.Root != null) { try { _f.KeepScroll(_scroll, Show); } catch (Exception ex) { Trace("reshow: " + ex); } }
             if (_redraw <= 0) return;
             if (--_redraw > 0) return;
-            if (_root == null || !IsOpen) return;
+            if (_f.Root == null || !IsOpen) return;
             try { BuildWindow(true); Show(); } catch (Exception ex) { Trace("rebuild: " + ex); }
         }
     }
