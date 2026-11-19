@@ -1,5 +1,7 @@
 # Alternative Weapons Control: сборка, проверка и выкладка в Steam Workshop
 
+> Preparing a release (version, change lists, README, translations, build, commit rules)? Read the Sea Power project doc `claude/release-howto.md` first (also: `claude/steam-workshop.md` for the Workshop ids and how to check what is published).
+
 ## 1. Структура проекта
 
 ```
