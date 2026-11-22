@@ -23,6 +23,43 @@ namespace AlternativeWeaponsControl
 
         // Debug: what the AI of one of the player's units may engage (the game's possible targets with their priorities), traced when it changes
         static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, string[]> _tgtSig = new System.Runtime.CompilerServices.ConditionalWeakTable<object, string[]>();
+        /// <summary>Debug: the unit's engage tasks as the aircraft AI of the game sees them: ammunition type, the player's (P) or the automatic (A) one, distance to the target and the reach of the ammunition
+        /// (nm, rounded to 5), whether the task is beyond the shot range (the aircraft is then sent towards the target), and whether the game has a move-to-engage task for the unit.</summary>
+        static string AirTaskDetail(object unit)
+        {
+            var sb = new System.Text.StringBuilder();
+            try
+            {
+                try { sb.Append(" move=").Append(R.B(R.Call(unit, "HasMoveToEngageTask"))); } catch { }
+                var tasks = R.F(unit, "_currentEngageTasks") as IList;
+                if (tasks == null) return sb.ToString();
+                var up = (Vector3)R.V(R.V(unit, "transform"), "position");
+                int n = 0;
+                foreach (var t in tasks)
+                {
+                    if (t == null || ++n > 4) break;
+                    string d = "?", r = "?", beyond = "?", type = "?";
+                    try
+                    {
+                        var am = R.F(t, "_ammunition"); var ap = am == null ? null : R.F(am, "_ap");
+                        if (ap != null) type = R.S(R.F(ap, "_type"));
+                        var tg = R.F(t, "_targetObject");
+                        if (tg != null)
+                        {
+                            var tp = (Vector3)R.V(R.V(tg, "transform"), "position");
+                            d = (Math.Round((tp - up).magnitude * 67.200066f / 1000f / 1.852f / 5f) * 5).ToString();
+                            if (am != null) { try { r = (Math.Round(Convert.ToSingle(R.Call(unit, "GetMaxRangeForAmmo", am, tg)) * 67.200066f / 1000f / 1.852f / 5f) * 5).ToString(); } catch { } }
+                        }
+                        try { beyond = R.B(R.Call(unit, "EngageTaskBeyondShotRange", t)).ToString(); } catch { }
+                    }
+                    catch { }
+                    sb.Append(" {").Append(R.B(R.F(t, "_isAutoAttack")) ? "A " : "P ").Append(R.S(R.F(t, "_ammoId"))).Append(' ').Append(type).Append(" dist=").Append(d).Append(" reach=").Append(r).Append(" beyond=").Append(beyond).Append('}');
+                }
+            }
+            catch { }
+            return sb.ToString();
+        }
+
         static void TraceTargets(object ai)
         {
             try
@@ -32,6 +69,33 @@ namespace AlternativeWeaponsControl
                 var dict = R.F(ai, "_possibleTargetsWithPriorities") as IDictionary;
                 var sb = new System.Text.StringBuilder(); var sg = new System.Text.StringBuilder();
                 sb.Append(R.S(R.F(unit, "_weaponStatus"))).Append(" |"); sg.Append(sb.ToString());
+                // an aircraft: what its AI has made of the player's order (the click on a target puts it into the list; the game pursues the committed one only)
+                if (R.B(R.P(unit, "IsAirUnit")))
+                {
+                    string ex = "";
+                    try
+                    {
+                        var dest = R.F(ai, "_objectToDestroy"); var lst = R.F(ai, "_objectsToDestroyList") as ICollection;
+                        var st = R.P(R.P(unit, "StateMachine"), "CurrentState");
+                        string ds = "-";
+                        if (dest != null)
+                        {
+                            ds = R.S(R.Call(dest, "getUIDAndName"));
+                            try { ds += R.B(R.Call(ai, "IsCommittedPursuit", dest)) ? " committed" : " not committed"; } catch { }
+                            try
+                            {
+                                var dp = (Vector3)R.V(R.V(dest, "transform"), "position"); var up2 = (Vector3)R.V(R.V(unit, "transform"), "position");
+                                ds += " dist=" + (Math.Round((dp - up2).magnitude * 0.036285132f / 5) * 5) + "nm maxrange=" + (Math.Round(Convert.ToSingle(R.Call(ai, "MaxRangeForObject", dest)) * 0.036285132f / 5) * 5) + "nm";
+                            }
+                            catch { }
+                            try { ds += " ordered=" + R.B(R.Call(ai, "IsOrderedTarget", dest)); } catch { }
+                        }
+                        ex = " destroy=" + ds + " list=" + (lst == null ? 0 : lst.Count) +
+                             " state=" + (st == null ? "?" : st.GetType().Name) + " HasAAM=" + R.B(R.P(R.F(unit, "_currentLoadoutCapabilities"), "HasAAM")) + " aamUsable=" + AamNow(unit) + " tasks=" + R.I(R.P(R.F(unit, "_currentEngageTasks"), "Count")) + AirTaskDetail(unit) + " |";
+                    }
+                    catch { }
+                    sb.Append(ex); sg.Append(ex);
+                }
                 var up = (Vector3)R.V(R.V(unit, "transform"), "position");
                 if (dict != null)
                     foreach (DictionaryEntry de in dict)

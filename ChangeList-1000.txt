@@ -1,10 +1,2 @@
-Version 1.9.0
-- One settings window for all four Alternative mods:
-  - Find any option by typing its name in the search box.
-  - Switch between the mods' settings with one click; your edits are kept.
-  - Choose the language once for all mods.
-  - Undo changes you have not applied yet.
-- Hints of Free / Hold buttons, the On Tight tick and launcher chips list the Standing Orders rules behind them; long hints stay while the mouse is over them.
-- New option "Weapons that no Standing Orders rule covers": from which weapon status such a weapon fires by itself (it never did before).
-- Fixed: deleting an attack order (X) now fully cancels it.
-- Game beta 0.9.3: the "On Tight: engage hostile aircraft" tick is back; SAM charging counts the warm-up again.
+Version 2.0.1
+- Fixed (stable game): a fighter with missiles on now flies to an air target you right-click and attacks it; before, it ignored the order or dropped it.

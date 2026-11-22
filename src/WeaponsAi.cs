@@ -44,18 +44,16 @@ namespace AlternativeWeaponsControl
             patch(ai == null ? null : ai.GetMethod("GetPossibleTargetsList", inst, null, Type.EmptyTypes, null), null, "FreeAirPostfix", null);
             patch(ai == null ? null : ai.GetMethod("GetPossibleTargetsList", inst, null, Type.EmptyTypes, null), null, "PlotHostilePostfix", null);
             var sel = asm.GetType("SeaPower.WeaponSelector");
-            // 0.8.6: GetWeaponSystemsForAmmunition(obj, position, ammoId, target) returns the list. 0.8.7: the game's callers (AI, HandleEngageTasks) use
-            // the new overload (..., List vwsList) that fills the list and returns bool; the old one just calls it. Exactly one of them is patched
-            // (the new one when it exists, else the old one), else the old overload's callers would be filtered twice.
-            MethodInfo gw = null, gw5 = null;
+            // The game's callers (AI, HandleEngageTasks) use the overload (..., List vwsList) that fills the list and returns bool (ignoreFiringArcs is a later parameter;
+            // the postfix takes its arguments by name). The overload with 4 arguments just calls it: patching it too would filter twice.
+            MethodInfo gw5 = null;
             if (sel != null) foreach (var m in sel.GetMethods(BindingFlags.Static | BindingFlags.Public))
                 {
                     if (m.Name != "GetWeaponSystemsForAmmunition") continue;
                     var ps = m.GetParameters();
-                    if (ps.Length == 4) gw = m;
-                    else if (ps.Length >= 5 && m.ReturnType == typeof(bool) && ps[4].Name == "vwsList") gw5 = m;   // (0.9.0: a 6th parameter, ignoreFiringArcs; the postfix takes its arguments by name)
+                    if (ps.Length >= 5 && m.ReturnType == typeof(bool) && ps[4].Name == "vwsList") gw5 = m;
                 }
-            if (gw5 != null) patch(gw5, null, "SelectorPostfix5", null); else patch(gw, null, "SelectorPostfix", null);
+            patch(gw5, null, "SelectorPostfix5", null);
             patch(_tCiws == null ? null : _tCiws.GetMethod("AquireTarget", inst | BindingFlags.DeclaredOnly), "CiwsEnter", null, "CiwsLeave");
             var ws = asm.GetType("SeaPower.WeaponSystem");
             patch(ws == null ? null : ws.GetMethod("targetIsInFiringArc", inst, null, new[] { typeof(Vector3) }, null), null, "ArcPostfix", null);
@@ -291,7 +289,6 @@ namespace AlternativeWeaponsControl
             catch (Exception e) { Trace("weapons pin task: " + e.Message); }
         }
 
-        public static bool IsPinnedTo(object task, object ws) { return ReferenceEquals(PinOf(task), ws); }
 
         // The launcher a player's engage task is tied to, in the mission save. The game saves the unit's engage tasks as
         // sections <unit>EngageTask1..N - first the task of every system executing one (a task several guns took is written
@@ -798,13 +795,7 @@ namespace AlternativeWeaponsControl
             return found;
         }
 
-        /// <summary>The game 0.8.6 selector (4 arguments): the list is the result.</summary>
-        static void SelectorPostfix(object obj, string ammoId, object targetObject, object __result)
-        {
-            SelectorCore(obj, ammoId, targetObject, __result as IList);
-        }
-
-        /// <summary>The game 0.8.7 selector (the list is filled in place, the result tells whether it found any launcher).</summary>
+        /// <summary>The game selector (the list is filled in place, the result tells whether it found any launcher).</summary>
         static void SelectorPostfix5(object obj, string ammoId, object targetObject, object vwsList, ref bool __result)
         {
             var list = vwsList as IList;

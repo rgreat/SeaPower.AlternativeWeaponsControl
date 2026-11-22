@@ -1,8 +1,10 @@
 # Alternative Weapons Control
 
+Version 2.0.1.
+
 Adds a new **Weapons** tab in the Unit Status window of your units, and a set of combat improvements.
 
-# Mod require **Anchor Chain** or **R.A.T.S. Keel**
+# Mod require **R.A.T.S. Keel** or **Anchor Chain**
 
 # Features
 
@@ -16,7 +18,8 @@ Adds a new **Weapons** tab in the Unit Status window of your units, and a set of
 4. **Automatic use** per launcher and target domain (aircraft, missiles, surface ships, submarines, land): switch off what the AI may use by itself - e.g. keep the long-range SAMs for aircraft. Merged with the unit's Standing Orders (hints list the rules behind a switch; the option "Weapons that no Standing Orders rule covers" sets from which status such a weapon fires); kept in saved games. Manual fire is never restricted. A click on a switch goes On, Off, then back to the unit's Standing Orders. A rule with Always forces a switch on at any status, Hold included (amber ring, green core); Free / Hold turn amber where rules override them.
 5. **Weapons status** (Free / Tight / Hold) with "On Tight: engage hostile aircraft" and "On Free: engage unidentified aircraft" at the top of the tab. The second one engages fast (500 kn+) unidentified aircraft heading towards the ship within 20 nm. It does not know whose aircraft it is. Default: off for your ships, on for enemy AI.
 6. **Strict EMCON** next to Free / Tight / Hold: turns the unit's radars off and none can be turned on, even to engage a target (saved with the unit); they come back on when it ends. Radar directors that serve only guns are not switched off: they work as silent optical directors - not heard by ESM, accuracy between the guns' local control and the radar (a setting of the Guns tab), no tracking of shells in flight, range and night by the rules of optics. The directors window and the gun tooltip say "radar off: optical mode".
-7. **Launcher statuses** also tell "Assessing n%" and "Waiting for sensor" (the crew has not assessed the target yet), and "Sensor inoperable" (all directors destroyed). Weapons that need no sensors (guns, RBU, bombs) do not show "Sensors Offline".
+7. **Aircraft:** the **Max-rate turns** button (beta game only) (after Strict EMCON) overrides the unit's Standing Orders "Aircraft turns out of combat" and "Aircraft turns in combat" with Max rate and lifts the limits of route turns (bank cap, turn limit) and of combat turns (sustained / energy limited). Its arrow opens the minimum speed for the extra maneuverability out of combat (Limit / Low / Optimal / High, in knots): below it the aircraft turns like the game's Max rate mode, so it does not bleed speed until it can hardly fly level. A box shows the current load factor (+X.XG). Saved with the unit. Aircraft whose missiles are turned off pursue and shoot with their cannon (AI tab, "Fighters: guns when missiles are off"); the AI no longer wipes your waiting orders when it picks its own target. A fighter with missiles on flies to an air target you right-click and keeps it until it is destroyed or you cancel it (stable game; AI tab, "Fighters: keep a clicked air target").
+8. **Launcher statuses** also tell "Assessing n%" and "Waiting for sensor" (the crew has not assessed the target yet), and "Sensor inoperable" (all directors destroyed). Weapons that need no sensors (guns, RBU, bombs) do not show "Sensors Offline".
 
 ### SAM launchers
 
@@ -59,14 +62,14 @@ Special effects (flashes, fire light, binoculars normal view, machine gun and hi
 
 # Compatibility
 
-- Supports Sea Power version 0.9.0 and newer.
-- Loaders: Anchor Chain or R.A.T.S. Keel.
+- Supports Sea Power version 0.9.3 and newer.
+- Loaders: R.A.T.S. Keel or Anchor Chain.
 - Compatible with the WW2 mod; it is recommended to use that mod without its optional dll.
 - Can be switched on/off in the game's Mods menu.
 
 # Install
 
-1. Subscribe to [Anchor Chain](https://steamcommunity.com/workshop/filedetails/?id=3380210757) or [RATS Keel](https://steamcommunity.com/workshop/filedetails/?id=3835527459) (temporarily unavailable) and follow instructions on mods page.
+1. Subscribe to [RATS Keel](https://steamcommunity.com/workshop/filedetails/?id=3835527459) or [Anchor Chain](https://steamcommunity.com/workshop/filedetails/?id=3380210757) and follow instructions on mods page.
 2. Subscribe to this mod.
 3. Start **Sea Power**.
 4. Enable mod in game's **Mod Manager** and press **Apply** button.

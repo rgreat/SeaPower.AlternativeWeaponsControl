@@ -181,41 +181,7 @@ namespace AlternativeWeaponsControl
 
         internal sealed class AmmoGame { public float Cep = float.NaN, Power = float.NaN; public string Title = "?"; }
         static readonly Dictionary<string, AmmoGame> _ammoGame = new Dictionary<string, AmmoGame>(StringComparer.OrdinalIgnoreCase);
-        static MethodInfo _mOpenIni, _mReadFloat, _mReadStr, _mOpenLoc;
-
-        /// <summary>The game's own values of an ammunition (its ini as the game reads it) and its name in the game's language. Cached; read when the tab is shown.</summary>
-        static string _baseDir; static bool _baseDirDone; static MethodInfo _mOpenIniFull;
-
-        /// <summary>The ini of the ammunition from the base layer of the game (LayerKind.Base), so that other mods that replace the file do not show up as "game" values.</summary>
-        static object OpenBaseAmmoIni(Assembly asm, string name)
-        {
-            try
-            {
-                if (!_baseDirDone)
-                {
-                    _baseDirDone = true;
-                    var fmT = asm.GetType("SeaPower.FileManager");
-                    var inst = fmT == null ? null : fmT.GetProperty("Instance", BindingFlags.Static | BindingFlags.Public | BindingFlags.FlattenHierarchy).GetValue(null, null);
-                    var dirs = inst == null ? null : fmT.GetProperty("Directories").GetValue(inst, null) as System.Collections.IEnumerable;
-                    if (dirs != null)
-                        foreach (var d in dirs)
-                        {
-                            var dt = d.GetType();
-                            if (!string.Equals(dt.GetProperty("Kind").GetValue(d, null).ToString(), "Base", StringComparison.Ordinal)) continue;
-                            if (!(bool)dt.GetProperty("IsRootLayout").GetValue(d, null)) continue;
-                            var di = dt.GetProperty("DirectoryInfo").GetValue(d, null) as System.IO.DirectoryInfo;
-                            if (di != null) { _baseDir = di.FullName; break; }
-                        }
-                    Trace("ammo tab: base layer " + (_baseDir ?? "not found"));
-                }
-                if (_baseDir == null) return null;
-                string path = System.IO.Path.Combine(System.IO.Path.Combine(_baseDir, "ammunition"), name + ".ini");
-                if (!System.IO.File.Exists(path)) return null;
-                if (_mOpenIniFull == null) _mOpenIniFull = asm.GetType("SeaPower.Utils").GetMethod("openIniFile", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic, null, new[] { typeof(string), typeof(bool), typeof(bool), typeof(bool) }, null);
-                return _mOpenIniFull.Invoke(null, new object[] { path, false, false, true });
-            }
-            catch (Exception e) { Trace("ammo tab: base ini " + name + ": " + e.Message); return null; }
-        }
+        static MethodInfo _mOpenIni, _mReadStr, _mOpenLoc;
 
         /// <summary>Reads CircularErrorProbable ([Physics], default 50) and Power ([WarheadData], default 0) from StreamingAssets/original/ammunition/&lt;name&gt;.ini on disk, without the game's layers (other mods).</summary>
         static bool ReadGameIni(string name, out float cep, out float power)

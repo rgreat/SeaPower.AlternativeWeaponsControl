@@ -144,8 +144,6 @@ namespace AlternativeWeaponsControl
     {
         public const int DAir = 1, DMsl = 2, DSur = 4, DSub = 8, DLnd = 16, DAll = 31;
         public static readonly int[] Domains = { DAir, DMsl, DSur, DSub, DLnd };
-        public static readonly string[] DomainNames = { "AIR", "MSL", "SUR", "SUB", "LND" };
-        public static readonly string[] DomainLong = { "aircraft and helicopters", "missiles, torpedoes and other weapons", "surface ships", "submarines", "land targets" };
 
         // Standing Orders: the game's auto-engage rules (AutoEngageRules), read and extended by reflection
         static Type _tRules, _tAeCtx, _tAeDomain, _tAeClass, _tAeCat, _tAeRule, _tAePolicy;
@@ -478,6 +476,9 @@ namespace AlternativeWeaponsControl
             public bool OldRules;                                                        // loaded from a save written by a mod version older than RulesFixedIn: its WeaponsTight surface rules are still to be corrected
             public object Hooked;                                                        // the rule set whose PropertyChanged is subscribed
             public List<int> EmconOff = new List<int>();                            // the radars (indices in _sensorSystems) Strict EMCON turned off: turned on again when it ends
+            public int TurnsLevel = 2;                                              // Max-rate turns: the speed floor level of the extra maneuverability out of combat (0 none, 1 low, 2 normal, 3 high; saved)
+            public bool MaxTurns;                                                   // Max maneuverability: the unit's two aircraft-turn doctrine values are overridden with Max rate (saved with the unit)
+            public int[] TurnsPrev;                                                 // what they were before: out of combat (set 0/1, value), in combat (set 0/1, value)
             public bool StrictEmcon;                                                // Strict EMCON: no radar of the unit may be turned on (saved with the unit)
             public int FreeAirSet = -1;                                             // On Free: engage approaching fast unidentified aircraft: -1 = the default of the side, 0 / 1 = the player's choice
             public List<Launcher> Cache;                                            // launchers (for the AI hooks)
@@ -900,7 +901,7 @@ namespace AlternativeWeaponsControl
 
         // ------------------------------------------------------------------ the mission save
 
-        const string SaveKey = "AlternativeWeaponsControl_WeaponAuto", FreeAirKey = "AlternativeWeaponsControl_FreeUnknownAir", EmconKey = "AlternativeWeaponsControl_StrictEmcon", EmconOffKey = "AlternativeWeaponsControl_StrictEmconRadars";
+        const string SaveKey = "AlternativeWeaponsControl_WeaponAuto", FreeAirKey = "AlternativeWeaponsControl_FreeUnknownAir", EmconKey = "AlternativeWeaponsControl_StrictEmcon", EmconOffKey = "AlternativeWeaponsControl_StrictEmconRadars", MaxTurnsKey = "AlternativeWeaponsControl_MaxTurns", MaxTurnsLevelKey = "AlternativeWeaponsControl_MaxTurnsLevel";
 
         static void UnitSavePostfix(object __instance, object ini, string sectionName)
         {
@@ -911,6 +912,8 @@ namespace AlternativeWeaponsControl
                 R.Call(ini, "writeValue", sectionName, VersionKey, AwcPlugin.PluginVersion);
                 if (UnitsW.TryGetValue(__instance, out w) && w.FreeAirSet >= 0) R.Call(ini, "writeValue", sectionName, FreeAirKey, w.FreeAirSet.ToString());
                 if (UnitsW.TryGetValue(__instance, out w) && w.StrictEmcon) R.Call(ini, "writeValue", sectionName, EmconKey, "1");
+                if (UnitsW.TryGetValue(__instance, out w) && w.MaxTurns && w.TurnsPrev != null) R.Call(ini, "writeValue", sectionName, MaxTurnsKey, string.Join(",", Array.ConvertAll(w.TurnsPrev, x => x.ToString())));
+                if (UnitsW.TryGetValue(__instance, out w) && w.TurnsLevel != 2) R.Call(ini, "writeValue", sectionName, MaxTurnsLevelKey, w.TurnsLevel.ToString());
                 if (UnitsW.TryGetValue(__instance, out w) && w.StrictEmcon && w.EmconOff.Count > 0) R.Call(ini, "writeValue", sectionName, EmconOffKey, string.Join(",", w.EmconOff.ConvertAll(x => x.ToString()).ToArray()));
                 if (UnitsW.TryGetValue(__instance, out w) && w.Off.Count > 0)
                 {
@@ -934,6 +937,9 @@ namespace AlternativeWeaponsControl
                     Version v;
                     if (string.IsNullOrEmpty(sv) || !Version.TryParse(sv, out v) || v < new Version(RulesFixedIn)) { var uw = W(__instance); uw.OldRules = true; MigrateTightRules(__instance, uw); }
                 }
+                { var mt = R.Call(ini, "readValue", sectionName, MaxTurnsKey, "", false) as string; var pp = string.IsNullOrEmpty(mt) ? null : mt.Split(','); int t0, t1, t2, t3;
+                  if (pp != null && pp.Length == 4 && int.TryParse(pp[0], out t0) && int.TryParse(pp[1], out t1) && int.TryParse(pp[2], out t2) && int.TryParse(pp[3], out t3)) { var uw = W(__instance); uw.MaxTurns = true; _maxTurnsAny = true; uw.TurnsPrev = new[] { t0, t1, t2, t3 }; } }
+                { var ml = R.Call(ini, "readValue", sectionName, MaxTurnsLevelKey, "", false) as string; int lv; if (int.TryParse(ml, out lv) && lv >= 0 && lv <= 3) W(__instance).TurnsLevel = lv; }
                 { var fa = R.Call(ini, "readValue", sectionName, FreeAirKey, "", false) as string; if (fa == "1" || fa == "0") W(__instance).FreeAirSet = fa == "1" ? 1 : 0; }
                 if ((R.Call(ini, "readValue", sectionName, EmconKey, "", false) as string) == "1") { var uw = W(__instance); uw.StrictEmcon = true; _trimAny = true; var rs = R.Call(ini, "readValue", sectionName, EmconOffKey, "", false) as string; if (!string.IsNullOrEmpty(rs)) foreach (var part in rs.Split(',')) { int ix; if (int.TryParse(part, out ix)) uw.EmconOff.Add(ix); } }
                 var s = R.Call(ini, "readValue", sectionName, SaveKey, "", false) as string;

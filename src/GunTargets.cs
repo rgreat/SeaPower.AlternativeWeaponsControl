@@ -31,7 +31,7 @@ namespace AlternativeWeaponsControl
             if (cf != null) harmony.Patch(cf, postfix: Hm("GunMemCeasePostfix")); else Trace("ObjectBase.CeaseFire not found: the remembered targets are not cleared by Cease fire");
         }
 
-        static void GunMemCeasePostfix(object __instance) { if (__instance != null) { Trace("CeaseFire of " + R.S(R.Call(__instance, "getUIDAndName"))); GunMems.Remove(__instance); GunSeen.Remove(__instance); } }
+        static void GunMemCeasePostfix(object __instance) { if (__instance != null) { Trace("CeaseFire of " + R.S(R.Call(__instance, "getUIDAndName"))); GunMems.Remove(__instance); GunSeen.Remove(__instance); ClickedAir.Remove(__instance); } }
 
         /// <summary>Cease fire of the tab for these ammunition: forget the unit's remembered targets of it.</summary>
         internal static void ForgetTargets(object unit, ICollection<string> ammo)

@@ -51,8 +51,6 @@ namespace AlternativeWeaponsControl
         }
 
         static List<string> _ammoRows;          // the table of the work copy: names in the order shown
-        static bool _ammoPicker;                // the "Add" list is open
-        static string _ammoFilter = "";
 
         static void AmmoEnsureField(string n)
         {
@@ -75,7 +73,6 @@ namespace AlternativeWeaponsControl
             if (!_ammoFields) return;
             _ammoRows = AwcPlugin.AmmoListNames();
             foreach (var n in _ammoRows) AmmoEnsureField(n);
-            _ammoPicker = false; _ammoFilter = "";
         }
 
         static bool AmmoListDirty()

@@ -174,11 +174,11 @@ namespace AlternativeWeaponsControl
             if (RealMax.TryGetValue(__instance, out real) && HideRing) _fMaxRange.SetValue(__instance, 0.0);
         }
 
-        // ---- the colour of the wedges on the 2D map (Sea Power 0.8.7) -------------------------------------------------------------------------------------------------
-        // 0.8.7 draws the wedge through the map's geometry store: WeaponArcSegmentViewModel.Render opens a Pie slot with ctx.Palette.Stroke(MapColor.FiringArc, thickness).
+        // ---- the colour of the wedges on the 2D map  -------------------------------------------------------------------------------------------------
+        // The game draws the wedge through the map's geometry store: WeaponArcSegmentViewModel.Render opens a Pie slot with ctx.Palette.Stroke(MapColor.FiringArc, thickness).
         // The colour is the palette's (MapPalette, public Override(MapColor, day, night) raises Changed and the map redraws). While the zones of our Fire are shown
         // FiringArc is overridden with red on the palette(s) of the map(s) and put back when they end. A weak red fill is added by a postfix of Render (a second Pie
-        // slot with the same geometry and a Fill), made at the first Fire. Older versions (0.8.6: MapPie with a theme brush) have no such class: nothing is done.
+        // slot with the same geometry and a Fill), made at the first Fire.
         static readonly List<WeakReference> _maps = new List<WeakReference>();
         sealed class PaletteSave { public object Palette; public object Day, Night; }
         static readonly List<PaletteSave> _paletteSaves = new List<PaletteSave>();

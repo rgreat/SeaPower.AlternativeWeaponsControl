@@ -1,3 +1,14 @@
+Version 2.0.1
+- Aircraft (stable game 0.9.3):
+  - Fixed: a fighter with air-to-air missiles turned on ignored your right click on an air target. Its AI makes no engage task for a target that the launcher's own sensors do not see, so the fighter never flew to it; and the game dropped the clicked target as soon as it was out of reach and the aircraft was not closing in. Now the clicked target is kept (until it is destroyed or you cancel it) and the launcher's vision requirement is waived while the AI plans the engagement (the launch itself still needs the target to be seen): the fighter flies to the target and fires its missiles. Option "Fighters: keep a clicked air target" (AI tab), on by default.
+
+Version 2.0.0
+- Aircraft:
+  - Weapons tab (beta game only): "Max-rate turns" button (after Strict EMCON): overrides the unit's Standing Orders "Aircraft turns out of combat" and "Aircraft turns in combat" with Max rate and lifts the limits of route turns (bank cap, turn limit) and of the combat turns (sustained / energy limited); saved with the unit. The arrow opens 4 levels of the minimum speed for the extra maneuverability out of combat (Limit / Low / Optimal / High, shown in knots; default Optimal); the aircraft turns like the game's Max rate mode below it. A box next to it shows the current load factor (+X.XG / -X.XG).
+  - New: aircraft whose missiles you turned off pursue and shoot with their cannon by themselves (before, the AI kept waiting for a missile shot). Option "Fighters: guns when missiles are off" (AI tab).
+  - Fixed: the AI of an aircraft no longer wipes your waiting orders (for instance a gun order that waits for the target to come into range) when it picks its own target.
+  - Fixed: the rounds of a CIWS with a magazine (aircraft cannons) were shown as 0 in the Weapons tab; the rounds in the mount are counted now.
+
 Version 1.9.0
 - Settings window (the same window and rules in all four Alternative mods):
   - One-line tab strip with arrows; the mouse wheel scrolls it.

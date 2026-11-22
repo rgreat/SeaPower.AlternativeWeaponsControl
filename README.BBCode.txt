@@ -1,8 +1,8 @@
-Version 1.9.0.
+Version 2.0.1.
 
 Adds a new [b]Weapons[/b] tab in the Unit Status window of your units, and a set of combat improvements.
 
-[h1]Mod require [b]Anchor Chain[/b] or [b]R.A.T.S. Keel[/b][/h1]
+[h1]Mod require [b]R.A.T.S. Keel[/b] or [b]Anchor Chain[/b][/h1]
 
 [h1]Features[/h1]
 [h3]Weapons tab in Unit Status[/h3]
@@ -15,7 +15,8 @@ Drag a group title (SAM, GUNS, …) to reorder the groups.
 [*][b]Automatic use[/b] per launcher and target domain (aircraft, missiles, surface ships, submarines, land): switch off what the AI may use by itself - e.g. keep the long-range SAMs for aircraft. Merged with the unit's Standing Orders; kept in saved games; manual fire is never restricted. A click goes On, Off, then back to Standing Orders. A rule with Always forces a switch on at any status, Hold included (amber ring, green core).
 [*][b]Weapons status[/b] (Free / Tight / Hold) with "On Tight: engage hostile aircraft" and "On Free: engage unidentified aircraft" at the top of the tab. The second one engages fast (500 kn+) unidentified aircraft heading towards the ship within 20 nm; it does not know whose they are. Default: off for your ships, on for enemy AI.
 [*][b]Strict EMCON[/b] next to Free / Tight / Hold: turns the unit's radars off and none can be turned on, even to engage a target; they come back when it ends. Radar directors that serve only guns keep working as silent optical ones: not heard by ESM, accuracy between local control and the radar (a Guns tab setting), no tracking of shells in flight, range and night by the rules of optics.
-[*][b]Launcher statuses[/b] also tell "Assessing n%" and "Waiting for sensor" (the crew has not assessed the target yet) and "Sensor inoperable". Guns, RBU and bombs do not show "Sensors Offline".
+[*][b]Launcher statuses[/b] also tell "Assessing n%", "Waiting for sensor" and "Sensor inoperable". Guns, RBU and bombs do not show "Sensors Offline".
+[*][b]Aircraft:[/b] "Max-rate turns" button (beta game only) (menu of minimum speed, G meter): tight turns with all the load factor the aircraft has. Aircraft with missiles turned off chase and shoot with their cannon (AI tab option), and the AI no longer wipes your waiting orders.
 [/olist]
 
 [h3]SAM launchers[/h3]
@@ -29,15 +30,15 @@ Drag a group title (SAM, GUNS, …) to reorder the groups.
 
 [h3]Fire and guns[/h3]
 [olist]
-[*][b]Fire shows the weapon's firing arcs[/b] in red on the map and in 3D while the target is being picked; the radius follows the range against the contact under the cursor.
-[*][b]Aim beyond maximum range:[/b] guns, CIWS and machine guns turn towards a target out of range or outside their firing sector (as far as the sector allows) without firing.
+[*][b]Fire shows the weapon's firing arcs[/b] in red on the map and in 3D while the target is being picked.
+[*][b]Aim beyond maximum range:[/b] guns, CIWS and machine guns turn towards a target out of range or outside their firing sector without firing.
 [*][b]Engage targets outside the firing sector[/b] (on by default): big guns that the game never gives a target outside their sector take such a target and turn to the edge of the sector.
-[*][b]Remember earlier targets[/b] (on by default): a new order switches the guns to the new target, but earlier targets are kept; a gun that cannot reach the new one goes on with the newest earlier target it can reach. Cease fire clears the list.
-[*][b]Bottom panel weapons act as Fire[/b] (on by default): a click on a weapon of the bottom panel shows the red zones, like Fire of the tab.
-[*][b]Disable AI cheating:[/b] the game's AI engages only contacts whose true side is hostile, which you cannot know. Your ships now engage the contacts you marked hostile on the plot (on Tight: aircraft only).
+[*][b]Remember earlier targets[/b] (on by default): a new order switches the guns to the new target, but earlier targets are kept; a gun that cannot reach the new one keeps the newest earlier target it can. Cease fire clears the list.
+[*][b]Bottom panel weapons act as Fire[/b] (on by default): a click on a weapon of the bottom panel shows the red zones.
+[*][b]Disable AI cheating:[/b] the game's AI engages only contacts whose true side is hostile, which you cannot know. Your ships engage the contacts you marked hostile on the plot.
 [*][b]Close-range accuracy:[/b] "Guns: change maximum accuracy" - best accuracy of guns (default 5 m, the game has about 40 m).
-[*][b]Ammunition pack:[/b] the accuracy and warhead power of 48 gun ammunition types are taken from the author's pack (ammunition_fix.txt in the mod folder). The table in the Guns tab of the settings ("Guns: alter accuracy and power", on by default) lists the mod's and the game's values; edit or reset any of them. Applied to ammunition loaded after Apply (a mission start).
-[*][b]Gun fixes:[/b] "Click on a target: all guns" orders every gun ammunition that reaches the target, not one; "Unstick guns at long range" fixes a gun that idled for minutes with an aim point beyond its firing table; "Local control: no spotting wait" lets a gun without a working director fire at its normal rate.
+[*][b]Ammunition pack:[/b] the accuracy and warhead power of 48 gun ammunition types are taken from the author's pack (ammunition_fix.txt in the mod folder). A table in the Guns tab of the settings lists the mod's and the game's values; edit or reset any of them (applies from a mission start).
+[*][b]Gun fixes:[/b] "Click on a target: all guns" orders every gun ammunition that reaches the target, not one; "Unstick guns at long range" and "Local control: no spotting wait" fix guns that idled.
 [*][b]Directors and accuracy[/b] (Guns tab): presets Base / Advanced / WW2 Mod, boost of weak directors, firing solution quality and speed, shell and aiming accuracy. The gun tooltip shows the director, solution and aiming error.
 [*][b]Ship chase options:[/b] a ship keeps its course instead of running after RBU targets or aircraft to get them into range.
 [*][b]Fire at a point of the map[/b] (option, on): a right click on the empty map while a gun is being aimed puts an invisible decoy on that point and the guns engage it; the cursor turns grey over the map.
@@ -62,14 +63,14 @@ Special effects (flashes, fire light, binoculars normal view, machine gun and hi
 
 [h1]Compatibility[/h1]
 [list]
-[*]Supports Sea Power version 0.9.0 and newer.
-[*]Loaders: Anchor Chain or R.A.T.S. Keel.
+[*]Supports Sea Power version 0.9.3 and newer.
+[*]Loaders: R.A.T.S. Keel or Anchor Chain.
 [*]Compatible with the WW2 mod; it is recommended to use that mod without its optional dll.
 [*]Can be switched on/off in the game's Mods menu.
 [/list]
 [h1]Install[/h1]
 [olist]
-[*]Subscribe to [url=https://steamcommunity.com/workshop/filedetails/?id=3380210757]Anchor Chain[/url] or [url=https://steamcommunity.com/workshop/filedetails/?id=3835527459]RATS Keel[/url] (temporarily unavailable) and follow instructions on mods page.
+[*]Subscribe to [url=https://steamcommunity.com/workshop/filedetails/?id=3835527459]RATS Keel[/url] or [url=https://steamcommunity.com/workshop/filedetails/?id=3380210757]Anchor Chain[/url] and follow instructions on mods page.
 [*]Subscribe to this mod.
 [*]Start [b]Sea Power[/b].
 [*]Enable mod in game's [b]Mod Manager[/b] and press [b]Apply[/b] button.

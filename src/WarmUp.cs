@@ -337,29 +337,6 @@ namespace AlternativeWeaponsControl
             catch (Exception e) { Trace("sam orders: " + e.Message); }
         }
 
-        /// <summary>The live target of an open engage order for this launcher's ammunition (null: none).</summary>
-        static object EngageTarget(object ws)
-        {
-            try
-            {
-                var bo = R.F(ws, "_baseObject");
-                var mag = Magazine(ws);
-                var list = mag == null ? null : R.F(mag, "_ammunitionList") as IList;
-                var names = new List<string>();
-                if (list != null) foreach (var a in list) { var n = R.S(R.F(R.F(a, "_ap"), "_ammunitionFileName")); if (n != null) names.Add(n); }
-                var tasks = bo == null ? null : R.F(bo, "_currentEngageTasks") as IList;
-                if (tasks != null)
-                    foreach (var t in tasks)
-                    {
-                        if (t == null || !names.Contains(R.S(R.F(t, "_ammoId")))) continue;
-                        var tg = R.F(t, "_targetObject");
-                        if (tg != null && !R.B(R.P(tg, "IsDestroyed"))) return tg;
-                    }
-            }
-            catch { }
-            return null;
-        }
-
         static bool NeedHot(object ws)
         {
             try
@@ -494,16 +471,6 @@ namespace AlternativeWeaponsControl
             Box b;
             if (!_warmBox.TryGetValue(ws, out b)) { b = new Box(); _warmBox.Add(ws, b); }
             b.Pending = false; b.Until = 0.0; b.Unload = true; b.Recharge = recharge; b.Started = false;
-        }
-
-        static void Discharge(object ws)
-        {
-            var cs = R.F(ws, "_containers") as IList;
-            if (cs != null) foreach (var c in cs) { try { R.Call(c, "unload", true); R.Call(c, "ClearPartialPack"); } catch { } }
-            R.SetF(ws, "_ammunitionOnWeapon", null); R.SetF(ws, "_spawnedAmmunition", null);
-            try { var st = R.F(ws, "_state"); if (st != null) R.SetF(ws, "_state", Enum.Parse(st.GetType(), "Idle")); } catch { }
-            R.SetP(ws, "IsHot", false);
-            ClearCycle(ws);
         }
 
         /// <summary>The launcher can be charged (a SAM / missile launcher with a warm-up and a magazine).</summary>

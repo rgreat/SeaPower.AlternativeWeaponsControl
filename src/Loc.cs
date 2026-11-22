@@ -66,7 +66,7 @@ namespace AlternativeWeaponsControl
             D("cat.off", "off"); D("cat.waiting", "waiting"); D("cat.sensorsOff", "sensors off"); D("cat.sensorBad", "sensor inoperable");
             D("st.queued", "Queued"); D("st.waitFcr", "Waiting for FCR channel"); D("st.reloading", "Reloading: {0}");
             D("st.localControl", "Local control"); D("st.railsEmpty", "Rails empty"); D("st.empty", "Empty"); D("st.sensorsLost", "Sensor inoperable"); D("st.assessing", "Assessing {0}%"); D("st.waitSensor", "Waiting for sensor"); D("st.loading", "Loading rails"); D("st.unloading", "Unloading rails"); D("st.unloadPause", "Unloading: {0}");
-            D("target.track", "Track {0} ({1})"); D("target.trackOnly", "Track {0}"); D("target.unknown", "unknown"); D("pointfire.log", "Engage position {0} with {1}, roger out.");
+            D("target.track", "Track {0} ({1})"); D("target.unknown", "unknown"); D("pointfire.log", "Engage position {0} with {1}, roger out.");
             // ---- buttons and tips
             D("btn.fire", "Fire");
             D("btn.salvoTip", "Salvo and launch options");
@@ -139,6 +139,13 @@ namespace AlternativeWeaponsControl
             D("tab.onTightPart", "\nAmber: only some of the weapons engage aircraft on Weapons Tight (the Standing Orders say so). Click: all of them.");
             D("tab.emcon", "Strict EMCON");
             D("tab.emconTip", "Turns the radars of this unit off, and none can be turned on, even to engage a target. Radar directors that serve only guns keep working as silent optical directors.");
+            D("tab.maxTurns", "Max-rate turns"); D("tab.maxTurnsTip", "Overrides the Standing Orders of this aircraft: \"Aircraft turns out of combat\" and \"Aircraft turns in combat\" both become Max rate, and on its route the aircraft turns with all the load factor it has. Press again to return what the unit had before.");
+            D("tab.gTip", "Current load factor of the aircraft: + pulls up, - pushes down (G).");
+            D("tab.turnsLvl0", "Limit: minimum speed {0} kt");
+            D("tab.turnsLvl1", "Low: minimum speed {0} kt");
+            D("tab.turnsLvl2", "Optimal: minimum speed {0} kt");
+            D("tab.turnsLvl3", "High: minimum speed {0} kt");
+            D("tab.turnsLvlTip", "Minimum speed for the extra maneuverability out of combat. Under it the aircraft turns only as the game's Max rate mode does (no speed loss).");
             D("chip.orderEnd", ".\nClick: allow for {0} (a rule allowing it is added to the unit's Standing Orders, the other launchers it covers turn off).");
             D("chip.mixed", "{0}: mixed - ");
             D("chip.mixedAuto", "automatic"); D("chip.mixedForced", "forced by Standing Orders"); D("chip.mixedOff", "off"); D("chip.mixedOrder", "off by Standing Orders");
@@ -184,7 +191,7 @@ namespace AlternativeWeaponsControl
             D("tabs.panel", "Weapons panel"); D("tabs.fire", "Auto fire"); D("tabs.ai", "AI"); D("tabs.guns", "Guns"); D("tabs.gunsAccuracy", "Accuracy"); D("sub.general", "General");
             D("tabs.debug", "Debug"); D("tabs.language", "Language");
             D("grp.panel", "Panel"); D("grp.samButton", "SAM readiness button"); D("grp.sam", "SAM");
-            D("grp.fireControl", "Fire control"); D("grp.chasing", "Chasing"); D("grp.accuracy", "Accuracy"); D("grp.global", "Global"); D("grp.directors", "Directors"); D("grp.ammoFix", "Ammunition");
+            D("grp.fireControl", "Fire control"); D("grp.ships", "Ships"); D("grp.fighters", "Fighters"); D("grp.accuracy", "Accuracy"); D("grp.global", "Global"); D("grp.directors", "Directors"); D("grp.ammoFix", "Ammunition");
             D("grp.freeAir", "On Free: unidentified aircraft"); D("grp.targeting", "Target selection"); D("grp.diagnostics", "Diagnostics"); D("grp.language", "Language");
             D("lbl.UI/ClickVolume", "Click sound volume");
             D("unit.UI/ClickVolume", "0..1 · 0 = no sound");
@@ -207,6 +214,8 @@ namespace AlternativeWeaponsControl
             D("lbl.Fire/UnknownAirDefaultEnemy", "On Free by default: enemy AI ships");
             D("lbl.Ships/NoRbuSurfaceChase", "No chasing surface targets with ASW mortars");
             D("lbl.Ships/NoAirChase", "No chasing air targets");
+            D("lbl.Aircraft/GunsWhenMissilesOff", "Fighters: guns when missiles are off");
+            D("lbl.Aircraft/KeepClickedAirTarget", "Fighters: keep a clicked air target");
             D("lbl.Guns/AimBeyondMaxRange", "Aim guns at targets beyond max range");
             D("lbl.Guns/EngageOutsideSector", "Engage targets outside the firing sector");
             D("lbl.Guns/RememberTargets", "Remember earlier targets");
@@ -437,7 +446,6 @@ namespace AlternativeWeaponsControl
         {
             if (code.IndexOfAny(new[] { '/', '\\', ':' }) >= 0) return;
             var path = Path.Combine(Dir, code + ".ini");
-            bool english = code == "en";
             if (!File.Exists(path))
             {
                 var sb = new StringBuilder();

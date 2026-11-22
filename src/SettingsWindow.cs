@@ -115,8 +115,10 @@ namespace AlternativeWeaponsControl
             Add(TG, "grp.directors", "Guns/OpticalDirectorMinSolution", "Solution quality with optical directors", "x", Kind.Number, 0.1f, 0f, 5f, "game: 1");
             Add(TG, "grp.directors", "Guns/RadarDirectorMinSolution", "Solution quality with radar directors", "x", Kind.Number, 0.1f, 0f, 5f, "game: 1");
             Add(TA, "grp.targeting", "Fire/EngageByPlotRelation", "Disable AI cheating", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(TA, "grp.chasing", "Ships/NoRbuSurfaceChase", "No chasing surface targets with ASW mortars", "", Kind.Bool, 0, 0, 0, "game: off");
-            Add(TA, "grp.chasing", "Ships/NoAirChase", "No chasing air targets", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(TA, "grp.ships", "Ships/NoRbuSurfaceChase", "No chasing surface targets with ASW mortars", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(TA, "grp.ships", "Ships/NoAirChase", "No chasing air targets", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(TA, "grp.fighters", "Aircraft/GunsWhenMissilesOff", "Fighters: guns when missiles are off", "", Kind.Bool, 0, 0, 0, "game: off");
+            Add(TA, "grp.fighters", "Aircraft/KeepClickedAirTarget", "Fighters: keep a clicked air target", "", Kind.Bool, 0, 0, 0, "game: off");
             Add(T5, "grp.diagnostics", "General/Debug", "Debug trace", "", Kind.Bool, 0, 0, 0);
             AddAction(T5, "grp.diagnostics", "Debug/ScreenshotTabs", "Screenshot all tabs now", StartShots);
         }

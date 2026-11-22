@@ -29,7 +29,7 @@ namespace AlternativeWeaponsControl
     {
         public const string PluginGuid = "com.rgreat.seapower.alternativeweaponscontrol";
         public const string PluginName = "Alternative Weapons Control";
-        public const string PluginVersion = "1.9.0";
+        public const string PluginVersion = "2.0.1";
 
         public static readonly string BuildId = ReadBuildId();
 
@@ -43,7 +43,7 @@ namespace AlternativeWeaponsControl
 
         // ------------------------------------------------------------ settings
         public ConfigFile Cfg;
-        internal ConfigEntry<string> _language; internal ConfigEntry<bool> _debugEntry, _gunChannels, _gunOneDirector, _noRbuSurfaceChase, _noAirChase;
+        internal static ConfigEntry<bool> _aamGuns, _keepClicked; internal ConfigEntry<string> _language; internal ConfigEntry<bool> _debugEntry, _gunChannels, _gunOneDirector, _noRbuSurfaceChase, _noAirChase;
         internal ConfigEntry<string> _secOrder, _uncovered;
         internal ConfigEntry<float> _clickVolume, _samMinutes, _samAutoRange, _gunMinError, _accuracyMult, _fcAccuracy, _weakBoost, _gainLocal, _emconOptical, _minSolOptical, _minSolRadar, _solSpeed, _solLoss, _localGrowth;
         internal ConfigEntry<bool> _ammoFix, _samTightNez, _plotHostile, _tabAir, _tabLand, _samButton, _zoneFire, _samAuto, _samKeep, _samAnim, _gunAimBeyond, _engageOutside, _gunMemory, _gunReroll, _barrelScatter, _pointFire, _bigLocal, _clickAllGuns, _gunLocalFire, _bottomFire, _secTargets;
@@ -72,14 +72,17 @@ namespace AlternativeWeaponsControl
 
         // A trace line that repeats (the same key) is written once per `sec` seconds of real time: the selector and the demand test run many times a second.
         static readonly Dictionary<string, float> _traceAt = new Dictionary<string, float>();
-        static void TraceLimited(string key, float sec, string msg)
+        static void TraceLimited(string key, float sec, string msg) { if (TraceDue(key, sec)) Trace(msg); }
+
+        /// <summary>True (and the key is stamped) when a limited trace line with this key is due: ask it BEFORE building the message of a line in a hot path.</summary>
+        static bool TraceDue(string key, float sec)
         {
-            if (!_debug) return;
+            if (!_debug) return false;
             float now = UnityEngine.Time.realtimeSinceStartup, last;
-            if (_traceAt.TryGetValue(key, out last) && now - last < sec) return;
+            if (_traceAt.TryGetValue(key, out last) && now - last < sec) return false;
             if (_traceAt.Count > 2000) _traceAt.Clear();
             _traceAt[key] = now;
-            Trace(msg);
+            return true;
         }
 
         void Verbose(string msg) { Trace(msg); }   // details go to the trace only
@@ -166,6 +169,12 @@ namespace AlternativeWeaponsControl
             _noRbuSurfaceChase = Cfg.Bind("Ships", "NoRbuSurfaceChase", true,
                 "A ship attacking a surface target with ASW mortars (RBU) does not run after it to get into the mortars' range - " +
                 "it keeps its course and fires once the target comes into range. All ships, the enemy's too.");
+            _aamGuns = Cfg.Bind("Aircraft", "GunsWhenMissilesOff", true,
+                "An aircraft of the player whose air-to-air missiles are all turned off (the Weapons tab's circles, the Standing Orders) counts for the game's AI as one without " +
+                "air-to-air missiles: it pursues the target and opens fire with the cannon. Without it the AI still waits for a missile shot it may not take.");
+            _keepClicked = Cfg.Bind("Aircraft", "KeepClickedAirTarget", true,
+                "The game before 0.9.3 beta drops an air target that the player ordered an aircraft to attack with a click as soon as the target is out of reach and the aircraft is not closing in: " +
+                "the order vanishes by itself. With this on the aircraft keeps the clicked target until it is destroyed or the player cancels.");
             _noAirChase = Cfg.Bind("Ships", "NoAirChase", true,
                 "A ship does not run after aircraft and missiles to get them into the range of its weapons - it keeps its course " +
                 "and fires once they come into range. All ships, the enemy's too.");
@@ -250,7 +259,7 @@ namespace AlternativeWeaponsControl
                 "Verbose logging and BepInEx/AlternativeWeaponsControl.trace.txt.");
             _language = Cfg.Bind("General", "Language", "",
                 "Language of the mod's texts: a code of a game language (en, ru ...); empty = the game's own language. The texts are in the files lang/<code>.ini in the mod folder - edit them to translate.");
-            Entries.Add(_uncovered); Entries.Add(_gunMemory); Entries.Add(_gunReroll); Entries.Add(_barrelScatter); Entries.Add(_pointFire); Entries.Add(_bigLocal); Entries.Add(_clickAllGuns); Entries.Add(_gunLocalFire); Entries.Add(_bottomFire); Entries.Add(_secTargets); Entries.Add(_clickVolume); Entries.Add(_samButton); Entries.Add(_zoneFire); Entries.Add(_plotHostile); Entries.Add(_samTightNez); Entries.Add(_freeAirKnots); Entries.Add(_freeAirNm); Entries.Add(_freeAirOwn); Entries.Add(_freeAirEnemy); Entries.Add(_tabLand); Entries.Add(_tabAir); Entries.Add(_samAuto); Entries.Add(_samKeep); Entries.Add(_samAnim); Entries.Add(_samAutoRange); Entries.Add(_samMinutes); Entries.Add(_gunOneDirector); Entries.Add(_gunChannels); Entries.Add(_noRbuSurfaceChase); Entries.Add(_noAirChase); Entries.Add(_gunAimBeyond); Entries.Add(_engageOutside); Entries.Add(_gunMinError); Entries.Add(_accuracyMult); Entries.Add(_fcAccuracy); Entries.Add(_weakBoost); Entries.Add(_gainLocal); Entries.Add(_emconOptical); Entries.Add(_minSolOptical); Entries.Add(_minSolRadar); Entries.Add(_solSpeed); Entries.Add(_solLoss); Entries.Add(_localGrowth); Entries.Add(_ammoFix); Entries.Add(_debugEntry); Entries.Add(_language);
+            Entries.Add(_uncovered); Entries.Add(_gunMemory); Entries.Add(_gunReroll); Entries.Add(_barrelScatter); Entries.Add(_pointFire); Entries.Add(_bigLocal); Entries.Add(_clickAllGuns); Entries.Add(_gunLocalFire); Entries.Add(_bottomFire); Entries.Add(_secTargets); Entries.Add(_clickVolume); Entries.Add(_samButton); Entries.Add(_zoneFire); Entries.Add(_plotHostile); Entries.Add(_samTightNez); Entries.Add(_freeAirKnots); Entries.Add(_freeAirNm); Entries.Add(_freeAirOwn); Entries.Add(_freeAirEnemy); Entries.Add(_tabLand); Entries.Add(_tabAir); Entries.Add(_samAuto); Entries.Add(_samKeep); Entries.Add(_samAnim); Entries.Add(_samAutoRange); Entries.Add(_samMinutes); Entries.Add(_gunOneDirector); Entries.Add(_gunChannels); Entries.Add(_noRbuSurfaceChase); Entries.Add(_noAirChase); Entries.Add(_aamGuns); Entries.Add(_keepClicked); Entries.Add(_gunAimBeyond); Entries.Add(_engageOutside); Entries.Add(_gunMinError); Entries.Add(_accuracyMult); Entries.Add(_fcAccuracy); Entries.Add(_weakBoost); Entries.Add(_gainLocal); Entries.Add(_emconOptical); Entries.Add(_minSolOptical); Entries.Add(_minSolRadar); Entries.Add(_solSpeed); Entries.Add(_solLoss); Entries.Add(_localGrowth); Entries.Add(_ammoFix); Entries.Add(_debugEntry); Entries.Add(_language);
             Loc.Trace = Trace; Loc.Forced = () => _language == null ? "" : _language.Value;
             Rgreat.Hub.SettingsHub.JoinLanguage(_language.Value, v => { _language.Value = v; Loc.Refresh(); });   // one language for all the rgreat mods
             foreach (var en in Entries) Loc.Register("help." + en.Definition.Section + "/" + en.Definition.Key, en.Description == null ? "" : en.Description.Description);
@@ -328,6 +337,10 @@ namespace AlternativeWeaponsControl
             try { HookGunTargets(harmony, asm); } catch (Exception e) { Warn("Gun targets failed: " + e.Message); }
             try { HookPointFire(harmony, asm); } catch (Exception e) { Warn("Point fire failed: " + e.Message); }
             try { HookUncovered(harmony); } catch (Exception e) { Warn("Weapons without a Standing Orders rule failed: " + e.Message); }
+            try { HookAircraftGuns(harmony, asm); } catch (Exception e) { Warn("Aircraft guns failed: " + e.Message); }
+            try { HookClickedAir(harmony, asm); } catch (Exception e) { Warn("Clicked air target failed: " + e.Message); }
+            try { HookMaxTurns(harmony, asm); } catch (Exception e) { Warn("Max maneuverability failed: " + e.Message); }
+            try { HookKeepOrders(harmony, asm); } catch (Exception e) { Warn("Orders of the player and the AI of aircraft failed: " + e.Message); }
             try { HookWaypointFix(harmony, asm); } catch (Exception e) { Warn("Waypoint orders failed: " + e.Message); }
             try { HookGunFixes(harmony, asm); } catch (Exception e) { Warn("Gun fixes failed: " + e.Message); }
             try { HookWeapons(harmony, asm); } catch (Exception e) { Warn("Weapons hooks failed: " + e.Message); Trace(e.ToString()); }

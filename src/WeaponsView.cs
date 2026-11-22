@@ -105,8 +105,8 @@ namespace AlternativeWeaponsControl
             public readonly List<GroupRow> Groups = new List<GroupRow>();
             public Border[] Status = new Border[3];
             public TextBlock[] StatusText = new TextBlock[3];
-            public Border EmconBtn; public TextBlock EmconText;   // Strict EMCON: no radar of the unit is turned on
-            public Border TightBox; public Rectangle TightMark; public StackPanel TightRow;   // release game only: "On Tight: engage hostile aircraft" of the doctrine
+            public Border EmconBtn, TurnsBtn, GBox; public TextBlock EmconText, TurnsText, TurnsArrowText, GText;   // Strict EMCON: no radar of the unit is turned on
+            public Border TightBox; public Rectangle TightMark; public StackPanel TightRow;   // "On Tight: engage hostile aircraft" (a rule of the unit)
             public Border FreeBox; public Rectangle FreeMark; public StackPanel FreeRow;
             public TextBlock ExpandText;
             public float NextRefresh;
@@ -382,6 +382,29 @@ namespace AlternativeWeaponsControl
             Hover(v.EmconBtn, null, WC.BtnHover);
             Click(v.EmconBtn, () => { var uw = W(v.Unit); uw.StrictEmcon = !uw.StrictEmcon; if (uw.StrictEmcon) RadarsOff(v.Unit); else RadarsOn(v.Unit); RetrimStations(v.Unit); Refresh(v, false); });
             seg.Children.Add(v.EmconBtn);
+            v.TurnsText = T(Loc.T("tab.maxTurns"), WC.Dim, 12f);
+            var tMain = new Border { Child = v.TurnsText, Padding = new Thickness(10f, 2f, 7f, 2f), Background = WC.Clear };
+            v.TurnsArrowText = T("▾", WC.Dim, 11f);
+            var tArrow = new Border { Child = v.TurnsArrowText, Padding = new Thickness(6f, 2f, 6f, 2f), Background = WC.Clear, BorderBrush = WC.B(WC.BtnLine), BorderThickness = new Thickness(1f, 0f, 0f, 0f) };
+            var tg = new Grid();
+            tg.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            tg.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetColumn(tArrow, 1);
+            tg.Children.Add(tMain); tg.Children.Add(tArrow);
+            v.TurnsBtn = new Border { Child = tg, Margin = new Thickness(8f, 0f, 0f, 0f), Background = WC.Clear,
+                                      BorderBrush = WC.B(WC.BtnLine), BorderThickness = new Thickness(1f), CornerRadius = new CornerRadius(3f), VerticalAlignment = VerticalAlignment.Center };
+            SetTip(tMain, Loc.T("tab.maxTurnsTip"));
+            SetTip(tArrow, Loc.T("tab.turnsLvlTip"));
+            Hover(v.TurnsBtn, null, WC.BtnHover);
+            Click(tMain, () => { SetMaxTurns(v.Unit, !MaxTurnsActive(v.Unit)); Refresh(v, false); });
+            Click(tArrow, () => OpenTurnsMenu(v, v.TurnsBtn));
+            seg.Children.Add(v.TurnsBtn);
+            v.GText = T("+1.0G", WC.Dim, 12f); v.GText.FontFamily = new FontFamily("Consolas");
+            v.GBox = new Border { Child = v.GText, Padding = new Thickness(6f, 2f, 6f, 2f), Margin = new Thickness(4f, 0f, 0f, 0f), Background = WC.Clear, MinWidth = 52f,
+                                  BorderBrush = WC.B(WC.BtnLine), BorderThickness = new Thickness(1f), CornerRadius = new CornerRadius(3f), VerticalAlignment = VerticalAlignment.Center };
+            v.GText.HorizontalAlignment = HorizontalAlignment.Center;
+            SetTip(v.GBox, Loc.T("tab.gTip"));
+            seg.Children.Add(v.GBox);
             Grid.SetColumn(seg, 0); head.Children.Add(seg);
             v.TightRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(16f, 0f, 0f, 0f), Background = WC.Clear, VerticalAlignment = VerticalAlignment.Center };
             v.TightBox = new Border { Width = 14f, Height = 14f, BorderBrush = WC.B(WC.Ring), BorderThickness = new Thickness(1f), CornerRadius = new CornerRadius(2f), Margin = new Thickness(0f, 0f, 6f, 0f) };
@@ -1776,8 +1799,9 @@ namespace AlternativeWeaponsControl
             {
                 var ammo = only == null ? l.Ammo : l.Ammo.Contains(only) ? new List<string> { only } : new List<string>();
                 var mag = R.F(R.F(l.Ws, "_vwp"), "_associatedMagazine");
-                // a gun with a magazine: the rounds in the mount (_sharedLoadedAmmoCount) are part of the magazine's count, not extra
-                if (mag == null || !IsGun(l)) n += Loaded(l.Ws, ammo);
+                // a Gun with a magazine: the rounds in the mount (_sharedLoadedAmmoCount) are part of the magazine's count, not extra.
+                // A CIWS (aircraft cannon too) moves them out of the magazine at init (decreaseMagazineAmmoCount) and holds them in _loadedAmmunitionCount: they are extra
+                if (mag == null || R.S(R.F(l.Ws, "_weaponType")) != "Gun") n += Loaded(l.Ws, ammo);
                 if (mag == null || mags.Contains(mag)) continue;
                 mags.Add(mag);
                 foreach (var a in ammo) { try { n += R.I(R.Call(mag, "getAmmunitionCount", a)); } catch { } }
@@ -2105,6 +2129,15 @@ namespace AlternativeWeaponsControl
             v.EmconBtn.BorderBrush = WC.B(w.StrictEmcon ? WC.Red : WC.BtnLine);
             v.EmconText.Foreground = WC.B(w.StrictEmcon ? Color.FromRgb(255, 255, 255) : WC.Dim);
             v.EmconText.FontWeight = w.StrictEmcon ? FontWeights.SemiBold : FontWeights.Normal;
+            bool mt = CanMaxTurns(unit), mtOn = mt && MaxTurnsActive(unit);
+            v.TurnsBtn.Visibility = mt ? Visibility.Visible : Visibility.Collapsed;
+            Hover(v.TurnsBtn, mtOn ? (Color?)Color.FromRgb(34, 84, 52) : null, mtOn ? Color.FromRgb(46, 110, 68) : WC.BtnHover);
+            v.TurnsBtn.BorderBrush = WC.B(mtOn ? WC.Ok : WC.BtnLine);
+            v.TurnsText.Foreground = WC.B(mtOn ? Color.FromRgb(255, 255, 255) : WC.Dim);
+            v.TurnsText.FontWeight = mtOn ? FontWeights.SemiBold : FontWeights.Normal;
+            v.TurnsArrowText.Foreground = WC.B(mtOn ? Color.FromRgb(255, 255, 255) : WC.Dim);
+            v.GBox.Visibility = mt ? Visibility.Visible : Visibility.Collapsed;
+            if (mt) { float g; bool ok = CurrentG(unit, out g); v.GText.Text = ok ? g.ToString("+0.0;-0.0;+0.0", System.Globalization.CultureInfo.InvariantCulture) + "G" : "--G"; v.GText.Foreground = WC.B(ok && Math.Abs(g) > 4f ? WC.Amber : WC.Dim); }
             var tight = TightAirItem(unit);
             bool tightShown = TightAirShown(unit);
             v.TightRow.Visibility = tightShown ? Visibility.Visible : Visibility.Collapsed;
@@ -2346,7 +2379,6 @@ namespace AlternativeWeaponsControl
                 var name = Cap(R.S(R.Rv(R.P(s, "DisplayName"))) ?? R.S(R.F(s, "_systemName")) ?? "?");
                 var entry = SensorEntry(s);
                 var head = new StackPanel { Orientation = Orientation.Horizontal };
-                var dirSys = s;
                 head.Children.Add(entry != null ? (UIElement)DescLink(name, R.S(R.P(entry, "Description")), Loc.T("tip.refDirector"), () => OpenEntry(entry))
                                                 : T(name, WC.Text, 12.5f, FontWeights.SemiBold));
                 var state = T("", WC.Ok, 11.5f); state.Margin = new Thickness(8f, 0f, 0f, 0f);
@@ -2628,15 +2660,6 @@ namespace AlternativeWeaponsControl
             SetTip(e, tip);
         }
 
-        static void AddState(Panel sp, string text, Color c)
-        {
-            var dot = new Ellipse { Width = 7f, Height = 7f, Fill = WC.B(c), Margin = new Thickness(0f, 0f, 5f, 0f), VerticalAlignment = VerticalAlignment.Center };
-            var t = T(text, c, 12f); t.Margin = new Thickness(0f, 0f, 8f, 0f);
-            var pair = new StackPanel { Orientation = Orientation.Horizontal };
-            pair.Children.Add(dot); pair.Children.Add(t);
-            sp.Children.Add(pair);
-        }
-
         static string GroupTip(object unit, GroupRow gr, int d, Chip st)
         {
             if (gr.Ls.Count == 1) return ChipTip(unit, gr.Ls[0], d);
@@ -2829,6 +2852,25 @@ namespace AlternativeWeaponsControl
                 _clickSource.GetType().GetMethod("PlayOneShot", new[] { _clickClip.GetType(), typeof(float) }).Invoke(_clickSource, new object[] { _clickClip, vol });
             }
             catch (Exception e) { _clickFailed = true; Trace("click sound: " + (e.InnerException ?? e).Message); }
+        }
+
+        /// <summary>The drop-down of Max-rate turns: the level of the speed floor of the extra maneuverability out of combat.</summary>
+        void OpenTurnsMenu(WeaponsView v, FrameworkElement at)
+        {
+            var menu = new ContextMenu();
+            int cur = TurnsLevel(v.Unit);
+            float[] kt; bool known = TurnsFloorsKt(v.Unit, out kt);
+            for (int i = 0; i < 4; i++)
+            {
+                int lvl = i;
+                var mi = new MenuItem { Header = Loc.F("tab.turnsLvl" + i, known ? Math.Round(kt[i]).ToString("0") : "?"), IsCheckable = true, IsChecked = i == cur };
+                mi.Click += (s, e) => { try { SetTurnsLevel(v.Unit, lvl); Refresh(v, false); } catch (Exception ex) { Trace("max turns menu: " + ex.Message); } };
+                menu.Items.Add(mi);
+            }
+            menu.PlacementTarget = at;
+            menu.Placement = PlacementMode.Bottom;
+            at.ContextMenu = menu;
+            menu.IsOpen = true;
         }
 
         void OpenFireMenu(WeaponsView v, List<string> ids, FrameworkElement at)
